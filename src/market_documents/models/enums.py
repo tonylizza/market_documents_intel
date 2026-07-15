@@ -14,3 +14,31 @@ class MetadataSource(str, enum.Enum):
     FILENAME = "FILENAME"
     PDF = "PDF"
     MANUAL = "MANUAL"
+
+
+class ExtractionStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class ExtractionQuality(str, enum.Enum):
+    GOOD = "GOOD"
+    USABLE = "USABLE"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    FAILED = "FAILED"
+
+
+class BlockType(str, enum.Enum):
+    PARAGRAPH = "PARAGRAPH"
+    HEADING_CANDIDATE = "HEADING_CANDIDATE"
+    LIST_ITEM = "LIST_ITEM"
+    TABLE_LIKE = "TABLE_LIKE"
+    HEADER = "HEADER"
+    FOOTER = "FOOTER"
+    PAGE_NUMBER = "PAGE_NUMBER"
+    NUMERIC_FRAGMENT = "NUMERIC_FRAGMENT"
+    DECORATIVE_OR_FRAGMENT = "DECORATIVE_OR_FRAGMENT"
+    UNKNOWN = "UNKNOWN"

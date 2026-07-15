@@ -1,15 +1,43 @@
+import uuid as uuid_module
 from pathlib import Path
 
 import typer
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from market_documents.config import get_settings
 from market_documents.db.session import get_session
+from market_documents.models.enums import ExtractionQuality, ExtractionStatus
+from market_documents.models.extraction import ExtractionRun, Page
+from market_documents.models.report import Report
+from market_documents.services import corpus_audit
+from market_documents.services.extraction import (
+    extract_eligible_reports,
+    extract_report,
+    get_current_extraction_run,
+    get_current_runs_by_report,
+)
 from market_documents.services.importing import import_manifest
 from market_documents.services.metadata_inspection import inspect_discovered_reports
 from market_documents.services.scanning import scan_directory, write_manifest_csv
 from market_documents.services.validation import validate_reports
 
-app = typer.Typer(help="Corpus discovery, import, and validation.")
+app = typer.Typer(help="Corpus discovery, import, validation, and extraction.")
+
+
+def _resolve_report(session: Session, selector: str) -> Report:
+    """Resolve a report by id (UUID) or local_path -- both are unique."""
+    try:
+        report_id = uuid_module.UUID(selector)
+    except ValueError:
+        report = session.scalar(select(Report).where(Report.local_path == selector))
+    else:
+        report = session.get(Report, report_id)
+
+    if report is None:
+        typer.echo(f"No report found matching {selector!r}")
+        raise typer.Exit(code=1)
+    return report
 
 
 @app.command()
@@ -66,3 +94,210 @@ def validate() -> None:
         f"Needs review: {len(outcome.needs_review)}, "
         f"Rejected: {len(outcome.rejected)}"
     )
+
+
+@app.command()
+def extract(
+    selector: str = typer.Argument(..., help="Report id (UUID) or local_path."),
+    force: bool = typer.Option(
+        False, "--force", help="Re-extract even if an identical successful run already exists."
+    ),
+) -> None:
+    """Run extraction for one eligible report."""
+    with get_session() as session:
+        report = _resolve_report(session, selector)
+        outcome = extract_report(session, report, force=force)
+
+        if outcome.skipped:
+            typer.echo(f"Skipped {report.local_path}: {outcome.skip_reason}")
+            return
+
+        run = outcome.run
+        assert run is not None
+        typer.echo(
+            f"{report.local_path}: status={run.status.value} "
+            f"quality={run.extraction_quality.value if run.extraction_quality else '-'} "
+            f"pages={run.processed_page_count}/{run.expected_page_count} "
+            f"words={run.total_word_count}"
+        )
+        if run.review_reason:
+            typer.echo(f"  review: {run.review_reason}")
+        if run.error_message:
+            typer.echo(f"  error: {run.error_message}")
+
+        failed = run.status == ExtractionStatus.FAILED
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("extract-all")
+def extract_all_cmd(
+    limit: int | None = typer.Option(
+        None, "--limit", help="Maximum number of reports to process (defaults to the configured batch limit)."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Re-extract even if identical successful runs already exist."
+    ),
+) -> None:
+    """Extract every report whose validation state permits extraction."""
+    settings = get_settings()
+    effective_limit = limit if limit is not None else settings.extraction_batch_limit
+
+    with get_session() as session:
+        outcome = extract_eligible_reports(session, limit=effective_limit, force=force)
+
+    typer.echo(
+        f"Completed: {len(outcome.completed)}, "
+        f"Completed with warnings: {len(outcome.completed_with_warnings)}, "
+        f"Skipped: {len(outcome.skipped)}, "
+        f"Needs review: {len(outcome.needs_review)}, "
+        f"Failed: {len(outcome.failed)}"
+    )
+    for path, reason in outcome.failed:
+        typer.echo(f"  failed {path}: {reason}")
+
+
+@app.command("extraction-status")
+def extraction_status_cmd() -> None:
+    """Show the current extraction status for every report."""
+    with get_session() as session:
+        reports = session.scalars(
+            select(Report).order_by(Report.directory_year, Report.local_path)
+        ).all()
+        current_runs = get_current_runs_by_report(session, [r.id for r in reports])
+
+        for report in reports:
+            run = current_runs.get(report.id)
+            ticker = report.company.ticker if report.company else "?"
+            period_end = report.period_end.isoformat() if report.period_end else "-"
+            status = run.status.value if run else "NOT_EXTRACTED"
+            quality = run.extraction_quality.value if run and run.extraction_quality else "-"
+            pages = f"{run.processed_page_count}/{run.expected_page_count}" if run else "-"
+            words = run.total_word_count if run else "-"
+            review = run.review_reason if run else "-"
+            typer.echo(
+                f"{ticker:6} {str(report.id):36} {report.filename:24} "
+                f"dir_year={report.directory_year} period_end={period_end} "
+                f"status={status} quality={quality} pages={pages} words={words} review={review}"
+            )
+
+
+@app.command("extraction-review")
+def extraction_review_cmd() -> None:
+    """List only reports (or their current run's diagnostics) that need manual review."""
+    with get_session() as session:
+        reports = session.scalars(
+            select(Report).order_by(Report.directory_year, Report.local_path)
+        ).all()
+        current_runs = get_current_runs_by_report(session, [r.id for r in reports])
+
+        flagged = 0
+        for report in reports:
+            ticker = report.company.ticker if report.company else "?"
+            run = current_runs.get(report.id)
+
+            if run is not None:
+                # USABLE is a legitimate "fine, just not perfect" tier, not a
+                # review flag -- only genuinely poor-quality extractions and
+                # runs that mechanically failed belong here.
+                needs_review = run.extraction_quality in (
+                    ExtractionQuality.NEEDS_REVIEW,
+                    ExtractionQuality.FAILED,
+                )
+                if needs_review:
+                    flagged += 1
+                    typer.echo(
+                        f"{ticker:6} {report.filename:24} "
+                        f"quality={run.extraction_quality.value if run.extraction_quality else '-'} "
+                        f"review={run.review_reason or '-'}"
+                    )
+                continue
+
+            latest_run = session.scalar(
+                select(ExtractionRun)
+                .where(ExtractionRun.report_id == report.id)
+                .order_by(ExtractionRun.created_at.desc())
+                .limit(1)
+            )
+            flagged += 1
+            if latest_run is None:
+                typer.echo(f"{ticker:6} {report.filename:24} not yet extracted")
+            else:
+                typer.echo(
+                    f"{ticker:6} {report.filename:24} "
+                    f"latest attempt failed: {latest_run.error_message or 'unknown error'}"
+                )
+
+        if flagged == 0:
+            typer.echo("No reports currently flagged for review.")
+
+
+@app.command("export-text")
+def export_text_cmd(
+    selector: str = typer.Argument(..., help="Report id (UUID) or local_path."),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Write to this file instead of stdout."
+    ),
+) -> None:
+    """Export the cleaned, page-aware narrative text for a report's current extraction."""
+    with get_session() as session:
+        report = _resolve_report(session, selector)
+        current_run = get_current_extraction_run(session, report.id)
+        if current_run is None:
+            typer.echo(f"No successful extraction for {report.local_path}")
+            raise typer.Exit(code=1)
+
+        pages = session.scalars(
+            select(Page)
+            .where(Page.extraction_run_id == current_run.id)
+            .order_by(Page.page_number)
+        ).all()
+
+        rendered_pages = []
+        for page in pages:
+            kept_blocks = sorted(
+                (b for b in page.text_blocks if not b.excluded_from_narrative),
+                key=lambda b: b.reading_order,
+            )
+            page_text = "\n\n".join(
+                content
+                for b in kept_blocks
+                if (content := (b.cleaned_text or b.raw_text).strip())
+            )
+            rendered_pages.append(f"--- Page {page.page_number} ---\n\n{page_text}")
+
+        text = "\n\n".join(rendered_pages)
+        page_count = len(pages)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+        typer.echo(f"Exported {page_count} page(s) to {output}")
+    else:
+        typer.echo(text)
+
+
+@app.command("corpus-audit")
+def corpus_audit_cmd(
+    csv_output: Path | None = typer.Option(
+        None, "--csv", help="Write results to this CSV path instead of printing a summary."
+    ),
+) -> None:
+    """Corpus-wide validation and extraction status, for manual review."""
+    with get_session() as session:
+        rows = corpus_audit.build_corpus_audit_rows(session)
+
+    if csv_output is not None:
+        corpus_audit.write_corpus_audit_csv(rows, csv_output)
+        typer.echo(f"Wrote {len(rows)} row(s) to {csv_output}")
+        return
+
+    for row in rows:
+        usable_pct = f"{row.usable_page_percentage:.0%}" if row.usable_page_percentage is not None else "-"
+        typer.echo(
+            f"{row.ticker:6} {row.filename:24} dir_year={row.directory_year} "
+            f"status={row.metadata_status} pdf_pages={row.pdf_page_count} "
+            f"extraction={row.extraction_status or '-'} quality={row.extraction_quality or '-'} "
+            f"usable%={usable_pct}"
+        )
