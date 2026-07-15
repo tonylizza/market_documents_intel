@@ -1,0 +1,34 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-market_documents}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-market_documents}
+      POSTGRES_DB: ${POSTGRES_DB:-market_documents}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-market_documents}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-market_documents}:${POSTGRES_PASSWORD:-market_documents}@db:5432/${POSTGRES_DB:-market_documents}
+      DATA_RAW_DIR: /data/raw
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/data
+      - ./config:/app/config
+    profiles:
+      - cli
+
+volumes:
+  pgdata:

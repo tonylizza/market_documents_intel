@@ -1,0 +1,120 @@
+study:
+  start_year: 2016
+  end_year: 2025
+  output_dir: data/raw
+  manifest_path: data/report_manifest.csv
+  request_delay_seconds: 1.0
+  timeout_seconds: 60
+
+companies:
+  - ticker: SUR
+    company_name: Spur Corporation Limited
+    discovery:
+      method: archive_page
+      archive_url: https://spurcorporation.com/investor-hub/integrated-reports/
+      include_patterns:
+        - '(?i)integrated\s+(annual\s+)?report'
+      exclude_patterns:
+        - '(?i)remuneration|supplementary|BEE|proxy|notice|financial statements'
+
+  - ticker: SBP
+    company_name: Sabvest Capital Limited
+    discovery:
+      method: hybrid
+      archive_url: https://www.sabvestcapital.com/investment.php
+      url_patterns:
+        - https://www.sabvestcapital.com/pdf/{year}/AnnualReport.pdf
+      include_patterns:
+        - '(?i)annual\s+report'
+      exclude_patterns:
+        - '(?i)financial statements|AFS|interim|results'
+
+  - ticker: KP2
+    company_name: Kore Potash plc
+    discovery:
+      method: archive_page
+      archive_url: https://korepotash.com/investors/results-and-reports/
+      include_patterns:
+        - '(?i)annual\s+report'
+      exclude_patterns:
+        - '(?i)half.?year|quarter|financial results|presentation'
+
+  - ticker: BEL
+    company_name: Bell Equipment Limited
+    discovery:
+      method: archive_page
+      archive_url: https://www.bellir.co.za/fin_reports.htm
+      include_patterns:
+        - '(?i)integrated\s+(annual\s+)?report'
+      exclude_patterns:
+        - '(?i)financial statements|interim|results|AGM|King IV'
+
+  - ticker: EOH
+    company_name: iOCO Limited
+    historical_names:
+      - EOH Holdings Limited
+    discovery:
+      method: archive_page
+      archive_url: https://www.ioco.tech/investor-relations/
+      render_javascript: true
+      include_patterns:
+        - '(?i)integrated\s+(annual\s+)?report'
+        - '(?i)EOH.*annual\s+report'
+      exclude_patterns:
+        - '(?i)interim|results|presentation|SENS'
+
+  - ticker: CLH
+    company_name: City Lodge Hotels Limited
+    discovery:
+      method: archive_page
+      archive_url: https://citylodgehotels.com/investors/financial-results
+      render_javascript: true
+      include_patterns:
+        - '(?i)integrated\s+(annual\s+)?report'
+        - '(?i)annual\s+report'
+      exclude_patterns:
+        - '(?i)interim|presentation|results|governance'
+
+  - ticker: ART
+    company_name: Argent Industrial Limited
+    discovery:
+      method: paginated_archive
+      archive_url: https://argent.co.za/category/annual-reports/
+      page_url_pattern: https://argent.co.za/category/annual-reports/page/{page}/
+      max_pages: 12
+      include_patterns:
+        - '(?i)annual\s+report'
+      exclude_patterns:
+        - '(?i)interim|results|SENS'
+
+  - ticker: SDL
+    company_name: Southern Palladium Limited
+    discovery:
+      method: archive_page
+      archive_url: https://www.southernpalladium.com/investor-centre/annual-reports/
+      include_patterns:
+        - '(?i)annual\s+report.*shareholders|annual\s+report'
+      exclude_patterns:
+        - '(?i)notice|proxy|presentation'
+
+  - ticker: ACT
+    company_name: AfroCentric Investment Corporation Limited
+    discovery:
+      method: archive_page
+      archive_url: https://www.afrocentric.za.com/archive/
+      include_patterns:
+        - '(?i)integrated\s+(annual\s+)?report'
+        - '(?i)download\s+integrated\s+report'
+      exclude_patterns:
+        - '(?i)financial statements|interim|results|presentation|notice'
+
+  - ticker: ISA
+    company_name: ISA Holdings Limited
+    discovery:
+      method: archive_page
+      archive_url: https://www.isa.co.za/investors.html
+      include_patterns:
+        - '(?i)integrated\s+(annual\s+)?report'
+        - '(?i)annual\s+report'
+      exclude_patterns:
+        - '(?i)interim|results|presentation|notice'

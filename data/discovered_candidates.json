@@ -1,0 +1,432 @@
+[
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2025,
+    "url": "https://spurcorporation.com/wp-content/uploads/2025/10/Spur-Corporation-Integrated-report-2025.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2025",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2024,
+    "url": "https://spurcorporation.com/wp-content/uploads/2024/10/SPUR-CORP_Integrated-Annual-Report-2024.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2024",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2023,
+    "url": "https://spurcorporation.com/wp-content/uploads/2023/10/Spur-Corporation-Integrated-report-2023.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2023",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2023,
+    "url": "https://spurcorporation.com/wp-content/uploads/2023/03/Integrated-Report-2022.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2022",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2023,
+    "url": "https://spurcorporation.com/wp-content/uploads/2023/03/Integrated-Report-2021.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2021",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2023,
+    "url": "https://spurcorporation.com/wp-content/uploads/2023/03/Integrated-Report-2020.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2020",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2023,
+    "url": "https://spurcorporation.com/wp-content/uploads/2023/03/Integrated-Report-2019.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2019",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SUR",
+    "company_name": "Spur Corporation Limited",
+    "fiscal_year": 2023,
+    "url": "https://spurcorporation.com/wp-content/uploads/2023/03/Integrated-Report-2018.pdf",
+    "source_page": "https://spurcorporation.com/investor-hub/integrated-reports/",
+    "link_text": "Integrated Report 2018",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2016,
+    "url": "https://www.sabvestcapital.com/pdf/2016/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2016",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2017,
+    "url": "https://www.sabvestcapital.com/pdf/2017/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2017",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2018,
+    "url": "https://www.sabvestcapital.com/pdf/2018/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2018",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2019,
+    "url": "https://www.sabvestcapital.com/pdf/2019/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2019",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2020,
+    "url": "https://www.sabvestcapital.com/pdf/2020/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2020",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2021,
+    "url": "https://www.sabvestcapital.com/pdf/2021/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2021",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2022,
+    "url": "https://www.sabvestcapital.com/pdf/2022/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2022",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2023,
+    "url": "https://www.sabvestcapital.com/pdf/2023/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2023",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2024,
+    "url": "https://www.sabvestcapital.com/pdf/2024/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2024",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "SBP",
+    "company_name": "Sabvest Capital Limited",
+    "fiscal_year": 2025,
+    "url": "https://www.sabvestcapital.com/pdf/2025/AnnualReport.pdf",
+    "source_page": "https://www.sabvestcapital.com/investment.php",
+    "link_text": "Annual Report 2025",
+    "discovery_method": "url_pattern",
+    "priority": 100
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2025,
+    "url": "https://korepotash.com/wp-content/uploads/2026/03/Audit-20260324-Kore-Potash-plc-Annual-Report-2025-FINAL-DHSIGBDO.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2025,
+    "url": "https://korepotash.com/wp-content/uploads/2025/03/Kore-Potash-plc-Annual-Report-2024.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2024,
+    "url": "https://korepotash.com/wp-content/uploads/2024/03/20240327-Kore-Potash-plc-Annual-Report-2023-FINAL.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2023,
+    "url": "https://korepotash.com/wp-content/uploads/2023/03/Kore_Potash_plc_Annual_Report_2022.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2022,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2022/03/Kore-Annual-Report-2021.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2021,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2021/03/Kore-Potash-plc-Annual-Report-2020-FINAL-BDO-signed-1.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/05/Kore-Potash-plc-Annual-Report-2019-Final-Signed.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2018.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2017.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2016.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2015.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2014-Clarification.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2014.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "KP2",
+    "company_name": "Kore Potash plc",
+    "fiscal_year": 2020,
+    "url": "https://korepotash1.wpengine.com/wp-content/uploads/2020/03/Annual-Report-2013.pdf",
+    "source_page": "https://korepotash.com/investors/results-and-reports/",
+    "link_text": "",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2022,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_22.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2022",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2021,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_21.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2021",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2020,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_20.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2020",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2019,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_19.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2019",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2018,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_18.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2018",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2017,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_17.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2017",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "BEL",
+    "company_name": "Bell Equipment Limited",
+    "fiscal_year": 2016,
+    "url": "https://www.bellir.co.za/financials/pdfs/BELL_ir_16.pdf",
+    "source_page": "https://www.bellir.co.za/fin_reports.htm",
+    "link_text": "Bell Equipment Integrated Report 2016",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SDL",
+    "company_name": "Southern Palladium Limited",
+    "fiscal_year": 2025,
+    "url": "https://www.southernpalladium.com/wp-content/uploads/2025/10/Southern-Palladium-2025-Annual-Report-to-Shareholders.pdf",
+    "source_page": "https://www.southernpalladium.com/investor-centre/annual-reports/",
+    "link_text": "2025 Annual Report to Shareholders",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SDL",
+    "company_name": "Southern Palladium Limited",
+    "fiscal_year": 2024,
+    "url": "https://www.southernpalladium.com/wp-content/uploads/2024/10/2024AnnualReporttoShareholders.pdf",
+    "source_page": "https://www.southernpalladium.com/investor-centre/annual-reports/",
+    "link_text": "2024 Annual Report to Shareholders",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SDL",
+    "company_name": "Southern Palladium Limited",
+    "fiscal_year": 2024,
+    "url": "https://www.southernpalladium.com/wp-content/uploads/2024/10/2023AnnualReporttoShareholders.pdf",
+    "source_page": "https://www.southernpalladium.com/investor-centre/annual-reports/",
+    "link_text": "2023 Annual Report to Shareholders",
+    "discovery_method": "archive_page",
+    "priority": 10
+  },
+  {
+    "ticker": "SDL",
+    "company_name": "Southern Palladium Limited",
+    "fiscal_year": 2025,
+    "url": "https://www.southernpalladium.com/wp-content/uploads/2025/08/2022AnnualReporttoShareholders.pdf",
+    "source_page": "https://www.southernpalladium.com/investor-centre/annual-reports/",
+    "link_text": "2022 Annual Report to Shareholders",
+    "discovery_method": "archive_page",
+    "priority": 10
+  }
+]

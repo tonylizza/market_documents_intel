@@ -1,0 +1,7 @@
+beautifulsoup4>=4.12
+PyYAML>=6.0
+requests>=2.31
+pypdf>=5.0
+python-dateutil>=2.9
+# Optional for JavaScript-rendered archives:
+# playwright>=1.50
