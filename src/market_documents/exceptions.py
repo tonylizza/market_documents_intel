@@ -8,3 +8,7 @@ class PdfDecryptionError(MarketDocumentsError):
 
 class PdfExtractionError(MarketDocumentsError):
     """The PDF could not be opened or read, for reasons other than encryption."""
+
+
+class PairNotEligibleError(MarketDocumentsError):
+    """A ReportPair cannot currently be scored (missing or empty narrative, failed extraction quality)."""

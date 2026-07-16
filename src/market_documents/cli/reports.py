@@ -10,7 +10,7 @@ from market_documents.db.session import get_session
 from market_documents.models.enums import ExtractionQuality, ExtractionStatus
 from market_documents.models.extraction import ExtractionRun, Page
 from market_documents.models.report import Report
-from market_documents.services import corpus_audit
+from market_documents.services import corpus_audit, metadata_review
 from market_documents.services.extraction import (
     extract_eligible_reports,
     extract_report,
@@ -94,6 +94,67 @@ def validate() -> None:
         f"Needs review: {len(outcome.needs_review)}, "
         f"Rejected: {len(outcome.rejected)}"
     )
+
+
+@app.command("metadata-review-export")
+def metadata_review_export_cmd(
+    output: Path = typer.Option(
+        Path("data/metadata_review.csv"), "--output", "-o", help="Where to write the review CSV."
+    ),
+    include_validated: bool = typer.Option(
+        False, "--include-validated", help="Also export reports already VALIDATED (for a full re-review)."
+    ),
+) -> None:
+    """Export a human-reviewable CSV of fiscal-period metadata evidence and proposals.
+
+    Detected values are hints only -- nothing is written to the database by
+    this command. Review the CSV, set reviewer_status to CONFIRMED or
+    CORRECTED (adjusting proposed_* fields as needed) for rows you want
+    applied, then run `reports metadata-review-import`.
+    """
+    with get_session() as session:
+        rows = metadata_review.build_metadata_review_rows(session, include_validated=include_validated)
+
+    metadata_review.write_metadata_review_csv(rows, output)
+
+    high = sum(1 for r in rows if r.confidence == "HIGH")
+    medium = sum(1 for r in rows if r.confidence == "MEDIUM")
+    none_ = sum(1 for r in rows if r.confidence == "NONE")
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+    typer.echo(f"  high-confidence proposals: {high}")
+    typer.echo(f"  ambiguous (multiple dates found): {medium}")
+    typer.echo(f"  no proposal (nothing detected): {none_}")
+
+
+@app.command("metadata-review-import")
+def metadata_review_import_cmd(
+    reviewed_csv: Path = typer.Argument(..., exists=True, dir_okay=False, help="A reviewed metadata-review CSV."),
+) -> None:
+    """Import a reviewed metadata CSV, applying only CONFIRMED/CORRECTED rows.
+
+    Never sets metadata_status -- run `reports validate` afterward to
+    confirm which reports now qualify.
+    """
+    with get_session() as session:
+        outcome = metadata_review.import_metadata_review(session, reviewed_csv)
+
+    typer.echo(
+        f"Applied: {len(outcome.applied)}, "
+        f"Unchanged (already applied): {len(outcome.unchanged)}, "
+        f"Skipped (not confirmed/corrected): {len(outcome.skipped)}, "
+        f"Conflicted: {len(outcome.conflicted)}, "
+        f"Invalid: {len(outcome.invalid)}"
+    )
+    for report_id, reason in outcome.conflicted:
+        typer.echo(f"  conflict {report_id}: {reason}")
+    for row_number, reason in outcome.invalid:
+        typer.echo(f"  invalid (row {row_number}): {reason}")
+
+    if outcome.applied:
+        typer.echo("Run `market-documents reports validate` to confirm validation status.")
+
+    if outcome.invalid:
+        raise typer.Exit(code=1)
 
 
 @app.command()
