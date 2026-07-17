@@ -16,3 +16,8 @@ class PairNotEligibleError(MarketDocumentsError):
 
 class AlignmentNotEligibleError(MarketDocumentsError):
     """A ReportPair cannot currently be passage-aligned (missing/incompatible segmentation or embedding runs)."""
+
+
+class FeatureNotEligibleError(MarketDocumentsError):
+    """A ReportPair cannot currently have disclosure-change features built
+    (missing current similarity or alignment run)."""

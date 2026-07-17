@@ -12,6 +12,8 @@ from market_documents.models.enums import (
     EmbeddingRunStatus,
     ExtractionQuality,
     ExtractionStatus,
+    FeatureQuality,
+    FeatureRunStatus,
     MetadataSource,
     MetadataStatus,
     PassageSegmentationRunStatus,
@@ -20,6 +22,7 @@ from market_documents.models.enums import (
     SimilarityRunStatus,
 )
 from market_documents.models.extraction import ExtractionRun, NarrativeDocument, Page, TextBlock
+from market_documents.models.feature import FeatureRun, ReportPairFeatures
 from market_documents.models.passage import Passage, PassageSegmentationRun, PassageSourceBlock
 from market_documents.models.report import Report
 from market_documents.models.report_pair import ReportPair
@@ -58,4 +61,8 @@ __all__ = [
     "AlignmentStatus",
     "AlignmentType",
     "AlignmentConfidence",
+    "FeatureRun",
+    "ReportPairFeatures",
+    "FeatureRunStatus",
+    "FeatureQuality",
 ]

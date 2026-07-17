@@ -19,7 +19,21 @@ from market_documents.models.passage import Passage
 from market_documents.models.report import Report
 from market_documents.models.report_pair import ReportPair
 from market_documents.models.similarity import DocumentSimilarity
-from market_documents.services import alignment_audit, passage_alignment, review_sample, similarity_audit
+from market_documents.services import (
+    alignment_audit,
+    feature_audit,
+    feature_export,
+    feature_review_sample,
+    passage_alignment,
+    review_sample,
+    similarity_audit,
+)
+from market_documents.services.feature_extraction import (
+    build_eligible_features,
+    build_features,
+    get_current_feature_run,
+    get_current_report_pair_features,
+)
 from market_documents.services.pairing import build_pairs
 from market_documents.services.similarity import (
     get_current_document_similarity,
@@ -668,5 +682,229 @@ def review_sample_cmd(
 
     review_sample.write_review_sample_csv(rows, output)
     typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+
+
+# --------------------------------------------------------------------------
+# Milestone 5: disclosure-change features
+# --------------------------------------------------------------------------
+
+
+@app.command("features-build")
+def features_build_cmd(
+    selector: str = typer.Argument(..., help="ReportPair id (UUID), or '<earlier report> -> <later report>'."),
+    force: bool = typer.Option(
+        False, "--force", help="Rebuild even if an identical successful feature run already exists."
+    ),
+) -> None:
+    """Build disclosure-change features for one ReportPair."""
+    with get_session() as session:
+        pair = _resolve_report_pair(session, selector)
+        outcome = build_features(session, pair, force=force)
+
+        if outcome.ineligible:
+            typer.echo(f"Ineligible: {outcome.ineligible_reason}")
+            raise typer.Exit(code=1)
+        if outcome.skipped:
+            typer.echo(f"Skipped: {outcome.skip_reason}")
+            return
+
+        run = outcome.run
+        assert run is not None
+        typer.echo(f"pair={pair.id} status={run.status.value}")
+        if run.error_message:
+            typer.echo(f"  error: {run.error_message}")
+        else:
+            feat = get_current_report_pair_features(session, pair.id)
+            if feat is not None:
+                typer.echo(
+                    f"  quality={feat.feature_quality.value} primary_eligible={feat.primary_eligible} "
+                    f"score={_fmt(feat.disclosure_change_score)}"
+                )
+            if run.review_reason:
+                typer.echo(f"  review: {run.review_reason}")
+
+        failed = run.status.value == "FAILED"
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("features-build-all")
+def features_build_all_cmd(
+    limit: int | None = typer.Option(None, "--limit", help="Maximum number of pairs to process."),
+    force: bool = typer.Option(
+        False, "--force", help="Rebuild even if identical successful feature runs already exist."
+    ),
+) -> None:
+    """Build disclosure-change features for every currently eligible ReportPair."""
+    with get_session() as session:
+        outcome = build_eligible_features(session, limit=limit, force=force)
+
+    typer.echo(
+        f"Completed: {len(outcome.completed)}, "
+        f"Completed with warnings: {len(outcome.completed_with_warnings)}, "
+        f"Skipped: {len(outcome.skipped)}, "
+        f"Ineligible: {len(outcome.ineligible)}, "
+        f"Failed: {len(outcome.failed)}"
+    )
+    for pair_id, reason in outcome.ineligible:
+        typer.echo(f"  ineligible {pair_id}: {reason}")
+    for pair_id, reason in outcome.failed:
+        typer.echo(f"  failed {pair_id}: {reason}")
+
+
+@app.command("features-status")
+def features_status_cmd(
+    ticker: str | None = typer.Option(None, "--ticker", help="Filter to one company ticker."),
+    quality: str | None = typer.Option(None, "--quality", help="Filter to one FeatureQuality."),
+    primary_only: bool = typer.Option(False, "--primary-only", help="Only show primary-eligible pairs."),
+) -> None:
+    """Show current disclosure-change feature status for every report pair."""
+    with get_session() as session:
+        rows = feature_audit.build_feature_run_audit_rows(session)
+
+    for row in rows:
+        if ticker is not None and row.ticker.upper() != ticker.upper():
+            continue
+        if quality is not None and (row.feature_quality or "").upper() != quality.upper():
+            continue
+        if primary_only and not row.primary_eligible:
+            continue
+
+        transition_flag = " [TRANSITION]" if row.is_transition else ""
+        irregular_flag = " [IRREGULAR_GAP]" if row.irregular_gap else ""
+        typer.echo(
+            f"{row.ticker:6} pair={row.report_pair_id} "
+            f"{row.earlier_period_end or '?'} -> {row.later_period_end or '?'} "
+            f"gap={row.gap_months}mo{transition_flag}{irregular_flag} "
+            f"status={row.status or 'NOT_BUILT'} quality={row.feature_quality or '-'} "
+            f"primary_eligible={row.primary_eligible if row.primary_eligible is not None else '-'}"
+        )
+        if row.disclosure_change_score is not None:
+            typer.echo(
+                f"       score={row.disclosure_change_score:.3f} "
+                f"alignment_coverage_words={_fmt(row.alignment_coverage_words)} "
+                f"embedded_coverage(e/l)={_fmt(row.embedded_coverage_earlier)}/{_fmt(row.embedded_coverage_later)}"
+            )
+        if row.warning_reasons:
+            typer.echo(f"       warning: {row.warning_reasons}")
+        if row.exclusion_reasons:
+            typer.echo(f"       exclusion: {row.exclusion_reasons}")
+
+
+@app.command("features-audit")
+def features_audit_cmd(
+    output_dir: Path = typer.Option(
+        Path("data/audits"), "--output-dir", help="Directory to write the M5 audit CSVs into."
+    ),
+) -> None:
+    """Write every Milestone 5 audit CSV: feature_run_audit, report_pair_feature_review,
+    feature_component_summary, excluded_passages_summary, and irregular_gap_pairs."""
+    with get_session() as session:
+        run_rows = feature_audit.build_feature_run_audit_rows(session)
+        review_rows = feature_audit.build_feature_review_rows(session)
+        component_rows = feature_audit.build_feature_component_summary_rows(session)
+        excluded_rows = feature_audit.build_excluded_passages_summary_rows(session)
+        irregular_rows = feature_audit.build_irregular_gap_rows(session)
+
+    feature_audit.write_feature_run_audit_csv(run_rows, output_dir / "feature_run_audit.csv")
+    feature_audit.write_feature_review_csv(review_rows, output_dir / "report_pair_feature_review.csv")
+    feature_audit.write_feature_component_summary_csv(component_rows, output_dir / "feature_component_summary.csv")
+    feature_audit.write_excluded_passages_summary_csv(
+        excluded_rows, output_dir / "excluded_passages_summary.csv"
+    )
+    feature_audit.write_irregular_gap_csv(irregular_rows, output_dir / "irregular_gap_pairs.csv")
+
+    typer.echo(f"Wrote 5 audit CSV(s) to {output_dir}")
+
+
+@app.command("features-export")
+def features_export_cmd(
+    output: Path = typer.Option(..., "--output", "-o", help="Output CSV path."),
+    primary_only: bool = typer.Option(
+        False, "--primary-only", help="Export only primary-eligible observations."
+    ),
+) -> None:
+    """Export research-ready pair-level disclosure-change features to CSV."""
+    with get_session() as session:
+        rows = feature_export.build_export_rows(session, primary_only=primary_only)
+
+    feature_export.write_export_csv(rows, output)
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+
+
+@app.command("features-review-export")
+def features_review_export_cmd(
+    output: Path = typer.Option(
+        Path("data/audits/report_pair_feature_review.csv"), "--output", "-o", help="Output CSV path."
+    ),
+) -> None:
+    """Export pairs with feature exclusions or warnings to CSV."""
+    with get_session() as session:
+        rows = feature_audit.build_feature_review_rows(session)
+
+    feature_audit.write_feature_review_csv(rows, output)
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+
+
+@app.command("features-show")
+def features_show_cmd(
+    pair_id: str = typer.Option(
+        ..., "--pair-id", help="ReportPair id (UUID), or '<earlier report> -> <later report>'."
+    ),
+) -> None:
+    """Show one ReportPair's disclosure-change features in full detail."""
+    with get_session() as session:
+        pair = _resolve_report_pair(session, pair_id)
+        run = get_current_feature_run(session, pair.id)
+        if run is None:
+            typer.echo(f"No current successful feature run for pair {pair.id}")
+            raise typer.Exit(code=1)
+        feat = get_current_report_pair_features(session, pair.id)
+        assert feat is not None
+
+        typer.echo(f"pair={pair.id} ticker={pair.company.ticker} gap={pair.gap_months}mo")
+        typer.echo(
+            f"quality={feat.feature_quality.value} primary_eligible={feat.primary_eligible} "
+            f"irregular_gap={feat.irregular_gap} transition={feat.transition_report}"
+        )
+        typer.echo(f"disclosure_change_score={_fmt(feat.disclosure_change_score)} score_version={feat.score_version}")
+        typer.echo(
+            "score components: "
+            f"unchanged={_fmt(feat.score_unchanged_component)} "
+            f"lightly_modified={_fmt(feat.score_lightly_modified_component)} "
+            f"substantially_modified={_fmt(feat.score_substantially_modified_component)} "
+            f"new={_fmt(feat.score_new_component)} removed={_fmt(feat.score_removed_component)} "
+            f"ambiguous={_fmt(feat.score_ambiguous_component)}"
+        )
+        typer.echo(
+            "raw counts: "
+            f"unchanged={feat.unchanged_count} lightly_modified={feat.lightly_modified_count} "
+            f"substantially_modified={feat.substantially_modified_count} new={feat.new_count} "
+            f"removed={feat.removed_count} ambiguous={feat.ambiguous_count}"
+        )
+        typer.echo(
+            "eligible word rates: "
+            f"unchanged={_fmt(feat.unchanged_rate_words)} lightly_modified={_fmt(feat.lightly_modified_rate_words)} "
+            f"substantially_modified={_fmt(feat.substantially_modified_rate_words)} "
+            f"new={_fmt(feat.new_rate_words)} removed={_fmt(feat.removed_rate_words)} "
+            f"ambiguous={_fmt(feat.ambiguous_rate_words)}"
+        )
+        typer.echo(
+            "coverage: "
+            f"alignment(count/words)={_fmt(feat.alignment_coverage_count)}/{_fmt(feat.alignment_coverage_words)} "
+            f"embedded(e/l)={_fmt(feat.embedded_coverage_earlier)}/{_fmt(feat.embedded_coverage_later)} "
+            f"high_confidence_share={_fmt(feat.high_confidence_share)} "
+            f"review_required_share={_fmt(feat.review_required_share)}"
+        )
+        typer.echo(
+            "low-information: "
+            f"excluded_count={feat.excluded_low_information_count} excluded_words={feat.excluded_low_information_words:.1f} "
+            f"heading_fragment_share(e/l)={_fmt(feat.heading_fragment_share_earlier)}/{_fmt(feat.heading_fragment_share_later)}"
+        )
+        if feat.warning_reasons:
+            typer.echo(f"warning: {feat.warning_reasons}")
+        if feat.exclusion_reasons:
+            typer.echo(f"exclusion: {feat.exclusion_reasons}")
     if include_text:
         typer.echo("WARNING: this export includes passage text -- do not commit it.")

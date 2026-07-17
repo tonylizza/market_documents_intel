@@ -131,3 +131,18 @@ class AlignmentConfidence(str, enum.Enum):
     MEDIUM = "MEDIUM"
     LOW = "LOW"
     NEEDS_REVIEW = "NEEDS_REVIEW"
+
+
+class FeatureRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class FeatureQuality(str, enum.Enum):
+    GOOD = "GOOD"
+    USABLE = "USABLE"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    FAILED = "FAILED"
