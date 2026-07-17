@@ -7,18 +7,30 @@ from sqlalchemy.orm import Session
 
 from market_documents.config import get_settings
 from market_documents.db.session import get_session
-from market_documents.models.enums import ExtractionQuality, ExtractionStatus
+from market_documents.models.enums import (
+    EmbeddingRunStatus,
+    ExtractionQuality,
+    ExtractionStatus,
+    PassageSegmentationRunStatus,
+)
 from market_documents.models.extraction import ExtractionRun, Page
 from market_documents.models.report import Report
-from market_documents.services import corpus_audit, metadata_review
+from market_documents.services import corpus_audit, embedding_audit, metadata_review, segmentation_audit
 from market_documents.services.extraction import (
     extract_eligible_reports,
     extract_report,
     get_current_extraction_run,
     get_current_runs_by_report,
+    get_narrative_document,
 )
 from market_documents.services.importing import import_manifest
 from market_documents.services.metadata_inspection import inspect_discovered_reports
+from market_documents.services.passage_embedding import embed_eligible_segmentation_runs, embed_segmentation_run
+from market_documents.services.passage_segmentation import (
+    get_current_segmentation_run,
+    segment_eligible_reports,
+    segment_report,
+)
 from market_documents.services.scanning import scan_directory, write_manifest_csv
 from market_documents.services.validation import validate_reports
 
@@ -362,3 +374,209 @@ def corpus_audit_cmd(
             f"extraction={row.extraction_status or '-'} quality={row.extraction_quality or '-'} "
             f"usable%={usable_pct}"
         )
+
+
+@app.command()
+def segment(
+    selector: str = typer.Argument(..., help="Report id (UUID) or local_path."),
+    force: bool = typer.Option(
+        False, "--force", help="Re-segment even if an identical successful run already exists."
+    ),
+) -> None:
+    """Segment one report's current successful NarrativeDocument into passages."""
+    with get_session() as session:
+        report = _resolve_report(session, selector)
+        outcome = segment_report(session, report, force=force)
+
+        if outcome.ineligible:
+            typer.echo(f"Ineligible: {outcome.ineligible_reason}")
+            raise typer.Exit(code=1)
+        if outcome.skipped:
+            typer.echo(f"Skipped {report.local_path}: {outcome.skip_reason}")
+            return
+
+        run = outcome.run
+        assert run is not None
+        typer.echo(
+            f"{report.local_path}: status={run.status.value} "
+            f"passages={run.passage_count} excluded={run.excluded_passage_count}"
+        )
+        if run.review_reason:
+            typer.echo(f"  review: {run.review_reason}")
+        if run.error_message:
+            typer.echo(f"  error: {run.error_message}")
+
+        failed = run.status == PassageSegmentationRunStatus.FAILED
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("segment-all")
+def segment_all_cmd(
+    limit: int | None = typer.Option(None, "--limit", help="Maximum number of reports to process."),
+    force: bool = typer.Option(
+        False, "--force", help="Re-segment even if identical successful runs already exist."
+    ),
+) -> None:
+    """Segment every report with a current successful extraction.
+
+    Includes reports without a confirmed period_end -- segmentation
+    eligibility never depends on metadata resolution state.
+    """
+    with get_session() as session:
+        outcome = segment_eligible_reports(session, limit=limit, force=force)
+
+    typer.echo(
+        f"Completed: {len(outcome.completed)}, "
+        f"Completed with warnings: {len(outcome.completed_with_warnings)}, "
+        f"Skipped: {len(outcome.skipped)}, "
+        f"Ineligible: {len(outcome.ineligible)}, "
+        f"Failed: {len(outcome.failed)}"
+    )
+    for path, reason in outcome.ineligible:
+        typer.echo(f"  ineligible {path}: {reason}")
+    for path, reason in outcome.failed:
+        typer.echo(f"  failed {path}: {reason}")
+
+
+@app.command("segmentation-status")
+def segmentation_status_cmd() -> None:
+    """Show current segmentation status for every report."""
+    with get_session() as session:
+        rows = segmentation_audit.build_segmentation_audit_rows(session)
+
+    for row in rows:
+        typer.echo(
+            f"{row.ticker:6} report={row.report_id} period_end={row.period_end or '-'} "
+            f"status={row.run_status or 'NOT_SEGMENTED'} "
+            f"passages={row.passage_count if row.passage_count is not None else '-'} "
+            f"excluded={row.excluded_passage_count if row.excluded_passage_count is not None else '-'} "
+            f"words(min/med/mean/max)="
+            f"{row.min_passage_word_count if row.min_passage_word_count is not None else '-'}/"
+            f"{row.median_passage_word_count if row.median_passage_word_count is not None else '-'}/"
+            f"{row.mean_passage_word_count if row.mean_passage_word_count is not None else '-'}/"
+            f"{row.max_passage_word_count if row.max_passage_word_count is not None else '-'}"
+        )
+        if row.warnings:
+            typer.echo(f"       warnings: {row.warnings}")
+
+
+@app.command("segmentation-review")
+def segmentation_review_cmd() -> None:
+    """List only reports (or their current segmentation run) that need manual review."""
+    with get_session() as session:
+        rows = segmentation_audit.build_segmentation_audit_rows(session)
+
+    flagged = 0
+    for row in rows:
+        needs_review = (
+            row.run_status is None
+            or row.run_status == "COMPLETED_WITH_WARNINGS"
+            or row.provenance_warning_count > 0
+        )
+        if needs_review:
+            flagged += 1
+            typer.echo(f"{row.ticker:6} report={row.report_id} status={row.run_status or 'NOT_SEGMENTED'}")
+            if row.warnings:
+                typer.echo(f"       review: {row.warnings}")
+
+    if flagged == 0:
+        typer.echo("No reports currently flagged for review.")
+
+
+@app.command()
+def embed(
+    selector: str = typer.Argument(..., help="Report id (UUID) or local_path."),
+    force: bool = typer.Option(
+        False, "--force", help="Re-embed even if an identical successful run already exists."
+    ),
+    batch_size: int | None = typer.Option(
+        None, "--batch-size", help="Override the configured embedding batch size."
+    ),
+) -> None:
+    """Embed one report's current successful segmentation run."""
+    with get_session() as session:
+        report = _resolve_report(session, selector)
+        narrative = get_narrative_document(session, report.id)
+        if narrative is None:
+            typer.echo(f"No narrative document for {report.local_path}")
+            raise typer.Exit(code=1)
+
+        segmentation_run = get_current_segmentation_run(session, narrative.id)
+        if segmentation_run is None:
+            typer.echo(f"No current successful segmentation run for {report.local_path}")
+            raise typer.Exit(code=1)
+
+        outcome = embed_segmentation_run(session, segmentation_run, force=force, batch_size=batch_size)
+
+        if outcome.ineligible:
+            typer.echo(f"Ineligible: {outcome.ineligible_reason}")
+            raise typer.Exit(code=1)
+        if outcome.skipped:
+            typer.echo(f"Skipped: {outcome.skip_reason}")
+            return
+
+        run = outcome.run
+        assert run is not None
+        typer.echo(
+            f"{report.local_path}: status={run.status.value} "
+            f"embedded={run.embedded_passage_count} skipped={run.skipped_passage_count} "
+            f"model={run.model_name}@{run.model_revision[:8]}"
+        )
+        if run.review_reason:
+            typer.echo(f"  review: {run.review_reason}")
+        if run.error_message:
+            typer.echo(f"  error: {run.error_message}")
+
+        failed = run.status == EmbeddingRunStatus.FAILED
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("embed-all")
+def embed_all_cmd(
+    limit: int | None = typer.Option(None, "--limit", help="Maximum number of segmentation runs to process."),
+    force: bool = typer.Option(
+        False, "--force", help="Re-embed even if identical successful runs already exist."
+    ),
+    batch_size: int | None = typer.Option(
+        None, "--batch-size", help="Override the configured embedding batch size."
+    ),
+) -> None:
+    """Embed every current successful segmentation run."""
+    with get_session() as session:
+        outcome = embed_eligible_segmentation_runs(session, limit=limit, force=force, batch_size=batch_size)
+
+    typer.echo(
+        f"Completed: {len(outcome.completed)}, "
+        f"Completed with warnings: {len(outcome.completed_with_warnings)}, "
+        f"Skipped: {len(outcome.skipped)}, "
+        f"Ineligible: {len(outcome.ineligible)}, "
+        f"Failed: {len(outcome.failed)}"
+    )
+    for run_id, reason in outcome.ineligible:
+        typer.echo(f"  ineligible {run_id}: {reason}")
+    for run_id, reason in outcome.failed:
+        typer.echo(f"  failed {run_id}: {reason}")
+
+
+@app.command("embedding-status")
+def embedding_status_cmd() -> None:
+    """Show current embedding status for every report."""
+    with get_session() as session:
+        rows = embedding_audit.build_embedding_audit_rows(session)
+
+    for row in rows:
+        typer.echo(
+            f"{row.ticker:6} report={row.report_id} "
+            f"model={row.model_name or '-'}@{(row.model_revision or '-')[:8]} "
+            f"dim={row.embedding_dimension if row.embedding_dimension is not None else '-'} "
+            f"eligible={row.eligible_passage_count if row.eligible_passage_count is not None else '-'} "
+            f"embedded={row.embedded_count if row.embedded_count is not None else '-'} "
+            f"skipped={row.skipped_count if row.skipped_count is not None else '-'} "
+            f"truncated={row.truncated_count} status={row.status or 'NOT_EMBEDDED'}"
+        )
+        if row.warnings:
+            typer.echo(f"       warnings: {row.warnings}")

@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     companies_config_path: Path = Path("config/companies.yaml")
     log_level: str = "INFO"
     extraction_batch_limit: int = 50
+    # Persistent Hugging Face cache, outside any Docker image -- first run
+    # downloads the pinned embedding model (~130MB); later runs read from
+    # here without a network round-trip.
+    hf_cache_dir: Path = Path(".cache/huggingface")
+    embedding_batch_size: int = 32
 
 
 def get_settings() -> Settings:

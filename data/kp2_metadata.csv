@@ -1,0 +1,43 @@
+report_id,ticker,company_name,filename,local_path,directory_year,fiscal_label,period_start,period_end,publication_date,reporting_months,transition_report,page_count,metadata_status,metadata_source,validation_notes,sha256
+9b42f11c-afea-49d9-8540-953b610f767e,KP2,Kore Potash plc,annual_report.pdf,data/raw/KP2/2020/annual_report.pdf,2020,YEAR ENDED 31 DECEMBER 2019,,2019-12-31,2020-03-23,,f,151,VALIDATED,MANUAL,"fiscal_label candidate from PDF text: 'YEAR ENDED 31 DECEMBER 2019'; pdf title: 'Microsoft Word - Kore Potash plc Annual Report 2019.docx'
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+manual review (CONFIRMED): confirmed: unambiguous single date directly quoted from PDF text (page 1): 'YEAR ENDED 31 DECEMBER 2019'
+validated: period_end is established
+validated: period_end is established",19dc113959b5ed4d844983dd97d353ab59d3a903e139df4823fb80596e2136ef
+a2262f14-20d8-46ef-b930-b5ecd78bd669,KP2,Kore Potash plc,annual_report.pdf,data/raw/KP2/2021/annual_report.pdf,2021,YEAR ENDED 31 DECEMBER 2020,,2020-12-31,2021-03-30,,f,128,VALIDATED,MANUAL,"fiscal_label candidate from PDF text: 'YEAR ENDED 31 DECEMBER 2020'; pdf title: 'Microsoft Word - Kore Potash plc Annual Report 2020 FINAL.docx'
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+manual review (CONFIRMED): confirmed: unambiguous single date directly quoted from PDF text (page 1): 'YEAR ENDED 31 DECEMBER 2020'
+validated: period_end is established
+validated: period_end is established",9445a39ad0fed12d827cf835188b59bab73cee930747091eed7f3a0bf2eb4454
+5c665d1e-a960-435d-ad3f-6053ff31aae7,KP2,Kore Potash plc,annual_report.pdf,data/raw/KP2/2022/annual_report.pdf,2022,"YEAR ENDED 
+31 DECEMBER 2021",,2021-12-31,2022-03-30,,f,124,VALIDATED,MANUAL,"fiscal_label candidate from PDF text: 'YEAR ENDED \n31 DECEMBER 2021'; pdf title: 'Kore Potash plc Annual Report'
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+manual review (CONFIRMED): confirmed: unambiguous single date directly quoted from PDF text (page 1): 'YEAR ENDED \n31 DECEMBER 2021'
+validated: period_end is established
+validated: period_end is established",c85a03296939d3276c80ee7183b0f641e08f0a3a1e46f2b300580f117031f83b
+15fb5b0d-cb2a-4633-8851-a31c37abe2f1,KP2,Kore Potash plc,annual_report.pdf,data/raw/KP2/2023/annual_report.pdf,2023,"YEAR ENDED 
+31 DECEMBER 2022",,2022-12-31,2023-03-30,,f,117,VALIDATED,MANUAL,"fiscal_label candidate from PDF text: 'YEAR ENDED \n31 DECEMBER 2022'; pdf title: 'Kore Potash plc Annual Report'
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+manual review (CONFIRMED): confirmed: unambiguous single date directly quoted from PDF text (page 1): 'YEAR ENDED \n31 DECEMBER 2022'
+validated: period_end is established
+validated: period_end is established",97cf92941c50a49923bf3fb6f2744f77a07d7dfc7169a43213160e8d82b4269f
+8ac44907-16b3-41be-b0aa-a2047f51d366,KP2,Kore Potash plc,annual_report.pdf,data/raw/KP2/2024/annual_report.pdf,2024,YEAR ENDED 31 DECEMBER 2023,,2023-12-31,2024-03-27,,f,129,VALIDATED,MANUAL,"fiscal_label candidate from PDF text: 'YEAR ENDED 31 DECEMBER 2023'
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+manual review (CONFIRMED): confirmed: unambiguous single date directly quoted from PDF text (page 1): 'YEAR ENDED 31 DECEMBER 2023'
+validated: period_end is established
+validated: period_end is established",fc05556bf3c2811f80506ae0e833672ff37b6eb14a6da4acf63f647b7e6a9ed5
+6727add6-a49e-45ee-8153-74bc358cea76,KP2,Kore Potash plc,annual_report.pdf,data/raw/KP2/2025/annual_report.pdf,2025,YEAR ENDED 31 DECEMBER 2025,,2025-12-31,2026-03-24,,f,138,VALIDATED,MANUAL,"fiscal_label candidate from PDF text: 'YEAR ENDED 31 DECEMBER 2025'
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+needs_review: period_end not yet established
+manual review (CONFIRMED): confirmed: unambiguous single date directly quoted from PDF text (page 1): 'YEAR ENDED 31 DECEMBER 2025'
+validated: period_end is established
+validated: period_end is established",3bcf6f68572afdc5537ee56152b5f2486bbba3ebf97a77542f3188a71f9ee429

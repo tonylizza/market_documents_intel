@@ -11,3 +11,6 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 CLAUDE.md
+
+# Hugging Face model cache -- never commit model weights.
+.cache/

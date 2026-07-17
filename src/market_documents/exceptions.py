@@ -12,3 +12,7 @@ class PdfExtractionError(MarketDocumentsError):
 
 class PairNotEligibleError(MarketDocumentsError):
     """A ReportPair cannot currently be scored (missing or empty narrative, failed extraction quality)."""
+
+
+class AlignmentNotEligibleError(MarketDocumentsError):
+    """A ReportPair cannot currently be passage-aligned (missing/incompatible segmentation or embedding runs)."""

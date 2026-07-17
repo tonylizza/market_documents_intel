@@ -1,16 +1,25 @@
+import csv
 import uuid as uuid_module
 from pathlib import Path
 
 import typer
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from market_documents.db.session import get_session
-from market_documents.models.enums import SimilarityResultQuality, SimilarityRunStatus
+from market_documents.models.alignment import PassageAlignment
+from market_documents.models.enums import (
+    AlignmentConfidence,
+    AlignmentRunStatus,
+    AlignmentStatus,
+    SimilarityResultQuality,
+    SimilarityRunStatus,
+)
+from market_documents.models.passage import Passage
 from market_documents.models.report import Report
 from market_documents.models.report_pair import ReportPair
 from market_documents.models.similarity import DocumentSimilarity
-from market_documents.services import similarity_audit
+from market_documents.services import alignment_audit, passage_alignment, review_sample, similarity_audit
 from market_documents.services.pairing import build_pairs
 from market_documents.services.similarity import (
     get_current_document_similarity,
@@ -19,7 +28,7 @@ from market_documents.services.similarity import (
     score_pair,
 )
 
-app = typer.Typer(help="Report pair construction and document-level similarity scoring.")
+app = typer.Typer(help="Report pair construction, document-level similarity scoring, and passage alignment.")
 
 
 def _resolve_report(session: Session, selector: str) -> Report:
@@ -316,3 +325,348 @@ def similarity_audit_cmd(
             f"primary_eligible={row.primary_analysis_eligible if row.primary_analysis_eligible is not None else '-'} "
             f"configuration_hash={row.configuration_hash[:12] if row.configuration_hash else '-'}"
         )
+
+
+def _page_range(passage: Passage | None) -> str | None:
+    if passage is None:
+        return None
+    if passage.first_page_number == passage.last_page_number:
+        return str(passage.first_page_number)
+    return f"{passage.first_page_number}-{passage.last_page_number}"
+
+
+@app.command()
+def align(
+    selector: str = typer.Argument(..., help="ReportPair id (UUID), or '<earlier report> -> <later report>'."),
+    force: bool = typer.Option(
+        False, "--force", help="Realign even if an identical successful alignment run already exists."
+    ),
+) -> None:
+    """Align one ReportPair's passages between its earlier and later reports."""
+    with get_session() as session:
+        pair = _resolve_report_pair(session, selector)
+        outcome = passage_alignment.align_pair(session, pair, force=force)
+
+        if outcome.ineligible:
+            typer.echo(f"Ineligible: {outcome.ineligible_reason}")
+            raise typer.Exit(code=1)
+        if outcome.skipped:
+            typer.echo(f"Skipped: {outcome.skip_reason}")
+            return
+
+        run = outcome.run
+        assert run is not None
+        typer.echo(f"pair={pair.id} status={run.status.value}")
+        if run.error_message:
+            typer.echo(f"  error: {run.error_message}")
+        else:
+            typer.echo(
+                f"  matched={run.matched_count} unchanged={run.unchanged_count} "
+                f"lightly_modified={run.lightly_modified_count} "
+                f"substantially_modified={run.substantially_modified_count} "
+                f"new={run.new_count} removed={run.removed_count} ambiguous={run.ambiguous_count}"
+            )
+            if run.review_reason:
+                typer.echo(f"  review: {run.review_reason}")
+
+        failed = run.status == AlignmentRunStatus.FAILED
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("align-all")
+def align_all_cmd(
+    limit: int | None = typer.Option(None, "--limit", help="Maximum number of pairs to process."),
+    force: bool = typer.Option(
+        False, "--force", help="Realign even if identical successful alignment runs already exist."
+    ),
+) -> None:
+    """Align every ReportPair currently eligible for passage alignment.
+
+    Includes irregular-gap and transition pairs -- eligibility depends only
+    on segmentation/embedding availability, never on document-level
+    similarity quality.
+    """
+    with get_session() as session:
+        outcome = passage_alignment.align_eligible_pairs(session, limit=limit, force=force)
+
+    typer.echo(
+        f"Completed: {len(outcome.completed)}, "
+        f"Completed with warnings: {len(outcome.completed_with_warnings)}, "
+        f"Skipped: {len(outcome.skipped)}, "
+        f"Ineligible: {len(outcome.ineligible)}, "
+        f"Failed: {len(outcome.failed)}"
+    )
+    for pair_id, reason in outcome.ineligible:
+        typer.echo(f"  ineligible {pair_id}: {reason}")
+    for pair_id, reason in outcome.failed:
+        typer.echo(f"  failed {pair_id}: {reason}")
+
+
+@app.command("alignment-status")
+def alignment_status_cmd() -> None:
+    """Show current passage-alignment status for every report pair."""
+    with get_session() as session:
+        rows = alignment_audit.build_alignment_audit_rows(session)
+
+    for row in rows:
+        transition_flag = " [TRANSITION]" if row.is_transition else ""
+        typer.echo(
+            f"{row.ticker:6} pair={row.report_pair_id} "
+            f"{row.earlier_period_end or '?'} -> {row.later_period_end or '?'} "
+            f"gap={row.gap_months}mo{transition_flag} "
+            f"doc_sim_quality={row.document_similarity_quality or '-'} "
+            f"status={row.status or 'NOT_ALIGNED'}"
+        )
+        if row.status is not None:
+            typer.echo(
+                f"       matched={row.matched_count} unchanged={row.unchanged_count} "
+                f"lightly_modified={row.lightly_modified_count} "
+                f"substantially_modified={row.substantially_modified_count} "
+                f"new={row.new_count} removed={row.removed_count} ambiguous={row.ambiguous_count}"
+            )
+            typer.echo(
+                f"       confidence(high/med/low/needs_review)="
+                f"{row.high_confidence_count}/{row.medium_confidence_count}/"
+                f"{row.low_confidence_count}/{row.needs_review_confidence_count}"
+            )
+            if row.warnings:
+                typer.echo(f"       review: {row.warnings}")
+
+
+@app.command("alignment-review")
+def alignment_review_cmd() -> None:
+    """Show alignments/pairs needing manual review: ambiguous, LOW/NEEDS_REVIEW
+    confidence, semantic/lexical disagreements, likely split/merge cases,
+    irregular-gap pairs, and failed or warning runs."""
+    with get_session() as session:
+        rows = alignment_audit.build_alignment_audit_rows(session)
+
+    flagged = 0
+    for row in rows:
+        needs_attention = (
+            row.status is None
+            or row.status in ("FAILED", "COMPLETED_WITH_WARNINGS")
+            or (row.ambiguous_count or 0) > 0
+            or row.low_confidence_count > 0
+            or row.needs_review_confidence_count > 0
+            or row.disagreement_count > 0
+            or row.likely_split_merge_count > 0
+        )
+        if needs_attention:
+            flagged += 1
+            transition_flag = " [TRANSITION]" if row.is_transition else ""
+            typer.echo(
+                f"{row.ticker:6} pair={row.report_pair_id} gap={row.gap_months}mo{transition_flag} "
+                f"status={row.status or 'NOT_ALIGNED'}"
+            )
+            typer.echo(
+                f"       ambiguous={row.ambiguous_count or 0} low_conf={row.low_confidence_count} "
+                f"needs_review_conf={row.needs_review_confidence_count} disagreement={row.disagreement_count} "
+                f"split_merge={row.likely_split_merge_count}"
+            )
+            if row.warnings:
+                typer.echo(f"       review: {row.warnings}")
+
+    if flagged == 0:
+        typer.echo("No alignment results currently flagged for review.")
+
+
+@app.command("alignment-list")
+def alignment_list_cmd(
+    ticker: str | None = typer.Option(None, "--ticker", help="Filter to one company ticker."),
+    pair_selector: str | None = typer.Option(
+        None, "--pair", help="Filter to one ReportPair id or '<earlier> -> <later>'."
+    ),
+    status: str | None = typer.Option(None, "--status", help="Filter to one AlignmentStatus."),
+    confidence: str | None = typer.Option(None, "--confidence", help="Filter to one AlignmentConfidence."),
+    min_semantic: float | None = typer.Option(None, "--min-semantic", help="Minimum semantic_similarity."),
+    min_lexical: float | None = typer.Option(None, "--min-lexical", help="Minimum lexical_cosine_similarity."),
+    limit: int | None = typer.Option(None, "--limit"),
+) -> None:
+    """List individual passage alignments across all current alignment runs.
+
+    Never prints source passage text by default.
+    """
+    status_filter = AlignmentStatus(status.upper()) if status else None
+    confidence_filter = AlignmentConfidence(confidence.upper()) if confidence else None
+
+    with get_session() as session:
+        pair_id_filter = _resolve_report_pair(session, pair_selector).id if pair_selector is not None else None
+
+        pairs = session.scalars(select(ReportPair).options(joinedload(ReportPair.company))).all()
+        pairs_by_id = {p.id: p for p in pairs}
+        current_runs = passage_alignment.get_current_alignment_runs_by_pair(session, list(pairs_by_id))
+        run_id_to_pair_id = {run.id: pair_id for pair_id, run in current_runs.items()}
+
+        if not run_id_to_pair_id:
+            typer.echo("No current alignment results.")
+            return
+
+        query = select(PassageAlignment).where(PassageAlignment.alignment_run_id.in_(list(run_id_to_pair_id)))
+        if status_filter is not None:
+            query = query.where(PassageAlignment.alignment_status == status_filter)
+        if confidence_filter is not None:
+            query = query.where(PassageAlignment.confidence == confidence_filter)
+        if min_semantic is not None:
+            query = query.where(PassageAlignment.semantic_similarity >= min_semantic)
+        if min_lexical is not None:
+            query = query.where(PassageAlignment.lexical_cosine_similarity >= min_lexical)
+
+        alignment_rows = session.scalars(query).all()
+
+        results: list[tuple[ReportPair, PassageAlignment]] = []
+        for alignment_row in alignment_rows:
+            pair = pairs_by_id.get(run_id_to_pair_id.get(alignment_row.alignment_run_id))
+            if pair is None:
+                continue
+            if pair_id_filter is not None and pair.id != pair_id_filter:
+                continue
+            if ticker is not None and pair.company.ticker.upper() != ticker.upper():
+                continue
+            results.append((pair, alignment_row))
+
+        if limit is not None:
+            results = results[:limit]
+
+        for pair, alignment_row in results:
+            typer.echo(
+                f"{pair.company.ticker:6} pair={pair.id} "
+                f"earlier_passage={alignment_row.earlier_passage_id or '-'} "
+                f"later_passage={alignment_row.later_passage_id or '-'} "
+                f"status={alignment_row.alignment_status.value} confidence={alignment_row.confidence.value} "
+                f"semantic={_fmt(alignment_row.semantic_similarity)} "
+                f"lexical={_fmt(alignment_row.lexical_cosine_similarity)} "
+                f"combined={_fmt(alignment_row.combined_score)}"
+            )
+
+
+@app.command("alignment-audit")
+def alignment_audit_cmd(
+    csv_output: Path | None = typer.Option(
+        None, "--csv", help="Write results to this CSV path instead of printing a summary."
+    ),
+) -> None:
+    """Corpus-wide passage-alignment status and metrics, for manual review."""
+    with get_session() as session:
+        rows = alignment_audit.build_alignment_audit_rows(session)
+
+    if csv_output is not None:
+        alignment_audit.write_alignment_audit_csv(rows, csv_output)
+        typer.echo(f"Wrote {len(rows)} row(s) to {csv_output}")
+        return
+
+    for row in rows:
+        transition_flag = " [TRANSITION]" if row.is_transition else ""
+        typer.echo(
+            f"{row.ticker:6} pair={row.report_pair_id} gap={row.gap_months}mo{transition_flag} "
+            f"status={row.status or 'NOT_ALIGNED'} "
+            f"matched={row.matched_count if row.matched_count is not None else '-'} "
+            f"new={row.new_count if row.new_count is not None else '-'} "
+            f"removed={row.removed_count if row.removed_count is not None else '-'} "
+            f"ambiguous={row.ambiguous_count if row.ambiguous_count is not None else '-'} "
+            f"pct_later_matched={row.percent_later_matched if row.percent_later_matched is not None else '-'}"
+        )
+
+
+@app.command("export-alignment")
+def export_alignment_cmd(
+    pair_selector: str = typer.Argument(..., help="ReportPair id (UUID), or '<earlier report> -> <later report>'."),
+    output: Path = typer.Option(..., "--output", "-o", help="Output CSV path."),
+    include_text: bool = typer.Option(
+        False, "--include-text", help="Include passage text -- never commit this export."
+    ),
+) -> None:
+    """Export one ReportPair's current alignment results to CSV."""
+    with get_session() as session:
+        pair = _resolve_report_pair(session, pair_selector)
+        run = passage_alignment.get_current_alignment_run(session, pair.id)
+        if run is None:
+            typer.echo(f"No current successful alignment run for pair {pair.id}")
+            raise typer.Exit(code=1)
+
+        rows = session.scalars(
+            select(PassageAlignment).where(PassageAlignment.alignment_run_id == run.id)
+        ).all()
+
+        passage_ids = {r.earlier_passage_id for r in rows if r.earlier_passage_id} | {
+            r.later_passage_id for r in rows if r.later_passage_id
+        }
+        passages_by_id = (
+            {p.id: p for p in session.scalars(select(Passage).where(Passage.id.in_(passage_ids))).all()}
+            if passage_ids
+            else {}
+        )
+
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fieldnames = [
+            "earlier_passage_id", "later_passage_id", "earlier_report_id", "later_report_id",
+            "earlier_page_range", "later_page_range", "heading_text",
+            "semantic_similarity", "lexical_cosine_similarity", "jaccard_similarity", "edit_similarity",
+            "heading_similarity", "length_ratio", "position_difference", "combined_score",
+            "alignment_status", "confidence", "review_reason",
+        ]
+        if include_text:
+            fieldnames += ["earlier_text", "later_text"]
+
+        with output.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for alignment_row in rows:
+                earlier_passage = passages_by_id.get(alignment_row.earlier_passage_id)
+                later_passage = passages_by_id.get(alignment_row.later_passage_id)
+                record = {
+                    "earlier_passage_id": alignment_row.earlier_passage_id,
+                    "later_passage_id": alignment_row.later_passage_id,
+                    "earlier_report_id": pair.earlier_report_id,
+                    "later_report_id": pair.later_report_id,
+                    "earlier_page_range": _page_range(earlier_passage),
+                    "later_page_range": _page_range(later_passage),
+                    "heading_text": (
+                        (later_passage.heading_text if later_passage else None)
+                        or (earlier_passage.heading_text if earlier_passage else None)
+                    ),
+                    "semantic_similarity": alignment_row.semantic_similarity,
+                    "lexical_cosine_similarity": alignment_row.lexical_cosine_similarity,
+                    "jaccard_similarity": alignment_row.jaccard_similarity,
+                    "edit_similarity": alignment_row.edit_similarity,
+                    "heading_similarity": alignment_row.heading_similarity,
+                    "length_ratio": alignment_row.length_ratio,
+                    "position_difference": alignment_row.position_difference,
+                    "combined_score": alignment_row.combined_score,
+                    "alignment_status": alignment_row.alignment_status.value,
+                    "confidence": alignment_row.confidence.value,
+                    "review_reason": alignment_row.review_reason,
+                }
+                if include_text:
+                    record["earlier_text"] = earlier_passage.raw_text if earlier_passage else None
+                    record["later_text"] = later_passage.raw_text if later_passage else None
+                writer.writerow(record)
+
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+    if include_text:
+        typer.echo("WARNING: this export includes passage text -- do not commit it.")
+
+
+@app.command("review-sample")
+def review_sample_cmd(
+    output: Path = typer.Option(
+        Path("data/alignment_review_sample.csv"), "--output", "-o", help="Where to write the review sample CSV."
+    ),
+    seed: int = typer.Option(42, "--seed", help="Deterministic sampling seed."),
+    per_category: int = typer.Option(3, "--per-category", help="Maximum examples per category."),
+    include_text: bool = typer.Option(
+        False, "--include-text", help="Include passage text -- never commit this export."
+    ),
+) -> None:
+    """Deterministic, balanced manual-review sample across all current alignment results."""
+    with get_session() as session:
+        rows = review_sample.build_review_sample(
+            session, seed=seed, per_category=per_category, include_text=include_text
+        )
+
+    review_sample.write_review_sample_csv(rows, output)
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+    if include_text:
+        typer.echo("WARNING: this export includes passage text -- do not commit it.")
