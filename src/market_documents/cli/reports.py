@@ -15,7 +15,7 @@ from market_documents.models.enums import (
 )
 from market_documents.models.extraction import ExtractionRun, Page
 from market_documents.models.report import Report
-from market_documents.services import corpus_audit, embedding_audit, metadata_review, segmentation_audit
+from market_documents.services import corpus_audit, embedding_audit, metadata_review, oversized_passage_audit, segmentation_audit
 from market_documents.services.extraction import (
     extract_eligible_reports,
     extract_report,
@@ -25,12 +25,17 @@ from market_documents.services.extraction import (
 )
 from market_documents.services.importing import import_manifest
 from market_documents.services.metadata_inspection import inspect_discovered_reports
-from market_documents.services.passage_embedding import embed_eligible_segmentation_runs, embed_segmentation_run
+from market_documents.services.passage_embedding import (
+    embed_eligible_segmentation_runs,
+    embed_segmentation_run,
+    get_embedding_model,
+)
 from market_documents.services.passage_segmentation import (
     get_current_segmentation_run,
     segment_eligible_reports,
     segment_report,
 )
+from market_documents.services.retrieval_benchmark import run_retrieval_benchmark
 from market_documents.services.scanning import scan_directory, write_manifest_csv
 from market_documents.services.validation import validate_reports
 
@@ -580,3 +585,52 @@ def embedding_status_cmd() -> None:
         )
         if row.warnings:
             typer.echo(f"       warnings: {row.warnings}")
+
+
+@app.command("retrieval-benchmark")
+def retrieval_benchmark_cmd(
+    queries_per_run: int = typer.Option(3, "--queries-per-run", help="Benchmark queries drawn per embedding run."),
+    top_k: int = typer.Option(10, "--top-k", help="Candidates retrieved per query."),
+) -> None:
+    """Compare exact vs. HNSW-indexed retrieval on the current corpus.
+
+    Deterministic (no random sampling); see `retrieval_benchmark.py` for
+    methodology. Does not change `retrieval_config.py`'s EXACT default --
+    reports measurements only.
+    """
+    with get_session() as session:
+        result = run_retrieval_benchmark(session, queries_per_run=queries_per_run, top_k=top_k)
+
+    typer.echo(f"queries={result.query_count} top_k={top_k}")
+    typer.echo(
+        f"recall@1={result.recall_at_1:.3f} recall@5={result.recall_at_5:.3f} "
+        f"recall@10={result.recall_at_10:.3f} mean_rank_overlap={result.mean_rank_overlap:.3f}"
+    )
+    typer.echo(
+        f"mean_exact_latency_ms={result.mean_exact_latency_ms:.3f} "
+        f"mean_indexed_latency_ms={result.mean_indexed_latency_ms:.3f}"
+    )
+    typer.echo(
+        f"fewer_than_k_queries={result.fewer_than_k_query_count} "
+        f"meets_minimum_recall_at_10={result.meets_minimum_recall_at_10}"
+    )
+    typer.echo(
+        f"restricted_indexed_plan_uses_vector_index={result.restricted_indexed_plan_uses_vector_index} "
+        f"unfiltered_indexed_plan_uses_vector_index={result.unfiltered_indexed_plan_uses_vector_index}"
+    )
+
+
+@app.command("oversized-passage-audit")
+def oversized_passage_audit_cmd(
+    output: Path = typer.Option(
+        Path("data/audits/oversized_passage_audit.csv"), "--output", "-o", help="Output CSV path."
+    ),
+) -> None:
+    """Audit passages skipped from embedding for exceeding the model's token
+    limit (loads the pinned embedding model to recompute exact token counts)."""
+    model = get_embedding_model()
+    with get_session() as session:
+        rows = oversized_passage_audit.build_oversized_passage_audit_rows(session, model)
+        oversized_passage_audit.write_oversized_passage_audit_csv(rows, output)
+
+    typer.echo(f"{len(rows)} oversized-skipped passage(s) -> {output}")

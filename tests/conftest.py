@@ -3,8 +3,14 @@ from pathlib import Path
 
 # Point the whole test session at a dedicated test database before any
 # market_documents module is imported, so get_settings()/get_engine() (used
-# by both services and the CLI) resolve to it consistently.
-TEST_DATABASE_URL = "postgresql+psycopg://market_documents:market_documents@localhost:5433/market_documents_test"
+# by both services and the CLI) resolve to it consistently. Port is
+# overridable via POSTGRES_PORT (defaulting to the project's normal
+# docker-compose port) so a locally-conflicting, unrelated container on the
+# default port doesn't force editing this file.
+_POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5433")
+TEST_DATABASE_URL = (
+    f"postgresql+psycopg://market_documents:market_documents@localhost:{_POSTGRES_PORT}/market_documents_test"
+)
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 import psycopg  # noqa: E402
@@ -15,7 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEST_DB_NAME = "market_documents_test"
-ADMIN_DSN = "postgresql://market_documents:market_documents@localhost:5433/postgres"
+ADMIN_DSN = f"postgresql://market_documents:market_documents@localhost:{_POSTGRES_PORT}/postgres"
 
 
 def _ensure_test_database_exists() -> None:
