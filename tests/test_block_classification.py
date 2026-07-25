@@ -122,3 +122,52 @@ def test_every_block_receives_a_classification_never_raises():
         block_type, excluded, _ = _classify(sample)
         assert isinstance(block_type, BlockType)
         assert isinstance(excluded, bool)
+
+
+def test_overlapping_text_artifact_detected_by_extreme_line_density():
+    # 20 short lines packed into a 2pt-tall bbox: a real cover-page wordmark
+    # cannot physically fit 20 distinct lines in 2 points of height, so this
+    # is overlapping/duplicated text objects, not prose -- regardless of its
+    # (large) word count, which is why this check must run before any
+    # word-count-based rule.
+    text = "\n".join(["Af", "Afr", "Afro", "AfroCentric"] * 5)
+    block_type, excluded, reason = _classify(text, bbox_height=2.0)
+    assert block_type == BlockType.OVERLAPPING_TEXT_ARTIFACT
+    assert excluded is True
+    assert "line density" in reason
+
+
+def test_dense_multi_line_table_row_reclassified_as_table_like():
+    # A real corpus example: a text label followed by one numeric table
+    # cell per line. The whole-block digit ratio (~0.25) falls below the
+    # primary table-like threshold (0.3) because of the label, but the line
+    # structure -- 10 lines for a handful of words -- is unmistakably a
+    # table row, not a paragraph.
+    text = "Semi-skilled and discretionary decision-making\n247\n20\n1\n4\n310\n29\n10\n35\n656"
+    block_type, excluded, reason = _classify(text, bbox_height=30.0)
+    assert block_type == BlockType.TABLE_LIKE
+    assert excluded is True
+    assert "dense multi-line table row" in reason
+
+
+def test_tall_multi_line_block_not_misclassified_as_overlapping_artifact():
+    # Same line count as a short paragraph, but a plausible paragraph-block
+    # height -- line density stays low, so this must classify normally.
+    text = "\n".join(
+        [
+            "The group delivered a resilient performance in a challenging",
+            "operating environment, with revenue growing steadily across",
+            "all reporting segments and cost discipline maintained",
+            "throughout the year under review.",
+        ]
+    )
+    block_type, excluded, reason = _classify(text, bbox_height=80.0)
+    assert block_type == BlockType.PARAGRAPH
+    assert excluded is False
+    assert reason is None
+
+
+def test_unknown_bbox_height_does_not_trigger_geometric_rules():
+    text = "\n".join(["Af", "Afr", "Afro", "AfroCentric"] * 5)
+    block_type, _, _ = _classify(text, bbox_height=None)
+    assert block_type != BlockType.OVERLAPPING_TEXT_ARTIFACT

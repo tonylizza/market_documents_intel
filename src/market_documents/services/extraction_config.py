@@ -17,7 +17,7 @@ EXTRACTOR_NAME = "pymupdf"
 
 CLEANING_RULES_VERSION = 1
 QUALITY_THRESHOLDS_VERSION = 1
-CLASSIFICATION_RULES_VERSION = 1
+CLASSIFICATION_RULES_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,29 @@ class ExtractionConfig:
     table_like_min_numeric_tokens: int = 3
     decorative_max_words: int = 3
     max_numeric_density_for_narrative: float = 0.35
+
+    # Dense multi-line table rows whose label text dilutes the whole-block
+    # digit ratio below `table_like_min_digit_ratio` (e.g. a row like
+    # "Semi-skilled and discretionary decision-making 247 20 1 4 310 29 10
+    # 35 656", digit_ratio ~=0.28) are still recognizable by line structure:
+    # many short lines -- one PDF text line per table cell -- packed into a
+    # block. `table_like_dense_line_density_threshold` is lines per point of
+    # bbox height; ordinary running text tops out around 0.1-0.15 even in
+    # tight paragraphs (corpus p95 = 0.34, but that tail is itself mostly
+    # this same table-row phenomenon -- see block_diagnostics audit).
+    table_like_dense_line_density_threshold: float = 0.25
+    table_like_dense_min_digit_ratio: float = 0.15
+
+    # Corruption signature for overlapping/duplicated PDF text objects (e.g.
+    # a cover-page wordmark rendered as dozens of overlapping partial-word
+    # spans): real distinct lines cannot physically pack denser than roughly
+    # 1 line per 4-5pt of height, so a block whose line count per point of
+    # bbox height exceeds this is not prose at all, regardless of word
+    # count. Calibrated from the reference corpus: p99.99 line density
+    # across 93,818 real blocks was 1.83; the one confirmed corruption case
+    # measured 42.7 -- more than an order of magnitude beyond the threshold,
+    # so this has no observed false-positive risk on real content.
+    overlapping_text_line_density_threshold: float = 2.0
 
     # Report-level quality rollup
     low_text_page_tolerance: float = 0.20

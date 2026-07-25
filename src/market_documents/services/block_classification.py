@@ -7,9 +7,13 @@ excluded from the narrative corpus (with a recorded reason), never
 whether it is stored at all.
 
 Rules are evaluated in priority order: repeated header/footer (a
-run-wide, high-confidence signal) first, then isolated page numbers, then
-decorative/URL fragments, then numeric-density-based table/fragment
-detection, then list items, then heading-like short blocks, defaulting to
+run-wide, high-confidence signal) first, then the geometric
+overlapping-text-artifact check (a structural signal independent of word
+content, so it must run before any word-count-based rule could be
+confused by a corrupted block's inflated word count), then isolated page
+numbers, then decorative/URL fragments, then numeric-density-based
+table/fragment detection (including the dense multi-line-per-cell table
+variant), then list items, then heading-like short blocks, defaulting to
 PARAGRAPH.
 """
 
@@ -41,6 +45,20 @@ def _looks_like_page_number(stripped: str) -> bool:
     return False
 
 
+def _line_density(text: str, bbox_height: float | None) -> float | None:
+    """Lines per point of bounding-box height, or None if height is unknown.
+
+    A real, physically distinct line of text needs several points of
+    vertical space; a block whose line count vastly exceeds what its own
+    bounding box could hold is evidence of overlapping/duplicated text
+    objects occupying nearly the same position, not of dense prose.
+    """
+    if not bbox_height or bbox_height <= 0:
+        return None
+    line_count = text.count("\n") + 1
+    return line_count / bbox_height
+
+
 def classify_block(
     text: str,
     *,
@@ -50,6 +68,7 @@ def classify_block(
     is_bold: bool | None,
     page_median_font_size: float | None,
     config: ExtractionConfig,
+    bbox_height: float | None = None,
 ) -> tuple[BlockType, bool, str | None]:
     """Return (block_type, excluded_from_narrative, exclusion_reason)."""
     stripped = text.strip()
@@ -62,6 +81,15 @@ def classify_block(
 
     if not stripped:
         return BlockType.UNKNOWN, True, "empty block"
+
+    line_density = _line_density(text, bbox_height)
+    if line_density is not None and line_density > config.overlapping_text_line_density_threshold:
+        return (
+            BlockType.OVERLAPPING_TEXT_ARTIFACT,
+            True,
+            f"overlapping/duplicated text objects (line density {line_density:.2f} "
+            f"exceeds {config.overlapping_text_line_density_threshold})",
+        )
 
     if word_count <= 6 and _looks_like_page_number(stripped):
         return BlockType.PAGE_NUMBER, True, "isolated page number"
@@ -76,6 +104,19 @@ def classify_block(
 
     if digit_ratio >= config.table_like_min_digit_ratio and numeric_token_count >= config.table_like_min_numeric_tokens:
         return BlockType.TABLE_LIKE, True, "table-like numeric content"
+
+    # A table row whose text label dilutes the whole-block digit ratio below
+    # the primary threshold (e.g. "Semi-skilled and discretionary
+    # decision-making 247 20 1 4 310 29 10 35 656") is still identifiable by
+    # its line structure -- one PDF text line per table cell, packed denser
+    # than any real paragraph of that word count could be.
+    if (
+        line_density is not None
+        and line_density > config.table_like_dense_line_density_threshold
+        and digit_ratio >= config.table_like_dense_min_digit_ratio
+        and numeric_token_count >= config.table_like_min_numeric_tokens
+    ):
+        return BlockType.TABLE_LIKE, True, "dense multi-line table row (numeric cells, label diluted digit ratio)"
 
     if digit_ratio >= config.numeric_fragment_min_digit_ratio and word_count <= config.numeric_fragment_max_words:
         return BlockType.NUMERIC_FRAGMENT, True, "standalone numeric fragment"

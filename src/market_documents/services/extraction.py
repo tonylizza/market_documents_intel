@@ -226,6 +226,7 @@ def _run_extraction(session: Session, report: Report, run: ExtractionRun) -> Non
                 is_bold=extracted_block.is_bold,
                 page_median_font_size=page_median_font_size,
                 config=EXTRACTION_CONFIG,
+                bbox_height=extracted_block.y1 - extracted_block.y0,
             )
 
             session.add(
