@@ -76,6 +76,7 @@ def assess_confidence(
     best_second_margin: float | None,
     disagreement: str | None,
     split_merge_flag: str | None,
+    content_collision_flag: str | None = None,
     earlier_extraction_quality: ExtractionQuality | None,
     later_extraction_quality: ExtractionQuality | None,
     is_transition: bool,
@@ -86,13 +87,18 @@ def assess_confidence(
 
     An irregular reporting gap or transition status is contextual
     information that can pull HIGH down to MEDIUM, never an automatic
-    failure on its own. Disagreement or an unresolved split/merge signal
-    always forces NEEDS_REVIEW regardless of margin, since those indicate
-    the evidence itself is inconsistent, not just close.
+    failure on its own. Disagreement, an unresolved split/merge signal, or
+    a content collision (see `detect_candidate_collisions` -- the same
+    earlier passage was a viable candidate for more than one later passage,
+    or its text exactly duplicates another earlier passage) always forces
+    NEEDS_REVIEW regardless of margin, since those indicate the evidence
+    itself is inconsistent or genuinely ambiguous, not just close.
     """
     reasons: list[str] = []
     if split_merge_flag:
         reasons.append(split_merge_flag)
+    if content_collision_flag:
+        reasons.append(content_collision_flag)
     if disagreement:
         reasons.append(disagreement)
     if earlier_extraction_quality == ExtractionQuality.NEEDS_REVIEW:
@@ -104,7 +110,7 @@ def assess_confidence(
     if gap_months > config.irregular_gap_months_threshold:
         reasons.append(f"irregular reporting gap ({gap_months} months)")
 
-    if split_merge_flag or disagreement:
+    if split_merge_flag or disagreement or content_collision_flag:
         confidence = AlignmentConfidence.NEEDS_REVIEW
     else:
         # No competing candidate at all is the strongest possible margin signal.

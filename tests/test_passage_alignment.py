@@ -1,4 +1,5 @@
 import math
+import uuid as uuid_module
 from datetime import UTC, datetime
 
 from market_documents.models.company import Company
@@ -358,6 +359,56 @@ def test_split_detection_flags_ambiguous_instead_of_new(db_session):
     assert "split" in (row_l2.review_reason or "")
 
 
+def test_content_score_gate_accepts_match_despite_large_position_difference(db_session):
+    """Fix 3: acceptance is gated on content_score (position-free), not
+    combined_score (which includes position). This pair's combined_score is
+    deliberately engineered below the old 0.45 floor purely by position --
+    content evidence alone still clears the new gate."""
+    setup = _setup_pair(db_session, ticker="POSGATE")
+    e = _passage(
+        db_session, setup.earlier_seg, setup.earlier_report, index=0,
+        text="alpha bravo charlie delta echo foxtrot golf hotel",
+    )
+    # earlier_total=1 -> earlier_pos is always 0.0. filler occupies later
+    # index 0 so the target `l` at index 1 of 2 has later_pos=1.0 ->
+    # position_difference=1.0, the maximum possible.
+    filler = _passage(db_session, setup.later_seg, setup.later_report, index=0, text="unrelated filler text")
+    l = _passage(
+        db_session, setup.later_seg, setup.later_report, index=1,
+        text="india juliet kilo lima mike november oscar papa",
+    )
+    _embed(db_session, setup.earlier_emb, e, BASE_VEC)
+    _embed(db_session, setup.later_emb, filler, _vec(-0.9))
+    _embed(db_session, setup.later_emb, l, _vec(0.83))
+
+    outcome = pa.align_pair(db_session, setup.pair)
+    rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=outcome.run.id).all()
+    row_l = next(r for r in rows if r.later_passage_id == l.id)
+    assert row_l.earlier_passage_id == e.id
+    assert row_l.combined_score < 0.45  # would have failed the old combined-score gate
+
+
+def test_candidate_collision_forces_needs_review_on_the_winner(db_session):
+    """Fix 2: when another later passage's candidate list also clears the
+    acceptance floor for the same earlier passage, the accepted winner is
+    still matched but flagged NEEDS_REVIEW -- the win may be arbitrary."""
+    setup = _setup_pair(db_session, ticker="COLLIDE")
+    text = "the full original section text before it was split"
+    e = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=0, text=text)
+    l1 = _passage(db_session, setup.later_seg, setup.later_report, index=0, text=text)
+    l2 = _passage(db_session, setup.later_seg, setup.later_report, index=1, text=text)
+    _embed(db_session, setup.earlier_emb, e, BASE_VEC)
+    _embed(db_session, setup.later_emb, l1, BASE_VEC)  # wins the claim on e
+    _embed(db_session, setup.later_emb, l2, _vec(0.80))  # loses, but independently clears the acceptance floor too
+
+    outcome = pa.align_pair(db_session, setup.pair)
+    rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=outcome.run.id).all()
+    row_l1 = next(r for r in rows if r.later_passage_id == l1.id)
+    assert row_l1.earlier_passage_id == e.id
+    assert row_l1.confidence == AlignmentConfidence.NEEDS_REVIEW
+    assert "duplicated/boilerplate" in (row_l1.review_reason or "")
+
+
 def test_irregular_gap_and_transition_propagate_to_run_and_confidence(db_session):
     setup = _setup_pair(db_session, ticker="IRREG", gap_months=96, is_transition=True)
     text = "boilerplate risk disclosure language reused across periods"
@@ -464,3 +515,271 @@ def test_current_alignment_run_selection_prefers_latest_successful(db_session):
 
     current = pa.get_current_alignment_run(db_session, setup.pair.id)
     assert current.id == forced.run.id
+
+
+# ---------------------------------------------------------------------------
+# Pure-function tests: content score, split/merge, collisions, local
+# exchange -- no database needed, plain in-memory Passage/ScoredCandidate
+# objects (never flushed to a session).
+# ---------------------------------------------------------------------------
+
+
+def _mk_passage(*, index: int, content_hash: str | None = None) -> Passage:
+    passage = Passage(
+        segmentation_run_id=uuid_module.uuid4(),
+        narrative_document_id=uuid_module.uuid4(),
+        report_id=uuid_module.uuid4(),
+        extraction_run_id=uuid_module.uuid4(),
+        passage_index=index,
+        raw_text="text",
+        normalized_text="text",
+        content_hash=content_hash or f"hash-{uuid_module.uuid4()}",
+        first_page_number=1,
+        last_page_number=1,
+        word_count=1,
+        token_count=1,
+        character_count=4,
+        passage_type=PassageType.PARAGRAPH,
+        excluded_from_alignment=False,
+    )
+    passage.id = uuid_module.uuid4()
+    return passage
+
+
+def _mk_scored(earlier_passage: Passage, *, combined_score: float, content_score: float) -> pa.ScoredCandidate:
+    return pa.ScoredCandidate(
+        earlier_passage=earlier_passage,
+        semantic_similarity=combined_score,
+        lexical_features=pa.LexicalFeatures(
+            lexical_cosine_similarity=None, jaccard_similarity=None, edit_similarity=None,
+            heading_similarity=None, length_ratio=None,
+        ),
+        position_difference=0.0,
+        combined_score=combined_score,
+        content_score=content_score,
+    )
+
+
+def test_compute_content_score_excludes_position_combined_score_includes_it():
+    content = pa.compute_content_score(
+        semantic_similarity=0.83, lexical_composite=0.0, heading_similarity=None, config=pa.ALIGNMENT_CONFIG
+    )
+    combined_at_max_position_penalty = pa.compute_combined_score(
+        semantic_similarity=0.83, lexical_composite=0.0, heading_similarity=None,
+        position_difference=1.0, config=pa.ALIGNMENT_CONFIG,
+    )
+    assert content == pytest_approx(0.4611, tol=1e-3)
+    assert combined_at_max_position_penalty == pytest_approx(0.415, tol=1e-3)
+    assert content >= pa.ALIGNMENT_CONFIG.min_content_score_for_acceptance
+    assert combined_at_max_position_penalty < pa.ALIGNMENT_CONFIG.min_content_score_for_acceptance
+
+
+def test_split_detection_flags_non_adjacent_relocated_fragment_with_strong_evidence():
+    """Fix 1: a reorganization can relocate one half of a split far from the
+    other -- detection must not require immediate passage_index adjacency.
+    But it does require *stronger* evidence at distance (see the false-
+    positive regression test below), so this candidate clears the far bar
+    (0.65), not just the adjacent-case bar (0.35)."""
+    e = _mk_passage(index=10)
+    l_far = _mk_passage(index=50)
+    l_split = _mk_passage(index=0)
+
+    accepted_candidate = _mk_scored(e, combined_score=0.9, content_score=0.9)
+    split_candidate = _mk_scored(e, combined_score=0.7, content_score=0.4)  # clears the far bar
+
+    accepted = {l_far.id: accepted_candidate}
+    candidates_by_later_id = {
+        l_far.id: [accepted_candidate],
+        l_split.id: [split_candidate],
+    }
+    later_by_id = {l_far.id: l_far, l_split.id: l_split}
+
+    split_flags, merge_flags = pa.detect_split_merge(
+        accepted=accepted,
+        candidates_by_later_id=candidates_by_later_id,
+        unmatched_later=[l_split],
+        unmatched_earlier=[],
+        later_by_id=later_by_id,
+    )
+    assert not merge_flags
+    assert l_split.id in split_flags
+    assert "50 passages apart" in split_flags[l_split.id]
+    assert "adjacent" not in split_flags[l_split.id]
+
+
+def test_split_detection_not_flagged_far_apart_with_only_weak_evidence():
+    """Regression test for a real corpus finding: two later passages under a
+    recurring template heading (e.g. "Pending legislative amendments" used
+    for both a climate-law and an employment-equity sub-section) can share
+    enough boilerplate structure to clear the old uniform 0.35 bar despite
+    being about unrelated content. At long range, a moderate score (below
+    the far bar) must NOT be flagged -- only the near/adjacent bar is that
+    permissive."""
+    e = _mk_passage(index=10)
+    l_far = _mk_passage(index=2000)
+    l_unrelated = _mk_passage(index=0)
+
+    accepted_candidate = _mk_scored(e, combined_score=0.95, content_score=0.9)
+    weak_distant_candidate = _mk_scored(e, combined_score=0.5, content_score=0.3)  # clears 0.35, not 0.65
+
+    accepted = {l_far.id: accepted_candidate}
+    candidates_by_later_id = {
+        l_far.id: [accepted_candidate],
+        l_unrelated.id: [weak_distant_candidate],
+    }
+    later_by_id = {l_far.id: l_far, l_unrelated.id: l_unrelated}
+
+    split_flags, merge_flags = pa.detect_split_merge(
+        accepted=accepted,
+        candidates_by_later_id=candidates_by_later_id,
+        unmatched_later=[l_unrelated],
+        unmatched_earlier=[],
+        later_by_id=later_by_id,
+    )
+    assert split_flags == {}
+
+
+def test_split_detection_flags_near_neighbor_at_the_low_bar():
+    """Within `split_merge_adjacent_window`, physical proximity is itself
+    corroborating evidence, so the lower (0.35) bar still applies -- this
+    keeps the original ±1-neighbor behavior working, just widened slightly."""
+    e = _mk_passage(index=10)
+    l_accepted = _mk_passage(index=5)
+    l_neighbor = _mk_passage(index=7)  # 2 apart -- within the adjacent window (3), not "adjacent" (1)
+
+    accepted_candidate = _mk_scored(e, combined_score=0.9, content_score=0.9)
+    near_candidate = _mk_scored(e, combined_score=0.4, content_score=0.3)  # clears 0.35, not 0.65
+
+    accepted = {l_accepted.id: accepted_candidate}
+    candidates_by_later_id = {
+        l_accepted.id: [accepted_candidate],
+        l_neighbor.id: [near_candidate],
+    }
+    later_by_id = {l_accepted.id: l_accepted, l_neighbor.id: l_neighbor}
+
+    split_flags, merge_flags = pa.detect_split_merge(
+        accepted=accepted,
+        candidates_by_later_id=candidates_by_later_id,
+        unmatched_later=[l_neighbor],
+        unmatched_earlier=[],
+        later_by_id=later_by_id,
+    )
+    assert l_neighbor.id in split_flags
+    assert "2 passages apart" in split_flags[l_neighbor.id]
+
+
+def test_merge_detection_flags_non_adjacent_relocated_contributor_with_strong_evidence():
+    e_accepted = _mk_passage(index=0)
+    e_unmatched = _mk_passage(index=40)
+    l = _mk_passage(index=0)
+
+    accepted_candidate = _mk_scored(e_accepted, combined_score=0.9, content_score=0.9)
+    merge_candidate = _mk_scored(e_unmatched, combined_score=0.7, content_score=0.4)  # clears the far bar
+
+    accepted = {l.id: accepted_candidate}
+    candidates_by_later_id = {l.id: [accepted_candidate, merge_candidate]}
+
+    split_flags, merge_flags = pa.detect_split_merge(
+        accepted=accepted,
+        candidates_by_later_id=candidates_by_later_id,
+        unmatched_later=[],
+        unmatched_earlier=[e_unmatched],
+        later_by_id={l.id: l},
+    )
+    assert not split_flags
+    assert e_unmatched.id in merge_flags
+    assert "40 passages apart" in merge_flags[e_unmatched.id]
+
+
+def test_collision_detected_when_earlier_passage_proposed_by_multiple_later():
+    e = _mk_passage(index=0)
+    l_winner = _mk_passage(index=0)
+    l_loser = _mk_passage(index=1)
+
+    winner_candidate = _mk_scored(e, combined_score=0.9, content_score=0.9)
+    loser_candidate = _mk_scored(e, combined_score=0.7, content_score=0.5)  # also clears the acceptance floor
+
+    accepted = {l_winner.id: winner_candidate}
+    candidates_by_later_id = {
+        l_winner.id: [winner_candidate],
+        l_loser.id: [loser_candidate],
+    }
+
+    flags = pa.detect_candidate_collisions(
+        accepted=accepted, candidates_by_later_id=candidates_by_later_id, earlier_passages=[e],
+    )
+    assert l_winner.id in flags
+    assert "other later" in flags[l_winner.id]
+
+
+def test_no_collision_when_no_other_later_passage_clears_the_floor():
+    e = _mk_passage(index=0)
+    l_winner = _mk_passage(index=0)
+    l_loser = _mk_passage(index=1)
+
+    winner_candidate = _mk_scored(e, combined_score=0.9, content_score=0.9)
+    loser_candidate = _mk_scored(e, combined_score=0.2, content_score=0.1)  # well below the acceptance floor
+
+    accepted = {l_winner.id: winner_candidate}
+    candidates_by_later_id = {
+        l_winner.id: [winner_candidate],
+        l_loser.id: [loser_candidate],
+    }
+
+    flags = pa.detect_candidate_collisions(
+        accepted=accepted, candidates_by_later_id=candidates_by_later_id, earlier_passages=[e],
+    )
+    assert flags == {}
+
+
+def test_collision_detected_for_exact_duplicate_earlier_content_hash():
+    e1 = _mk_passage(index=0, content_hash="duplicated-boilerplate")
+    e2 = _mk_passage(index=1, content_hash="duplicated-boilerplate")
+    l = _mk_passage(index=0)
+
+    candidate = _mk_scored(e1, combined_score=0.9, content_score=0.9)
+    accepted = {l.id: candidate}
+    candidates_by_later_id = {l.id: [candidate]}
+
+    flags = pa.detect_candidate_collisions(
+        accepted=accepted, candidates_by_later_id=candidates_by_later_id, earlier_passages=[e1, e2],
+    )
+    assert l.id in flags
+    assert "exactly duplicates" in flags[l.id]
+
+
+def test_local_exchange_swaps_to_improve_total_score():
+    e1 = _mk_passage(index=0)
+    e2 = _mk_passage(index=1)
+    l1 = _mk_passage(index=0)
+    l2 = _mk_passage(index=1)
+
+    c1_to_e1 = _mk_scored(e1, combined_score=0.5, content_score=0.5)
+    c1_to_e2 = _mk_scored(e2, combined_score=0.9, content_score=0.9)
+    c2_to_e2 = _mk_scored(e2, combined_score=0.5, content_score=0.5)
+    c2_to_e1 = _mk_scored(e1, combined_score=0.9, content_score=0.9)
+
+    accepted = {l1.id: c1_to_e1, l2.id: c2_to_e2}
+    candidates_by_later_id = {
+        l1.id: [c1_to_e2, c1_to_e1],
+        l2.id: [c2_to_e1, c2_to_e2],
+    }
+
+    improved = pa.improve_by_local_exchange(accepted, candidates_by_later_id, max_passes=3)
+    assert improved[l1.id].earlier_passage.id == e2.id
+    assert improved[l2.id].earlier_passage.id == e1.id
+
+
+def test_local_exchange_no_swap_when_already_optimal():
+    e1 = _mk_passage(index=0)
+    e2 = _mk_passage(index=1)
+    l1 = _mk_passage(index=0)
+    l2 = _mk_passage(index=1)
+    c1 = _mk_scored(e1, combined_score=0.9, content_score=0.9)
+    c2 = _mk_scored(e2, combined_score=0.9, content_score=0.9)
+    accepted = {l1.id: c1, l2.id: c2}
+    candidates_by_later_id = {l1.id: [c1], l2.id: [c2]}
+
+    improved = pa.improve_by_local_exchange(dict(accepted), candidates_by_later_id, max_passes=3)
+    assert improved[l1.id] is c1
+    assert improved[l2.id] is c2

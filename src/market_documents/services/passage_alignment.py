@@ -1,5 +1,6 @@
 """Passage alignment: lexical rescoring, combined scoring, greedy conflict
-resolution, split/merge detection, and run orchestration.
+resolution with bounded local-exchange refinement, split/merge detection,
+candidate-collision detection, and run orchestration.
 
 Mirrors `services/similarity.py`: this module owns the configuration
 fingerprint that drives idempotent skipping, and the query-time rule for
@@ -13,11 +14,23 @@ later passages at once), not Hungarian/optimal assignment: at this corpus's
 scale (a few hundred passages per side), correctness and interpretability
 matter more than asymptotic optimality, and greedy assignment is far easier
 to audit ("this passage won because it had the single highest combined
-score among unclaimed candidates").
+score among unclaimed candidates"). `improve_by_local_exchange` follows the
+greedy pass with a bounded, deterministic pairwise-swap refinement -- still
+not a search for the optimum, just a fix for greedy's specific "two later
+passages are each other's better match" failure mode.
+
+Acceptance is gated on `content_score` (semantic + lexical + heading, see
+`compute_content_score`), deliberately excluding position -- a legitimate
+section relocation must never be the reason a strong content match is
+rejected. `combined_score` (which does include position) is still what
+ranking and tie-breaking use among candidates that already cleared that
+gate, so position keeps a real disambiguating role without being able to
+veto a match on content grounds alone.
 """
 
 import logging
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -132,6 +145,31 @@ def compute_combined_score(
     )
 
 
+def compute_content_score(
+    *,
+    semantic_similarity: float,
+    lexical_composite: float | None,
+    heading_similarity: float | None,
+    config: AlignmentConfig = ALIGNMENT_CONFIG,
+) -> float:
+    """Position-free companion to `compute_combined_score`, used only to gate
+    acceptance (see `AlignmentConfig.min_content_score_for_acceptance`): a
+    legitimate section relocation must never be the reason a strong content
+    match is rejected. `combined_score` (which does include position)
+    remains the ranking/tie-break signal among candidates that already
+    cleared this gate, so position keeps a real, disambiguating role without
+    ever being able to veto a match on content grounds alone.
+    """
+    lexical_component = lexical_composite if lexical_composite is not None else 0.0
+    heading_component = heading_similarity if heading_similarity is not None else 0.0
+    weight_total = config.weight_semantic + config.weight_lexical + config.weight_heading
+    return (
+        config.weight_semantic * semantic_similarity
+        + config.weight_lexical * lexical_component
+        + config.weight_heading * heading_component
+    ) / weight_total
+
+
 @dataclass(frozen=True)
 class ScoredCandidate:
     earlier_passage: Passage
@@ -139,6 +177,7 @@ class ScoredCandidate:
     lexical_features: LexicalFeatures
     position_difference: float
     combined_score: float
+    content_score: float
 
 
 def score_candidates(
@@ -164,6 +203,12 @@ def score_candidates(
             position_difference=position_difference,
             config=config,
         )
+        content_score = compute_content_score(
+            semantic_similarity=candidate.semantic_similarity,
+            lexical_composite=composite,
+            heading_similarity=features.heading_similarity,
+            config=config,
+        )
         scored.append(
             ScoredCandidate(
                 earlier_passage=candidate.passage,
@@ -171,6 +216,7 @@ def score_candidates(
                 lexical_features=features,
                 position_difference=position_difference,
                 combined_score=combined_score,
+                content_score=content_score,
             )
         )
     scored.sort(key=lambda s: (-s.combined_score, s.earlier_passage.passage_index))
@@ -178,7 +224,9 @@ def score_candidates(
 
 
 # --------------------------------------------------------------------------
-# Split/merge detection (v1: detect + flag AMBIGUOUS only, see alignment_config.py)
+# Split/merge detection (v2: whole-document, detect + flag AMBIGUOUS only,
+# see alignment_config.py), candidate-collision detection, and the bounded
+# local-exchange refinement of the greedy assignment
 # --------------------------------------------------------------------------
 
 
@@ -193,15 +241,28 @@ def detect_split_merge(
 ) -> tuple[dict[uuid.UUID, str], dict[uuid.UUID, str]]:
     """Flag likely split/merge cases rather than silently calling them NEW/REMOVED.
 
-    Split: an unmatched later passage adjacent (by passage_index) to an
-    accepted later passage also proposes that same accepted later passage's
-    earlier match, above `split_merge_candidate_min_score` -- suggesting one
+    Split: an unmatched later passage's own candidate list also proposes
+    (above `split_merge_candidate_min_score`) the same earlier passage
+    already claimed by some other, accepted later passage -- suggesting one
     earlier passage's content was split across two later passages.
 
-    Merge: an unmatched earlier passage adjacent to an accepted match's
-    earlier passage also appears (above the threshold) in that same later
-    passage's own candidate list -- suggesting two earlier passages were
-    merged into one later passage.
+    Merge: an unmatched earlier passage also appears (above the threshold)
+    in the candidate list of some later passage that is already accepted-
+    matched to a *different* earlier passage -- suggesting two earlier
+    passages were merged into one later passage.
+
+    Checked across the *whole* document, not just immediate passage_index
+    neighbors: a reorganization can relocate one half of a split (or one
+    contributor to a merge) far from the other, and requiring adjacency
+    would silently miss that. The evidence bar scales with distance,
+    though: within `split_merge_adjacent_window` positions, physical
+    proximity is itself corroborating evidence, so
+    `split_merge_candidate_min_score` applies; beyond it, only
+    `split_merge_far_candidate_min_score` (materially stricter) counts,
+    since real-corpus validation found the low bar alone over-fires on
+    passages that share template/boilerplate structure (a recurring
+    sub-heading, similar sentence templates) without sharing content. The
+    passage_index gap is still included in each reason string.
 
     This only ever *upgrades* a NEW/REMOVED classification to AMBIGUOUS; it
     never removes or overrides an accepted one-to-one match. Constrained
@@ -211,46 +272,160 @@ def detect_split_merge(
     split_flags: dict[uuid.UUID, str] = {}
     merge_flags: dict[uuid.UUID, str] = {}
 
-    accepted_later_by_index = {later_by_id[later_id].passage_index: later_id for later_id in accepted}
+    def _clears_bar(gap: int, score: float) -> bool:
+        threshold = (
+            config.split_merge_candidate_min_score
+            if gap <= config.split_merge_adjacent_window
+            else config.split_merge_far_candidate_min_score
+        )
+        return score >= threshold
+
+    accepted_earlier_owner = {c.earlier_passage.id: later_id for later_id, c in accepted.items()}
 
     for later_passage in unmatched_later:
-        for neighbor_index in (later_passage.passage_index - 1, later_passage.passage_index + 1):
-            neighbor_later_id = accepted_later_by_index.get(neighbor_index)
-            if neighbor_later_id is None:
+        for candidate in candidates_by_later_id.get(later_passage.id, []):
+            owner_later_id = accepted_earlier_owner.get(candidate.earlier_passage.id)
+            if owner_later_id is None:
                 continue
-            neighbor_earlier_id = accepted[neighbor_later_id].earlier_passage.id
-            for candidate in candidates_by_later_id.get(later_passage.id, []):
-                if (
-                    candidate.earlier_passage.id == neighbor_earlier_id
-                    and candidate.combined_score >= config.split_merge_candidate_min_score
-                ):
-                    split_flags[later_passage.id] = (
-                        "likely split: also matches the earlier passage shared with adjacent "
-                        f"later passage_index {neighbor_index}"
-                    )
-                    break
-            if later_passage.id in split_flags:
-                break
+            owner_later_passage = later_by_id[owner_later_id]
+            gap = abs(later_passage.passage_index - owner_later_passage.passage_index)
+            if not _clears_bar(gap, candidate.combined_score):
+                continue
+            proximity = "adjacent" if gap == 1 else f"{gap} passages apart"
+            split_flags[later_passage.id] = (
+                f"likely split ({proximity}): also matches the earlier passage already claimed by "
+                f"later passage_index {owner_later_passage.passage_index}"
+            )
+            break
 
-    unmatched_earlier_by_index = {p.passage_index: p.id for p in unmatched_earlier}
+    unmatched_earlier_by_id = {p.id: p for p in unmatched_earlier}
     for later_id, candidate in accepted.items():
-        accepted_earlier_index = candidate.earlier_passage.passage_index
-        for neighbor_index in (accepted_earlier_index - 1, accepted_earlier_index + 1):
-            neighbor_earlier_id = unmatched_earlier_by_index.get(neighbor_index)
-            if neighbor_earlier_id is None:
+        for scored in candidates_by_later_id.get(later_id, []):
+            unmatched_p = unmatched_earlier_by_id.get(scored.earlier_passage.id)
+            if unmatched_p is None or unmatched_p.id in merge_flags:
                 continue
-            for scored in candidates_by_later_id.get(later_id, []):
-                if (
-                    scored.earlier_passage.id == neighbor_earlier_id
-                    and scored.combined_score >= config.split_merge_candidate_min_score
-                ):
-                    merge_flags[neighbor_earlier_id] = (
-                        "likely merge: also proposed as a match for the later passage already matched "
-                        f"to adjacent earlier passage_index {accepted_earlier_index}"
-                    )
-                    break
+            gap = abs(unmatched_p.passage_index - candidate.earlier_passage.passage_index)
+            if not _clears_bar(gap, scored.combined_score):
+                continue
+            proximity = "adjacent" if gap == 1 else f"{gap} passages apart"
+            merge_flags[unmatched_p.id] = (
+                f"likely merge ({proximity}): also proposed as a match for the later passage already "
+                f"matched to earlier passage_index {candidate.earlier_passage.passage_index}"
+            )
 
     return split_flags, merge_flags
+
+
+def detect_candidate_collisions(
+    *,
+    accepted: dict[uuid.UUID, ScoredCandidate],
+    candidates_by_later_id: dict[uuid.UUID, list[ScoredCandidate]],
+    earlier_passages: list[Passage],
+    config: AlignmentConfig = ALIGNMENT_CONFIG,
+) -> dict[uuid.UUID, str]:
+    """Flag accepted matches whose earlier passage cannot genuinely be
+    disambiguated from content alone -- near-duplicate or literally
+    duplicated (boilerplate) text.
+
+    Two independent signals, either sufficient on its own:
+
+    1. Multi-claimant: the accepted earlier passage also cleared
+       `min_content_score_for_acceptance` in some *other* later passage's own
+       candidate list. A winner was still picked (by the greedy/local-
+       exchange assignment), but if several later passages could plausibly
+       match the same earlier passage, the specific winner may be arbitrary
+       rather than genuinely evidenced.
+    2. Exact duplicate: the accepted earlier passage's `content_hash` is
+       shared by another earlier passage in the same report (e.g. repeated
+       risk-disclosure boilerplate) -- no amount of scoring can tell those
+       apart, so any match to either is equally uncertain.
+
+    Feeds `assess_confidence`'s `content_collision_flag`, which forces
+    NEEDS_REVIEW regardless of margin -- a large `best_second_margin` is not
+    reassuring here, since the margin only reflects *this* later passage's
+    own ranking, not whether a different later passage's identical proposal
+    was arbitrarily rejected.
+    """
+    collision_flags: dict[uuid.UUID, str] = {}
+
+    claimants: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+    for later_id, candidates in candidates_by_later_id.items():
+        for c in candidates:
+            if c.content_score >= config.min_content_score_for_acceptance:
+                claimants[c.earlier_passage.id].append(later_id)
+
+    for later_id, candidate in accepted.items():
+        contenders = [lid for lid in claimants.get(candidate.earlier_passage.id, []) if lid != later_id]
+        if contenders:
+            collision_flags[later_id] = (
+                f"earlier passage also proposed above threshold by {len(contenders)} other later "
+                "passage(s) -- likely duplicated/boilerplate content, match may be arbitrary"
+            )
+
+    hash_counts: dict[str, int] = defaultdict(int)
+    for p in earlier_passages:
+        hash_counts[p.content_hash] += 1
+    for later_id, candidate in accepted.items():
+        if later_id in collision_flags:
+            continue
+        if hash_counts.get(candidate.earlier_passage.content_hash, 0) > 1:
+            collision_flags[later_id] = (
+                "earlier passage's text exactly duplicates another earlier passage -- "
+                "match cannot be disambiguated from content alone"
+            )
+
+    return collision_flags
+
+
+def improve_by_local_exchange(
+    accepted: dict[uuid.UUID, ScoredCandidate],
+    candidates_by_later_id: dict[uuid.UUID, list[ScoredCandidate]],
+    *,
+    max_passes: int = 3,
+) -> dict[uuid.UUID, ScoredCandidate]:
+    """Bounded, deterministic local-exchange refinement of the greedy
+    assignment -- not Hungarian/optimal assignment (see module docstring:
+    that trade-off is deliberate at this corpus's scale).
+
+    Greedy claims a passage the instant its highest-scoring proposal is
+    reached in the single global sort, which can lock in a suboptimal
+    assignment when two later passages are each other's better match (e.g.
+    a reorganization brings several topically-similar passages close in
+    score). This pass looks for a single pairwise swap -- restricted to
+    candidates each later passage already scored, so no new comparisons are
+    computed -- that strictly increases the summed `combined_score` of the
+    two pairs involved, applies at most one such swap per sweep, and stops
+    after `max_passes` sweeps or the first sweep that finds no improving
+    swap, whichever comes first. Every swap is individually explainable
+    ("total score rose from X to Y"), preserving the greedy algorithm's
+    audit story rather than replacing it with a search.
+    """
+    for _ in range(max_passes):
+        earlier_owner = {c.earlier_passage.id: later_id for later_id, c in accepted.items()}
+        swapped = False
+        for later_id_1 in sorted(accepted, key=lambda lid: accepted[lid].earlier_passage.passage_index):
+            c1 = accepted[later_id_1]
+            for alt in candidates_by_later_id[later_id_1]:
+                later_id_2 = earlier_owner.get(alt.earlier_passage.id)
+                if later_id_2 is None or later_id_2 == later_id_1:
+                    continue
+                c2 = accepted[later_id_2]
+                swap_c1 = next(
+                    (s for s in candidates_by_later_id[later_id_2] if s.earlier_passage.id == c1.earlier_passage.id),
+                    None,
+                )
+                if swap_c1 is None:
+                    continue
+                if alt.combined_score + swap_c1.combined_score > c1.combined_score + c2.combined_score:
+                    accepted[later_id_1] = alt
+                    accepted[later_id_2] = swap_c1
+                    swapped = True
+                    break
+            if swapped:
+                break
+        if not swapped:
+            break
+    return accepted
 
 
 # --------------------------------------------------------------------------
@@ -481,7 +656,7 @@ def _run_alignment(
         (later_passage, candidate)
         for later_passage in selection.later_passages
         for candidate in candidates_by_later_id[later_passage.id]
-        if candidate.combined_score >= ALIGNMENT_CONFIG.min_combined_score_for_acceptance
+        if candidate.content_score >= ALIGNMENT_CONFIG.min_content_score_for_acceptance
     ]
     proposals.sort(key=lambda item: (-item[1].combined_score, item[0].passage_index, item[1].earlier_passage.passage_index))
 
@@ -495,6 +670,10 @@ def _run_alignment(
         claimed_earlier.add(candidate.earlier_passage.id)
         accepted[later_passage.id] = candidate
 
+    accepted = improve_by_local_exchange(
+        accepted, candidates_by_later_id, max_passes=ALIGNMENT_CONFIG.local_exchange_max_passes
+    )
+
     unmatched_later = [p for p in selection.later_passages if p.id not in claimed_later]
     unmatched_earlier = [p for p in selection.earlier_passages if p.id not in claimed_earlier]
 
@@ -504,6 +683,11 @@ def _run_alignment(
         unmatched_later=unmatched_later,
         unmatched_earlier=unmatched_earlier,
         later_by_id=later_by_id,
+    )
+    collision_flags = detect_candidate_collisions(
+        accepted=accepted,
+        candidates_by_later_id=candidates_by_later_id,
+        earlier_passages=selection.earlier_passages,
     )
 
     counts: dict[str, int] = {}
@@ -533,6 +717,7 @@ def _run_alignment(
             best_second_margin=best_second_margin,
             disagreement=disagreement,
             split_merge_flag=None,
+            content_collision_flag=collision_flags.get(later_id),
             earlier_extraction_quality=earlier_quality,
             later_extraction_quality=later_quality,
             is_transition=pair.is_transition,

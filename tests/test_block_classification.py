@@ -99,6 +99,42 @@ def test_uppercase_short_block_classified_as_heading():
     assert block_type == BlockType.HEADING_CANDIDATE
 
 
+def test_isolated_uppercase_letter_not_misclassified_as_heading():
+    # Regression test: a single uppercase letter trivially satisfies
+    # is_shouty (stripped.isupper()), which previously let it through as a
+    # spurious HEADING_CANDIDATE -- the real-corpus signature of curved
+    # infographic text (e.g. a circular wheel-diagram label) where each
+    # glyph becomes its own block. Font/bold flags matching real infographic
+    # styling, to prove the fix isn't relying on those being absent.
+    block_type, excluded, reason = _classify("O", font_size=14.0, is_bold=True, page_median_font_size=10.0)
+    assert block_type == BlockType.DECORATIVE_OR_FRAGMENT
+    assert excluded is True
+    assert "single alphabetic character" in reason
+
+
+def test_isolated_lowercase_letter_also_classified_as_decorative():
+    block_type, excluded, _ = _classify("e")
+    assert block_type == BlockType.DECORATIVE_OR_FRAGMENT
+    assert excluded is True
+
+
+def test_single_roman_numeral_letter_still_classified_as_page_number():
+    # The isolated-single-character rule must not shadow the existing,
+    # more-specific roman-numeral page-number check for the handful of
+    # letters that are also valid roman numerals.
+    for letter in ["I", "V", "X", "L", "C", "D", "M"]:
+        block_type, excluded, _ = _classify(letter)
+        assert block_type == BlockType.PAGE_NUMBER, f"{letter!r} should still be PAGE_NUMBER"
+        assert excluded is True
+
+
+def test_two_character_word_unaffected_by_single_character_rule():
+    # Scope check: the new rule is deliberately narrow (exactly one
+    # character) -- a two-letter token is unaffected.
+    block_type, _, _ = _classify("OK")
+    assert block_type != BlockType.DECORATIVE_OR_FRAGMENT
+
+
 def test_ordinary_paragraph_classified_and_retained():
     text = (
         "The group delivered a resilient performance in a challenging "

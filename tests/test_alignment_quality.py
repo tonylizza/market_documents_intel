@@ -115,6 +115,36 @@ def test_confidence_needs_review_on_split_merge_flag():
     assert result.confidence == AlignmentConfidence.NEEDS_REVIEW
 
 
+def test_confidence_needs_review_on_content_collision_flag_regardless_of_margin():
+    result = assess_confidence(
+        best_second_margin=0.5,
+        disagreement=None,
+        split_merge_flag=None,
+        content_collision_flag="earlier passage also proposed above threshold by 1 other later passage(s)",
+        earlier_extraction_quality=ExtractionQuality.GOOD,
+        later_extraction_quality=ExtractionQuality.GOOD,
+        is_transition=False,
+        gap_months=12,
+        config=CONFIG,
+    )
+    assert result.confidence == AlignmentConfidence.NEEDS_REVIEW
+    assert "other later" in result.review_reason
+
+
+def test_confidence_no_collision_flag_defaults_to_none_and_does_not_force_review():
+    result = assess_confidence(
+        best_second_margin=0.20,
+        disagreement=None,
+        split_merge_flag=None,
+        earlier_extraction_quality=ExtractionQuality.GOOD,
+        later_extraction_quality=ExtractionQuality.GOOD,
+        is_transition=False,
+        gap_months=12,
+        config=CONFIG,
+    )
+    assert result.confidence == AlignmentConfidence.HIGH
+
+
 def test_confidence_irregular_gap_downgrades_high_to_medium_not_low():
     result = assess_confidence(
         best_second_margin=0.20,

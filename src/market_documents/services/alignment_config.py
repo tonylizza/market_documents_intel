@@ -15,16 +15,24 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
-ALGORITHM_VERSION = "1.0.0"
+ALGORITHM_VERSION = "1.1.0"
 
 CANDIDATE_CONFIG_VERSION = 1
-SCORING_CONFIG_VERSION = 1
+SCORING_CONFIG_VERSION = 2
 CLASSIFICATION_THRESHOLDS_VERSION = 1
-CONFIDENCE_THRESHOLDS_VERSION = 1
+CONFIDENCE_THRESHOLDS_VERSION = 2
 # v1 = detect likely split/merge cases and mark them AMBIGUOUS; does not
 # attempt constrained one-to-two/two-to-one acceptance (deferred, see
 # passage_alignment.py's split/merge detection docstring).
-SPLIT_MERGE_POLICY_VERSION = 1
+# v2 = detection widened from immediate passage_index neighbors to the
+# whole document (a reorganization can relocate one half of a split far
+# from the other); adjacency is still reported in the flag text.
+# v3 = distance-dependent evidence bar: whole-document search stays, but
+# candidates beyond `split_merge_adjacent_window` must clear the stricter
+# `split_merge_far_candidate_min_score`, not the adjacent-case bar --
+# real-corpus validation showed the uniform low bar over-fires on shared
+# template/boilerplate structure at distance.
+SPLIT_MERGE_POLICY_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -39,10 +47,15 @@ class AlignmentConfig:
     weight_heading: float = 0.10
     weight_position: float = 0.10
 
-    # A candidate below this combined score is never accepted, regardless
-    # of rank -- prevents "always accept the top result" behavior when even
-    # the best candidate is weak.
-    min_combined_score_for_acceptance: float = 0.45
+    # A candidate whose *content* score (semantic + lexical + heading,
+    # renormalized to exclude position -- see `compute_content_score`) is
+    # below this is never accepted, regardless of rank -- prevents "always
+    # accept the top result" behavior when even the best candidate is weak.
+    # Deliberately excludes position: a legitimate section relocation must
+    # never be the reason a strong content match is rejected. `combined_score`
+    # (which does include position) remains the ranking/tie-break signal
+    # among candidates that already cleared this gate.
+    min_content_score_for_acceptance: float = 0.45
 
     # --- Change classification (applied only to accepted correspondences) ---
     unchanged_semantic_threshold: float = 0.95
@@ -61,12 +74,31 @@ class AlignmentConfig:
     disagreement_high_lexical_threshold: float = 0.75
 
     # --- Split/merge detection (v1: detect + flag AMBIGUOUS only) ---
+    # Within `split_merge_adjacent_window` passage_index positions, physical
+    # proximity itself is corroborating evidence, so the lower bar applies.
+    # Beyond it, only much stronger content overlap should be read as
+    # evidence of a genuine relocated split/merge -- real-corpus validation
+    # (see Milestone 5.5 alignment audit) found that an unbounded search at
+    # the low bar flags ~25% of all rows, including confirmed false
+    # positives from recurring template headings and boilerplate phrasing
+    # shared by otherwise-unrelated passages (e.g. two different "Pending
+    # legislative amendments" sub-sections, one on climate law and one on
+    # employment equity, sharing structure and vocabulary but not content).
     split_merge_candidate_min_score: float = 0.35
+    split_merge_far_candidate_min_score: float = 0.65
+    split_merge_adjacent_window: int = 3
 
     # --- Confidence ---
     low_margin_threshold: float = 0.03
     medium_margin_threshold: float = 0.08
     irregular_gap_months_threshold: int = 18
+
+    # --- Local-exchange refinement (bounded greedy improvement) ---
+    # After initial greedy assignment, at most this many full sweeps look
+    # for a single pairwise swap that strictly increases total combined
+    # score (see `improve_by_local_exchange`). Bounded and deterministic --
+    # a refinement of greedy, not a search for the optimum.
+    local_exchange_max_passes: int = 3
 
 
 ALIGNMENT_CONFIG = AlignmentConfig()

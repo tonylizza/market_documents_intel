@@ -15,7 +15,14 @@ from market_documents.models.enums import (
 )
 from market_documents.models.extraction import ExtractionRun, Page
 from market_documents.models.report import Report
-from market_documents.services import corpus_audit, embedding_audit, metadata_review, oversized_passage_audit, segmentation_audit
+from market_documents.services import (
+    corpus_audit,
+    embedding_audit,
+    metadata_review,
+    oversized_passage_audit,
+    segmentation_audit,
+    structured_content_audit,
+)
 from market_documents.services.extraction import (
     extract_eligible_reports,
     extract_report,
@@ -634,3 +641,27 @@ def oversized_passage_audit_cmd(
         oversized_passage_audit.write_oversized_passage_audit_csv(rows, output)
 
     typer.echo(f"{len(rows)} oversized-skipped passage(s) -> {output}")
+
+
+@app.command("structured-content-audit")
+def structured_content_audit_cmd(
+    output_dir: Path = typer.Option(
+        Path("data/audits"), "--output-dir", help="Directory to write the five audit CSVs into."
+    ),
+) -> None:
+    """Read-only Milestone 6 readiness audit: quantify structured/graphical
+    content (tables, lists, contents/index pages, diagram-shattered
+    fragments) in the current narrative corpus, and how excluding it would
+    change Milestone 5 features -- entirely in memory, without writing any
+    FeatureRun/ReportPairFeatures rows. See `structured_content_audit.py`
+    for the audit-only category definitions; no production classification
+    is added by this command."""
+    with get_session() as session:
+        result = structured_content_audit.run_structured_content_audit(session)
+        paths = structured_content_audit.write_all_csvs(result, output_dir)
+
+    typer.echo(f"{len(result.passage_rows)} flagged passage(s) across {len(result.company_summary_rows)} compan(y/ies)")
+    typer.echo(f"{len(result.two_char_heading_rows)} two-character-heading passage(s)")
+    typer.echo(f"{len(result.feature_sensitivity_rows)} report pair(s) recomputed for variants A/B/C")
+    for name, path in paths.items():
+        typer.echo(f"  {name} -> {path}")
