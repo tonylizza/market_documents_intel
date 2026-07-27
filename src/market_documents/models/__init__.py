@@ -14,15 +14,26 @@ from market_documents.models.enums import (
     ExtractionStatus,
     FeatureQuality,
     FeatureRunStatus,
+    LanguageSignalQuality,
+    LanguageSignalRunStatus,
     MetadataSource,
     MetadataStatus,
     PassageSegmentationRunStatus,
     PassageType,
+    ReportSide,
     SimilarityResultQuality,
     SimilarityRunStatus,
 )
 from market_documents.models.extraction import ExtractionRun, NarrativeDocument, Page, TextBlock
 from market_documents.models.feature import FeatureRun, ReportPairFeatures
+from market_documents.models.financial_language import (
+    FinancialLanguageDictionary,
+    FinancialLanguageTerm,
+    LanguageSignalRun,
+    PassageLanguageCategoryHit,
+    PassageLanguageSignal,
+    ReportPairLanguageFeatures,
+)
 from market_documents.models.passage import Passage, PassageSegmentationRun, PassageSourceBlock
 from market_documents.models.report import Report
 from market_documents.models.report_pair import ReportPair
@@ -65,4 +76,13 @@ __all__ = [
     "ReportPairFeatures",
     "FeatureRunStatus",
     "FeatureQuality",
+    "FinancialLanguageDictionary",
+    "FinancialLanguageTerm",
+    "LanguageSignalRun",
+    "PassageLanguageSignal",
+    "PassageLanguageCategoryHit",
+    "ReportPairLanguageFeatures",
+    "LanguageSignalRunStatus",
+    "LanguageSignalQuality",
+    "ReportSide",
 ]

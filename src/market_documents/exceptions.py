@@ -21,3 +21,9 @@ class AlignmentNotEligibleError(MarketDocumentsError):
 class FeatureNotEligibleError(MarketDocumentsError):
     """A ReportPair cannot currently have disclosure-change features built
     (missing current similarity or alignment run)."""
+
+
+class LanguageSignalNotEligibleError(MarketDocumentsError):
+    """A ReportPair cannot currently have financial-language signals built
+    (missing current feature run, or no financial-language dictionary
+    imported yet)."""

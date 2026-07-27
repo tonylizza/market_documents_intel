@@ -147,3 +147,23 @@ class FeatureQuality(str, enum.Enum):
     USABLE = "USABLE"
     NEEDS_REVIEW = "NEEDS_REVIEW"
     FAILED = "FAILED"
+
+
+class LanguageSignalRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class LanguageSignalQuality(str, enum.Enum):
+    GOOD = "GOOD"
+    USABLE = "USABLE"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    FAILED = "FAILED"
+
+
+class ReportSide(str, enum.Enum):
+    EARLIER = "EARLIER"
+    LATER = "LATER"

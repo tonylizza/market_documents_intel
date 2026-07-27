@@ -14,7 +14,7 @@ here is consulted by `passage_segmentation.py`/`feature_extraction.py` --
 it is a read-only report, mirroring `corpus_audit.py`/`alignment_audit.py`/
 `feature_audit.py`.
 
-Ten mutually-exclusive audit categories (first matching rule wins, in the
+Twelve mutually-exclusive audit categories (first matching rule wins, in the
 priority order documented in `classify_passage`):
 
   short_fragment_invalid       -- isolated one-word, <=2-char heading passage
@@ -37,7 +37,22 @@ priority order documented in `classify_passage`):
   ordinary_prose_false_positive -- initially matched a leakage rule (table_
                                    context / numeric) but reads as coherent
                                    narrative prose on the deterministic
-                                   coherence proxy documented below
+                                   coherence proxy documented below, AND
+                                   shows no deterministic rendered-table
+                                   evidence (see next two categories)
+  financial_table_rendered_as_prose -- passed the coherence proxy above, but
+                                   deterministic evidence (`_rendered_table_
+                                   evidence`) shows it is actually a
+                                   financial-statement, remuneration,
+                                   committee-attendance, shareholder, or
+                                   grant/vesting/rights-series/share-option
+                                   table rendered as pseudo-sentences
+  currency_exposure_table_mixed -- same coherence-proxy path, but the only
+                                   evidence is a repeated currency-code
+                                   sequence -- flagged for review rather than
+                                   excluded, since sampling showed this
+                                   pattern is frequently attached to a
+                                   genuine explanatory sentence
   uncertain                    -- evidence does not cleanly support any of
                                    the above
 
@@ -95,6 +110,8 @@ CONTENTS_OR_INDEX_LIKE = "contents_or_index_like"
 CAPTION_OR_LABEL_LIKE = "caption_or_label_like"
 LEGITIMATE_SHORT_ABBREVIATION = "legitimate_short_abbreviation"
 ORDINARY_PROSE_FALSE_POSITIVE = "ordinary_prose_false_positive"
+FINANCIAL_TABLE_RENDERED_AS_PROSE = "financial_table_rendered_as_prose"
+CURRENCY_EXPOSURE_TABLE_MIXED = "currency_exposure_table_mixed"
 UNCERTAIN = "uncertain"
 
 EXCLUDE = "EXCLUDE"
@@ -104,9 +121,20 @@ REVIEW = "REVIEW"
 # Categories a human should never be told to blanket-exclude, regardless of
 # how they were reached -- lists and table-adjacent prose may carry genuine
 # disclosure, legitimate abbreviations and false positives are real prose,
-# and "uncertain" means the evidence does not support a confident exclusion.
+# "uncertain" means the evidence does not support a confident exclusion, and
+# `CURRENCY_EXPOSURE_TABLE_MIXED` specifically covers currency-sensitivity
+# tables that the corpus sample showed are frequently glued to a genuine
+# explanatory sentence (see `_rendered_table_evidence`) -- flagged for review,
+# never auto-excluded.
 _NEVER_EXCLUDE_CATEGORIES = frozenset(
-    {LIST_CONTENT, TABLE_CONTEXT, LEGITIMATE_SHORT_ABBREVIATION, ORDINARY_PROSE_FALSE_POSITIVE, UNCERTAIN}
+    {
+        LIST_CONTENT,
+        TABLE_CONTEXT,
+        LEGITIMATE_SHORT_ABBREVIATION,
+        ORDINARY_PROSE_FALSE_POSITIVE,
+        CURRENCY_EXPOSURE_TABLE_MIXED,
+        UNCERTAIN,
+    }
 )
 
 # --------------------------------------------------------------------------
@@ -121,6 +149,15 @@ _DOT_LEADER_RE = re.compile(r"\.{3,}\s*\d{1,4}\b")
 _CONTENTS_HEADING_RE = re.compile(r"^\s*(contents|table of contents|index)\s*$", re.IGNORECASE)
 _CAPTION_PREFIX_RE = re.compile(r"^\s*(figure|table|chart|graph|source)\s*[:\-\d]", re.IGNORECASE)
 _SENTENCE_END_RE = re.compile(r"[.!?]")
+
+# Bump whenever `classify_passage` (or any rule/threshold it calls) changes
+# in a way that could reclassify a passage. Milestone 6's
+# `financial_language_config.compute_configuration_hash` folds this in
+# directly -- `PassageLanguageSignal.structured_content_category` snapshots
+# this module's classification at language-signal build time, so a rule
+# change here must force a fresh `LanguageSignalRun` rather than leaving a
+# stale category silently attached to an old signal row.
+STRUCTURED_CONTENT_RULE_VERSION = 1
 
 # Elevated-but-under-threshold digit density: the block-level TABLE_LIKE cut
 # is 0.30 (`ExtractionConfig.table_like_min_digit_ratio`) and the passage-
@@ -144,6 +181,174 @@ FRAGMENT_TOKEN_MAX_LENGTH = 3
 FALSE_POSITIVE_MIN_WORDS = 40
 FALSE_POSITIVE_MAX_FRAGMENT_RATIO = 0.3
 FALSE_POSITIVE_MAX_DIGIT_RATIO = 0.20
+
+# --------------------------------------------------------------------------
+# Deterministic rendered-table evidence -- overrides the coherence-proxy
+# rescue above when a passage that would otherwise become
+# `ordinary_prose_false_positive` shows independent evidence of being a
+# financial-statement, remuneration, committee-attendance, shareholder, or
+# share-award table rendered as pseudo-sentences (M6 readiness refinement).
+#
+# Calibrated directly against the corpus's own 60 `ordinary_prose_false_
+# positive` rows (see tests/test_structured_content_audit.py): 40 are caught
+# by the rules below (financial statement notes, remuneration schedules,
+# committee-attendance matrices, shareholder registers, grant/vesting/rights-
+# series and option tables), 20 remain genuine narrative prose (achievement
+# bullet lists, governance/history narrative, auditor-identity boilerplate,
+# M&A announcements) and are deliberately left as `ordinary_prose_false_
+# positive`. Every rule here requires evidence beyond mere digit density --
+# digit density alone is exactly what the pre-existing coherence proxy
+# already tested and rescued.
+# --------------------------------------------------------------------------
+
+# Space- or comma-grouped thousands (South African/UK convention "88 339" or
+# "2,666,090"). A single genuine number -- even a very large one -- rarely
+# chains more than 3-4 groups; deliberately not a standalone trigger on
+# match count alone, since a narrative sentence discussing one or two large
+# Rand figures (e.g. "revenue was R4 200 000 000 compared to R3 800 000 000")
+# legitimately produces 2+ isolated matches (see
+# `test_numeric_elevated_but_coherent_prose_is_false_positive`).
+_GROUPED_NUMERIC_RE = re.compile(r"\b\d{1,3}(?:[ ,]\d{3})+\b")
+# A run counts as "tight" only when <= 1 alphabetic word separates two
+# consecutive grouped-numeric matches (a table row's own current/prior-year
+# pair, or one row's trailing number butting against the next row's
+# number) -- a genuine sentence's numbers are always separated by several
+# connecting words ("compared to", "representing growth of").
+TIGHT_PAIR_MAX_INTERVENING_WORDS = 1
+MIN_TIGHT_GROUPED_NUMERIC_PAIRS = 2
+# The regex above is deliberately greedy across bare whitespace, so adjacent
+# *separate* numbers in a table row (no punctuation between them, e.g. a
+# balance-sheet line of four comma-grouped totals) merge into a single very
+# long match rather than several short ones -- a single genuine number
+# essentially never chains this many groups even for very large amounts.
+MIN_BRIDGED_NUMERIC_GROUPS = 7
+
+# Repeated parenthetical prior-year comparison, e.g. "(2021: 11.3%)" -- a
+# single inline comparison is ordinary narrative ("(2020: 19%)"), but two or
+# more in one passage is the signature of a KPI/statistics block rendered
+# linearly rather than a sentence.
+_PAIRED_YEAR_COMPARISON_RE = re.compile(r"\(\s*(?:19|20)\d{2}\s*:\s*[\d,.]+\s*%?\s*\)")
+MIN_PAIRED_YEAR_COMPARISONS = 2
+
+# Known ISO-4217-style currency codes observed in this corpus's multi-currency
+# exposure/sensitivity tables. Deliberately currency-sensitivity-specific
+# (`CURRENCY_EXPOSURE_TABLE_MIXED`, REVIEW not EXCLUDE): the sampled rows show
+# this pattern is frequently glued to a genuine explanatory sentence
+# ("A reasonably possible strengthening (weakening) of the CAD, GBP..."), so
+# it is flagged for review rather than auto-excluded.
+_CURRENCY_CODE_RE = re.compile(
+    r"\b(?:USD|GBP|EUR|ZAR|AUD|CAD|CHF|JPY|CNY|XAF|XOF|NAD|BWP|ZMW|MZN|NGN|KES|GHS|MUR|NOK|SEK|DKK|INR|HKD)\b"
+)
+MIN_CURRENCY_CODE_OCCURRENCES = 4
+
+# Grant-date/vesting-date/rights-series/fair-value/share-option tables.
+# Keyword alone is not sufficient (a single narrative mention of "fair value"
+# or "exercise price" is ordinary prose) -- requires corroborating evidence
+# that the passage repeats a templated row structure.
+_GRANT_VESTING_KEYWORD_RE = re.compile(
+    r"\bgrant date\b|\bvesting date\b|\brights series\b|\bexercise price\b", re.IGNORECASE
+)
+_SERIES_LABEL_RE = re.compile(r"\bseries\s+[a-z0-9]+\b", re.IGNORECASE)
+_TABLE_DATE_RE = re.compile(r"\b\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}\b|\b\d{1,2}\s+[A-Za-z]+\s+\d{4}\b")
+MIN_SERIES_LABELS = 2
+MIN_TABLE_DATES = 2
+REPEATED_PHRASE_WINDOW = 4
+MIN_REPEATED_PHRASE_OCCURRENCES = 2
+
+# Shareholder/CDI-holder register: a heading or body phrase this specific is
+# never genuine narrative prose, so no corroboration is required.
+_SHAREHOLDER_REGISTER_RE = re.compile(
+    r"largest holders|shareholders and cdi holders|top\s+\d+\s+shareholders", re.IGNORECASE
+)
+
+# Committee-attendance matrix: "number of meetings" is itself distinctive,
+# but still requires several isolated single-digit pairs (attendance counts
+# next to each other, e.g. "4 1", "4 2") as corroboration.
+_ATTENDANCE_KEYWORD_RE = re.compile(r"number of meetings\b", re.IGNORECASE)
+_LONE_DIGIT_PAIR_RE = re.compile(r"\b\d\s+\d\b")
+MIN_ATTENDANCE_DIGIT_PAIRS = 3
+
+
+def _tight_grouped_numeric_evidence(text: str) -> str | None:
+    matches = list(_GROUPED_NUMERIC_RE.finditer(text))
+    if not matches:
+        return None
+    max_groups = max(m.group().count(" ") + m.group().count(",") for m in matches)
+    if max_groups >= MIN_BRIDGED_NUMERIC_GROUPS:
+        return f"single grouped-numeric run bridges {max_groups} digit-groups (>= {MIN_BRIDGED_NUMERIC_GROUPS})"
+    tight_pairs = 0
+    for earlier, later in zip(matches, matches[1:]):
+        gap_words = re.findall(r"[A-Za-z]+", text[earlier.end() : later.start()])
+        if len(gap_words) <= TIGHT_PAIR_MAX_INTERVENING_WORDS:
+            tight_pairs += 1
+    if tight_pairs >= MIN_TIGHT_GROUPED_NUMERIC_PAIRS:
+        return (
+            f"{tight_pairs} grouped-numeric matches separated by <= {TIGHT_PAIR_MAX_INTERVENING_WORDS} "
+            f"word(s) (>= {MIN_TIGHT_GROUPED_NUMERIC_PAIRS} required)"
+        )
+    return None
+
+
+def _repeated_phrase_present(text: str) -> bool:
+    """`True` if any `REPEATED_PHRASE_WINDOW`-word phrase (case-insensitive)
+    recurs verbatim at least `MIN_REPEATED_PHRASE_OCCURRENCES` times -- the
+    signature of a templated column/row label repeated once per rendered
+    table column (e.g. "Paterson Grade D Upper and below" appearing for each
+    grade column), which essentially never happens in flowing narrative."""
+    words = re.findall(r"[A-Za-z']+", text.lower())
+    if len(words) < REPEATED_PHRASE_WINDOW:
+        return False
+    counts: dict[tuple[str, ...], int] = defaultdict(int)
+    for i in range(len(words) - REPEATED_PHRASE_WINDOW + 1):
+        counts[tuple(words[i : i + REPEATED_PHRASE_WINDOW])] += 1
+    return any(count >= MIN_REPEATED_PHRASE_OCCURRENCES for count in counts.values())
+
+
+def _rendered_table_evidence(raw_text: str, heading_text: str | None) -> tuple[str, str] | None:
+    """Deterministic evidence that a passage on the coherence-proxy rescue
+    path (see `classify_passage`) is actually a rendered table, not genuine
+    prose. Returns `(category, rationale)` for the first matching rule, or
+    `None` if no rule matches (the passage keeps its `ordinary_prose_false_
+    positive` / `RETAIN` classification, unchanged from before this
+    refinement)."""
+    numeric_evidence = _tight_grouped_numeric_evidence(raw_text)
+    if numeric_evidence is not None:
+        return FINANCIAL_TABLE_RENDERED_AS_PROSE, numeric_evidence
+
+    paired_year_count = len(_PAIRED_YEAR_COMPARISON_RE.findall(raw_text))
+    if paired_year_count >= MIN_PAIRED_YEAR_COMPARISONS:
+        return (
+            FINANCIAL_TABLE_RENDERED_AS_PROSE,
+            f"{paired_year_count} repeated paired-year comparisons (parenthetical prior-year values, "
+            f">= {MIN_PAIRED_YEAR_COMPARISONS})",
+        )
+
+    if _GRANT_VESTING_KEYWORD_RE.search(raw_text):
+        series_count = len(_SERIES_LABEL_RE.findall(raw_text))
+        date_count = len(_TABLE_DATE_RE.findall(raw_text))
+        phrase_repeated = _repeated_phrase_present(raw_text)
+        if series_count >= MIN_SERIES_LABELS or date_count >= MIN_TABLE_DATES or phrase_repeated:
+            return (
+                FINANCIAL_TABLE_RENDERED_AS_PROSE,
+                f"grant/vesting/fair-value/rights-series/option-table keyword with corroboration "
+                f"(series_labels={series_count}, dates={date_count}, repeated_phrase={phrase_repeated})",
+            )
+
+    if _SHAREHOLDER_REGISTER_RE.search(f"{heading_text or ''} {raw_text}"):
+        return FINANCIAL_TABLE_RENDERED_AS_PROSE, "shareholder/CDI-holder register heading or body phrase"
+
+    if _ATTENDANCE_KEYWORD_RE.search(raw_text) and len(_LONE_DIGIT_PAIR_RE.findall(raw_text)) >= MIN_ATTENDANCE_DIGIT_PAIRS:
+        return FINANCIAL_TABLE_RENDERED_AS_PROSE, "committee-attendance matrix (meeting keyword with repeated digit pairs)"
+
+    currency_count = len(_CURRENCY_CODE_RE.findall(raw_text))
+    if currency_count >= MIN_CURRENCY_CODE_OCCURRENCES:
+        return (
+            CURRENCY_EXPOSURE_TABLE_MIXED,
+            f"{currency_count} currency-code occurrences (>= {MIN_CURRENCY_CODE_OCCURRENCES}) -- flagged for "
+            "review, not auto-excluded: frequently attached to a genuine explanatory sentence",
+        )
+
+    return None
 
 
 def digit_ratio(text: str) -> float:
@@ -327,6 +532,16 @@ def classify_passage(ctx: PassageAuditInput) -> Classification | None:
             and frag_ratio < FALSE_POSITIVE_MAX_FRAGMENT_RATIO
             and ratio < FALSE_POSITIVE_MAX_DIGIT_RATIO
         ):
+            table_evidence = _rendered_table_evidence(ctx.raw_text, ctx.heading_text)
+            if table_evidence is not None:
+                category, table_rationale = table_evidence
+                rationale = (
+                    f"digit_ratio={ratio:.2f} initially matched the numeric_or_table_like_source rule and passed "
+                    "the coherence proxy, but deterministic rendered-table evidence overrides the rescue: "
+                    f"{table_rationale}."
+                )
+                action = EXCLUDE if category == FINANCIAL_TABLE_RENDERED_AS_PROSE else REVIEW
+                return Classification(category, rationale, action, False)
             rationale = (
                 f"digit_ratio={ratio:.2f} initially matched the numeric_or_table_like_source rule "
                 f"(>= {NUMERIC_ELEVATED_THRESHOLD}), but word_count={ctx.word_count} >= "
@@ -361,6 +576,15 @@ def classify_passage(ctx: PassageAuditInput) -> Classification | None:
             and has_sentence_punctuation(ctx.raw_text)
             and frag_ratio < FALSE_POSITIVE_MAX_FRAGMENT_RATIO
         ):
+            table_evidence = _rendered_table_evidence(ctx.raw_text, ctx.heading_text)
+            if table_evidence is not None:
+                category, table_rationale = table_evidence
+                rationale = (
+                    "passage_type=TABLE_CONTEXT initially passed the coherence proxy, but deterministic "
+                    f"rendered-table evidence overrides the rescue: {table_rationale}."
+                )
+                action = EXCLUDE if category == FINANCIAL_TABLE_RENDERED_AS_PROSE else REVIEW
+                return Classification(category, rationale, action, False)
             rationale = (
                 f"passage_type=TABLE_CONTEXT (adjacent to an excluded table block) initially matched, but "
                 f"word_count={ctx.word_count} >= {FALSE_POSITIVE_MIN_WORDS} with sentence punctuation and low "
@@ -621,6 +845,8 @@ class CompanySummaryRow:
     caption_or_label_like_count: int
     legitimate_short_abbreviation_count: int
     ordinary_prose_false_positive_count: int
+    financial_table_rendered_as_prose_count: int
+    currency_exposure_table_mixed_count: int
     uncertain_count: int
 
 
@@ -634,6 +860,8 @@ _CATEGORY_FIELD_MAP = {
     CAPTION_OR_LABEL_LIKE: "caption_or_label_like_count",
     LEGITIMATE_SHORT_ABBREVIATION: "legitimate_short_abbreviation_count",
     ORDINARY_PROSE_FALSE_POSITIVE: "ordinary_prose_false_positive_count",
+    FINANCIAL_TABLE_RENDERED_AS_PROSE: "financial_table_rendered_as_prose_count",
+    CURRENCY_EXPOSURE_TABLE_MIXED: "currency_exposure_table_mixed_count",
     UNCERTAIN: "uncertain_count",
 }
 
@@ -777,14 +1005,24 @@ def excluded_in_variant_b(category: str | None, is_two_char: bool) -> bool:
     two-character-heading-specific fragments (those are variant C's
     incremental addition, so B and C's difference isolates their impact).
     Never excludes list_content, table_context, legitimate_short_
-    abbreviation, ordinary_prose_false_positive, or uncertain."""
+    abbreviation, ordinary_prose_false_positive, currency_exposure_table_
+    mixed, or uncertain. `financial_table_rendered_as_prose` is included:
+    it is the corrected financial/remuneration/shareholder/share-award table
+    classification (see `_rendered_table_evidence`), deterministic and
+    EXCLUDE by construction, same as the other rules in this tuple."""
     if category is None or category in _NEVER_EXCLUDE_CATEGORIES:
         return False
     if category == SHORT_FRAGMENT_INVALID:
         return False  # inherently two-char-heading-scoped; variant C only.
     if category == BROKEN_FRAGMENT_SEQUENCE and is_two_char:
         return False  # two-char-heading-driven case; variant C only.
-    return category in (BROKEN_FRAGMENT_SEQUENCE, NUMERIC_OR_TABLE_LIKE_SOURCE, CONTENTS_OR_INDEX_LIKE, CAPTION_OR_LABEL_LIKE)
+    return category in (
+        BROKEN_FRAGMENT_SEQUENCE,
+        NUMERIC_OR_TABLE_LIKE_SOURCE,
+        CONTENTS_OR_INDEX_LIKE,
+        CAPTION_OR_LABEL_LIKE,
+        FINANCIAL_TABLE_RENDERED_AS_PROSE,
+    )
 
 
 def excluded_in_variant_c(category: str | None, is_two_char: bool) -> bool:

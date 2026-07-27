@@ -24,6 +24,8 @@ from market_documents.services import (
     feature_audit,
     feature_export,
     feature_review_sample,
+    financial_language_audit,
+    financial_language_export,
     passage_alignment,
     review_sample,
     similarity_audit,
@@ -33,6 +35,12 @@ from market_documents.services.feature_extraction import (
     build_features,
     get_current_feature_run,
     get_current_report_pair_features,
+)
+from market_documents.services.financial_language_signals import (
+    build_eligible_language_signals,
+    build_language_signals,
+    get_current_language_signal_run,
+    get_current_pair_language_features,
 )
 from market_documents.services.pairing import build_pairs
 from market_documents.services.similarity import (
@@ -906,5 +914,256 @@ def features_show_cmd(
             typer.echo(f"warning: {feat.warning_reasons}")
         if feat.exclusion_reasons:
             typer.echo(f"exclusion: {feat.exclusion_reasons}")
-    if include_text:
-        typer.echo("WARNING: this export includes passage text -- do not commit it.")
+
+
+# --------------------------------------------------------------------------
+# Milestone 6: financial-language signals
+# --------------------------------------------------------------------------
+
+
+@app.command("language-build")
+def language_build_cmd(
+    selector: str = typer.Argument(..., help="ReportPair id (UUID), or '<earlier report> -> <later report>'."),
+    force: bool = typer.Option(
+        False, "--force", help="Rebuild even if an identical successful language-signal run already exists."
+    ),
+) -> None:
+    """Build financial-language signals for one ReportPair."""
+    with get_session() as session:
+        pair = _resolve_report_pair(session, selector)
+        outcome = build_language_signals(session, pair, force=force)
+
+        if outcome.ineligible:
+            typer.echo(f"Ineligible: {outcome.ineligible_reason}")
+            raise typer.Exit(code=1)
+        if outcome.skipped:
+            typer.echo(f"Skipped: {outcome.skip_reason}")
+            return
+
+        run = outcome.run
+        assert run is not None
+        typer.echo(f"pair={pair.id} status={run.status.value}")
+        if run.error_message:
+            typer.echo(f"  error: {run.error_message}")
+        else:
+            feat = get_current_pair_language_features(session, pair.id)
+            if feat is not None:
+                typer.echo(
+                    f"  quality={feat.language_signal_quality.value} primary_eligible={feat.primary_eligible} "
+                    f"net_tone_change={_fmt(feat.net_tone_change)} uncertainty_rate_change={_fmt(feat.uncertainty_rate_change)}"
+                )
+            if run.review_reason:
+                typer.echo(f"  review: {run.review_reason}")
+
+        failed = run.status.value == "FAILED"
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("language-build-all")
+def language_build_all_cmd(
+    limit: int | None = typer.Option(None, "--limit", help="Maximum number of pairs to process."),
+    force: bool = typer.Option(
+        False, "--force", help="Rebuild even if identical successful language-signal runs already exist."
+    ),
+) -> None:
+    """Build financial-language signals for every currently eligible ReportPair."""
+    with get_session() as session:
+        outcome = build_eligible_language_signals(session, limit=limit, force=force)
+
+    typer.echo(
+        f"Completed: {len(outcome.completed)}, "
+        f"Completed with warnings: {len(outcome.completed_with_warnings)}, "
+        f"Skipped: {len(outcome.skipped)}, "
+        f"Ineligible: {len(outcome.ineligible)}, "
+        f"Failed: {len(outcome.failed)}"
+    )
+    for pair_id, reason in outcome.ineligible:
+        typer.echo(f"  ineligible {pair_id}: {reason}")
+    for pair_id, reason in outcome.failed:
+        typer.echo(f"  failed {pair_id}: {reason}")
+
+
+@app.command("language-status")
+def language_status_cmd(
+    ticker: str | None = typer.Option(None, "--ticker", help="Filter to one company ticker."),
+    quality: str | None = typer.Option(None, "--quality", help="Filter to one LanguageSignalQuality."),
+    primary_only: bool = typer.Option(False, "--primary-only", help="Only show primary-eligible pairs."),
+) -> None:
+    """Show current financial-language signal status for every report pair."""
+    with get_session() as session:
+        rows = financial_language_audit.build_language_run_audit_rows(session)
+
+    for row in rows:
+        if ticker is not None and row.ticker.upper() != ticker.upper():
+            continue
+        if quality is not None and (row.language_signal_quality or "").upper() != quality.upper():
+            continue
+        if primary_only and not row.primary_eligible:
+            continue
+
+        typer.echo(
+            f"{row.ticker:6} pair={row.report_pair_id} "
+            f"status={row.status or 'NOT_BUILT'} quality={row.language_signal_quality or '-'} "
+            f"primary_eligible={row.primary_eligible if row.primary_eligible is not None else '-'}"
+        )
+        if row.net_tone_change is not None:
+            typer.echo(
+                f"       net_tone(e/l/change)={_fmt(row.net_tone_earlier)}/{_fmt(row.net_tone_later)}/{_fmt(row.net_tone_change)} "
+                f"uncertainty_change={_fmt(row.uncertainty_rate_change)} "
+                f"risk(intro/removed)={_fmt(row.risk_language_introduction)}/{_fmt(row.risk_language_removal)}"
+            )
+        if row.warning_reasons:
+            typer.echo(f"       warning: {row.warning_reasons}")
+        if row.exclusion_reasons:
+            typer.echo(f"       exclusion: {row.exclusion_reasons}")
+
+
+@app.command("language-audit")
+def language_audit_cmd(
+    output_dir: Path = typer.Option(
+        Path("data/audits"), "--output-dir", help="Directory to write the M6 audit CSVs into."
+    ),
+) -> None:
+    """Write every Milestone 6 audit CSV."""
+    with get_session() as session:
+        dictionary_rows = financial_language_audit.build_dictionary_audit_rows(session)
+        run_rows = financial_language_audit.build_language_run_audit_rows(session)
+        review_rows = financial_language_audit.build_language_review_rows(session)
+        component_rows = financial_language_audit.build_component_summary_rows(session)
+        structured_content_rows = financial_language_audit.build_structured_content_sensitivity_rows(session)
+        list_rows = financial_language_audit.build_list_sensitivity_rows(session)
+        table_context_rows = financial_language_audit.build_table_context_sensitivity_rows(session)
+        currency_rows = financial_language_audit.build_currency_exposure_sensitivity_rows(session)
+        confidence_rows = financial_language_audit.build_confidence_sensitivity_rows(session)
+        company_rows = financial_language_audit.build_company_summary_rows(session)
+        review_sample_rows = financial_language_audit.build_deterministic_review_sample(session)
+        report_side_quality_rows = financial_language_audit.build_report_side_quality_audit_rows(session)
+        alignment_change_quality_rows = financial_language_audit.build_alignment_change_quality_audit_rows(session)
+        recalibration_comparison_rows = financial_language_audit.build_recalibration_comparison_rows(session)
+
+    financial_language_audit.write_dictionary_audit_csv(dictionary_rows, output_dir / "language_dictionary_audit.csv")
+    financial_language_audit.write_language_run_audit_csv(run_rows, output_dir / "passage_language_signal_audit.csv")
+    financial_language_audit.write_language_review_csv(review_rows, output_dir / "report_pair_language_review.csv")
+    financial_language_audit.write_component_summary_csv(
+        component_rows, output_dir / "financial_language_component_summary.csv"
+    )
+    financial_language_audit.write_sensitivity_csv(
+        structured_content_rows, output_dir / "language_signal_structured_content_sensitivity.csv"
+    )
+    financial_language_audit.write_sensitivity_csv(list_rows, output_dir / "language_signal_list_sensitivity.csv")
+    financial_language_audit.write_sensitivity_csv(
+        table_context_rows, output_dir / "language_signal_table_context_sensitivity.csv"
+    )
+    financial_language_audit.write_sensitivity_csv(
+        currency_rows, output_dir / "language_signal_currency_exposure_sensitivity.csv"
+    )
+    financial_language_audit.write_sensitivity_csv(
+        confidence_rows, output_dir / "language_signal_confidence_sensitivity.csv"
+    )
+    financial_language_audit.write_company_summary_csv(company_rows, output_dir / "language_signal_company_summary.csv")
+    financial_language_audit.write_review_sample_csv(
+        review_sample_rows, output_dir / "deterministic_language_review_sample.csv"
+    )
+    financial_language_audit.write_report_side_quality_audit_csv(
+        report_side_quality_rows, output_dir / "report_side_language_quality_audit.csv"
+    )
+    financial_language_audit.write_alignment_change_quality_audit_csv(
+        alignment_change_quality_rows, output_dir / "alignment_change_language_quality_audit.csv"
+    )
+    financial_language_audit.write_recalibration_comparison_csv(
+        recalibration_comparison_rows, output_dir / "language_quality_recalibration_comparison.csv"
+    )
+
+    typer.echo(f"Wrote 14 audit CSV(s) to {output_dir}")
+
+
+@app.command("language-export")
+def language_export_cmd(
+    output: Path = typer.Option(..., "--output", "-o", help="Output CSV path."),
+    primary_only: bool = typer.Option(False, "--primary-only", help="Export only primary-eligible observations."),
+) -> None:
+    """Export research-ready pair-level financial-language features to CSV."""
+    with get_session() as session:
+        rows = financial_language_export.build_pair_export_rows(session, primary_only=primary_only)
+
+    financial_language_export.write_pair_export_csv(rows, output)
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+
+
+@app.command("language-review-export")
+def language_review_export_cmd(
+    output: Path = typer.Option(
+        Path("data/audits/report_pair_language_review.csv"), "--output", "-o", help="Output CSV path."
+    ),
+) -> None:
+    """Export pairs with language-signal exclusions or warnings to CSV."""
+    with get_session() as session:
+        rows = financial_language_audit.build_language_review_rows(session)
+
+    financial_language_audit.write_language_review_csv(rows, output)
+    typer.echo(f"Wrote {len(rows)} row(s) to {output}")
+
+
+@app.command("language-show")
+def language_show_cmd(
+    pair_id: str = typer.Option(
+        ..., "--pair-id", help="ReportPair id (UUID), or '<earlier report> -> <later report>'."
+    ),
+) -> None:
+    """Show one ReportPair's financial-language signals in full detail."""
+    with get_session() as session:
+        pair = _resolve_report_pair(session, pair_id)
+        run = get_current_language_signal_run(session, pair.id)
+        if run is None:
+            typer.echo(f"No current successful language-signal run for pair {pair.id}")
+            raise typer.Exit(code=1)
+        feat = get_current_pair_language_features(session, pair.id)
+        assert feat is not None
+
+        typer.echo(f"pair={pair.id} ticker={pair.company.ticker} gap={pair.gap_months}mo")
+        typer.echo(
+            f"quality={feat.language_signal_quality.value} primary_eligible={feat.primary_eligible}"
+        )
+        typer.echo(
+            "net tone: "
+            f"earlier={_fmt(feat.net_tone_earlier)} later={_fmt(feat.net_tone_later)} change={_fmt(feat.net_tone_change)}"
+        )
+        typer.echo(
+            "core-category rate change (per 1,000 words): "
+            f"positive={_fmt(feat.positive_rate_change)} negative={_fmt(feat.negative_rate_change)} "
+            f"uncertainty={_fmt(feat.uncertainty_rate_change)} litigious={_fmt(feat.litigious_rate_change)} "
+            f"constraining={_fmt(feat.constraining_rate_change)} strong_modal={_fmt(feat.strong_modal_rate_change)} "
+            f"weak_modal={_fmt(feat.weak_modal_rate_change)}"
+        )
+        typer.echo(
+            "custom taxonomy rate change: "
+            f"risk(e/l)={_fmt(feat.risk_rate_earlier)}/{_fmt(feat.risk_rate_later)} "
+            f"financial_condition(e/l)={_fmt(feat.financial_condition_rate_earlier)}/{_fmt(feat.financial_condition_rate_later)} "
+            f"governance(e/l)={_fmt(feat.governance_rate_earlier)}/{_fmt(feat.governance_rate_later)} "
+            f"strategy(e/l)={_fmt(feat.strategy_rate_earlier)}/{_fmt(feat.strategy_rate_later)}"
+        )
+        typer.echo(
+            "introduction/removal: "
+            f"negative(intro/removed)={_fmt(feat.negative_language_introduction)}/{_fmt(feat.negative_language_removal)} "
+            f"positive(intro/removed)={_fmt(feat.positive_language_introduction)}/{_fmt(feat.positive_language_removal)} "
+            f"risk(intro/removed)={_fmt(feat.risk_language_introduction)}/{_fmt(feat.risk_language_removal)}"
+        )
+        typer.echo(
+            "coverage: "
+            f"analyzed_word_coverage={_fmt(feat.analyzed_word_coverage)} "
+            f"primary_narrative_coverage={_fmt(feat.primary_narrative_coverage)} "
+            f"dictionary_match_rate={_fmt(feat.dictionary_match_rate)}"
+        )
+        typer.echo(
+            "populations (count/words): "
+            f"list_content={feat.list_content_count}/{feat.list_content_words:.0f} "
+            f"table_context={feat.table_context_count}/{feat.table_context_words:.0f} "
+            f"currency_exposure_mixed={feat.currency_exposure_mixed_count}/{feat.currency_exposure_mixed_words:.0f} "
+            f"uncertain={feat.uncertain_count}/{feat.uncertain_words:.0f}"
+        )
+        if feat.warning_reasons:
+            typer.echo(f"warning: {feat.warning_reasons}")
+        if feat.exclusion_reasons:
+            typer.echo(f"exclusion: {feat.exclusion_reasons}")
