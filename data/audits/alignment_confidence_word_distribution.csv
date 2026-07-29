@@ -1,0 +1,5 @@
+confidence,row_count,word_weight,distinct_companies,distinct_report_pairs,collision_flag_count,split_merge_flag_count,ambiguous_count,mean_best_second_margin,median_best_second_margin
+HIGH,15382,626926,6,24,0,0,0,0.30634902570690803,0.29918677112823194
+MEDIUM,1431,79264,6,21,0,0,0,0.060038883861267836,0.05288423882720972
+LOW,442,35098,5,23,0,0,0,0.01392830507899306,0.013958717724002923
+NEEDS_REVIEW,20560,1519971,6,25,17156,0,3130,0.13645541360319893,0.08855783848955157

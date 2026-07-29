@@ -1,0 +1,51 @@
+.badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.dimension {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+.label {
+  font-weight: var(--font-weight-semibold);
+}
+
+.good {
+  background: var(--color-teal-100);
+  border-color: var(--color-teal-600);
+  color: var(--color-teal-700);
+}
+
+.usable {
+  background: var(--color-gold-100);
+  border-color: var(--color-gold-600);
+  color: var(--color-gold-600);
+}
+
+.needs-review {
+  background: var(--color-warning-bg);
+  border-color: var(--color-amber-600);
+  color: var(--color-amber-700);
+}
+
+.failed {
+  background: var(--color-slate-100);
+  border-color: var(--color-slate-300);
+  color: var(--color-text-muted);
+}
+
+.unknown {
+  background: var(--color-slate-100);
+  border-color: var(--color-slate-300);
+  color: var(--color-text-muted);
+}

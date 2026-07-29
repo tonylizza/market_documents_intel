@@ -1,0 +1,22 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-block: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.heading {
+  font-size: var(--font-size-xl);
+  color: var(--color-navy-900);
+}
+
+.paragraph {
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+  max-width: 56rem;
+}

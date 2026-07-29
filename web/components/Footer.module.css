@@ -1,0 +1,32 @@
+.footer {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-tinted);
+  padding-block: var(--space-6);
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.project {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.notice {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  max-width: 42rem;
+}
+
+.links a {
+  font-size: var(--font-size-sm);
+}
+
+.attribution {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

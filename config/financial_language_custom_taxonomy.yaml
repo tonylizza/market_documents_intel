@@ -1,0 +1,64 @@
+# Custom domain taxonomy for Milestone 6 financial-language signals.
+#
+# Authored by this project (not a third-party dictionary), so no licensing
+# concern applies. Deliberately small and defensible -- seed terms per
+# subcategory, not an exhaustive lexicon -- per the milestone brief's
+# instruction not to implement every conceivable category. Reviewed and
+# approved before implementation (see Milestone 6 planning conversation).
+#
+# is_phrase is inferred at import time from whether a term contains a space
+# after normalization -- not stored here explicitly.
+
+categories:
+  risk:
+    subcategories:
+      liquidity: [liquidity risk, funding risk, cash shortfall]
+      credit: [credit risk, counterparty risk, default risk]
+      market: [market risk, price volatility, interest rate risk]
+      operational: [operational risk, process failure, business disruption]
+      regulatory: [regulatory risk, compliance risk, regulatory change]
+      legal: [legal risk, litigation risk, contractual risk]
+      technology_cyber: [cybersecurity risk, cyber attack, data breach, system failure]
+      supply_chain: [supply chain risk, supplier disruption, procurement risk]
+      geopolitical: [geopolitical risk, political instability, trade sanctions]
+      climate_environmental: [climate risk, physical risk, transition risk, carbon tax]
+      going_concern: [going concern, substantial doubt, ability to continue]
+
+  financial_condition:
+    subcategories:
+      revenue: [revenue, turnover, sales growth]
+      cost_margin: [cost of sales, gross margin, operating margin]
+      cash_flow: [cash flow, operating cash flow, free cash flow]
+      debt: [borrowings, debt covenant, gearing ratio]
+      liquidity: [current ratio, working capital, cash reserves]
+      capital_expenditure: [capital expenditure, capex, investment in property plant and equipment]
+      impairment: [impairment, impairment charge, write-down]
+      working_capital: [working capital, inventory days, receivables days]
+      dividends: [dividend, dividend declared, dividend cover]
+      tax: [taxation, effective tax rate, deferred tax]
+      restructuring: [restructuring, restructuring costs, retrenchment]
+      acquisitions_disposals: [acquisition, disposal, business combination]
+
+  governance:
+    subcategories:
+      board: [board of directors, non-executive director, board composition]
+      audit: [audit committee, external auditor, internal audit]
+      internal_controls: [internal controls, control environment, material weakness]
+      remuneration: [remuneration policy, executive remuneration, short-term incentive]
+      ethics: [code of ethics, whistleblowing, conflict of interest]
+      regulatory_compliance: [regulatory compliance, king iv, jse listing requirements]
+      litigation: [legal proceedings, litigation, class action]
+      shareholder_rights: [shareholder rights, minority shareholders, pre-emptive rights]
+      related_party: [related party transaction, related party]
+
+  strategy:
+    subcategories:
+      strategy: [strategic priorities, strategic objectives]
+      growth: [growth strategy, organic growth, market expansion]
+      outlook: [outlook, forward-looking, guidance]
+      forecast: [forecast, projection, expected to]
+      target: [target, medium-term target]
+      expansion: [expansion, new market entry]
+      transformation: [transformation, digital transformation]
+      investment: [strategic investment, capital allocation]
+      future_uncertainty: [uncertain outlook, subject to change, no assurance]

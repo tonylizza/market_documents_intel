@@ -12,5 +12,12 @@ data/processed/*
 !data/processed/.gitkeep
 CLAUDE.md
 
+# Third-party reference dictionaries (e.g. Loughran-McDonald Master
+# Dictionary): licensed for academic/non-commercial use, redistribution not
+# clearly permitted -- never commit the source file itself, only the README
+# describing where to obtain it.
+data/reference/financial_language/loughran_mcdonald/*
+!data/reference/financial_language/loughran_mcdonald/README.md
+
 # Hugging Face model cache -- never commit model weights.
 .cache/

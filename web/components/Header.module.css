@@ -1,0 +1,23 @@
+.header {
+  background: var(--color-navy-900);
+  color: var(--color-text-on-dark);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--space-4);
+  position: relative;
+}
+
+.brand {
+  color: var(--color-text-on-dark);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
+}
+
+.brand:hover {
+  text-decoration: none;
+  color: var(--color-gold-500);
+}

@@ -425,8 +425,9 @@ def build_manual_alignment_pair(
                 earlier_passage_id=earlier_passages[earlier_idx].id if earlier_idx is not None else None,
                 later_passage_id=later_passages[later_idx].id if later_idx is not None else None,
                 alignment_status=status,
-                alignment_type=alignment_type,
+                alignment_type=spec.get("alignment_type", alignment_type),
                 confidence=confidence,
+                review_reason=spec.get("review_reason"),
                 primary_alignment=True,
             )
         )

@@ -1,7 +1,7 @@
-ticker,reports_current,current_passages,current_passage_words,flagged_passages,flagged_passage_words,flagged_share_count,flagged_share_words,feature_eligible_flagged_passages,feature_eligible_flagged_words,short_fragment_invalid_count,broken_fragment_sequence_count,list_content_count,table_context_count,numeric_or_table_like_source_count,contents_or_index_like_count,caption_or_label_like_count,legitimate_short_abbreviation_count,ordinary_prose_false_positive_count,uncertain_count
-ACT,9,8266,420229,1039,93912,0.12569562061456568,0.2234781511985132,500,90643,352,8,532,0,111,23,2,3,8,0
-BEL,7,3680,293121,680,111189,0.18478260869565216,0.3793279908297256,542,108917,4,0,570,3,68,19,1,0,15,0
-KP2,6,3139,297460,315,69817,0.10035043007327174,0.2347105493175553,253,68989,5,1,205,0,73,2,0,0,29,0
-SBP,3,607,56793,147,18240,0.24217462932454695,0.3211663409222968,83,17142,0,0,110,0,36,1,0,0,0,0
-SDL,2,607,38687,91,3979,0.14991762767710048,0.10285108692842557,16,3115,0,0,8,0,75,0,4,0,4,0
-SUR,3,6359,238541,602,28337,0.0946689731089794,0.11879299575335057,194,25010,111,8,101,0,177,189,3,9,4,0
+ticker,reports_current,current_passages,current_passage_words,flagged_passages,flagged_passage_words,flagged_share_count,flagged_share_words,feature_eligible_flagged_passages,feature_eligible_flagged_words,short_fragment_invalid_count,broken_fragment_sequence_count,list_content_count,table_context_count,numeric_or_table_like_source_count,contents_or_index_like_count,caption_or_label_like_count,legitimate_short_abbreviation_count,ordinary_prose_false_positive_count,financial_table_rendered_as_prose_count,currency_exposure_table_mixed_count,uncertain_count
+ACT,9,8266,420229,1039,93912,0.12569562061456568,0.2234781511985132,500,90643,352,8,532,0,111,23,2,3,4,4,0,0
+BEL,7,3680,293121,680,111189,0.18478260869565216,0.3793279908297256,542,108917,4,0,570,3,68,19,1,0,9,6,0,0
+KP2,6,3139,297460,315,69817,0.10035043007327174,0.2347105493175553,253,68989,5,1,205,0,73,2,0,0,3,24,2,0
+SBP,3,607,56793,147,18240,0.24217462932454695,0.3211663409222968,83,17142,0,0,110,0,36,1,0,0,0,0,0,0
+SDL,2,607,38687,91,3979,0.14991762767710048,0.10285108692842557,16,3115,0,0,8,0,75,0,4,0,2,2,0,0
+SUR,3,6359,238541,602,28337,0.0946689731089794,0.11879299575335057,194,25010,111,8,101,0,177,189,3,9,2,2,0,0

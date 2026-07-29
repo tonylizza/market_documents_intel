@@ -1,0 +1,11 @@
+publication_id,table_name,row_count
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,companies,6
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,reports,30
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,report_comparisons,25
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,language_metrics,450
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,passages,22169
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,passage_comparisons,26473
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,passage_language_signals,269819
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,discovery_items,49
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,metric_definitions,8
+1dbbf2c1-8599-59c8-8388-7a20ea970b1c,metric_label_thresholds,28

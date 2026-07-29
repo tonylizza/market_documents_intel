@@ -1,0 +1,113 @@
+.empty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.compactGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-3);
+}
+
+.scrollableWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scrollableControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.scrollableControls button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.rangeIndicator {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.scrollableRow {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: var(--space-2);
+}
+
+.scrollableRow > div {
+  scroll-snap-align: start;
+}
+
+.rangeFilteredWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.rangeControls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rangeButton,
+.rangeButtonActive {
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.rangeButton:first-child,
+.rangeButtonActive:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.rangeButton:last-child,
+.rangeButtonActive:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: none;
+}
+
+.rangeButtonActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent-strong);
+  color: var(--color-text-on-dark);
+  font-weight: var(--font-weight-medium);
+}
+
+.rangeSummary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shortcutLink {
+  font-size: var(--font-size-xs);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent-strong);
+  text-decoration: none;
+}
+
+.shortcutLink:hover {
+  background: var(--color-teal-100);
+}

@@ -1,0 +1,7 @@
+.mark {
+  background: var(--color-gold-100);
+  color: var(--color-navy-900);
+  font-weight: var(--font-weight-semibold);
+  border-radius: 2px;
+  padding-inline: 1px;
+}

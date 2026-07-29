@@ -1,0 +1,18 @@
+.backlink {
+  padding-top: var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.section {
+  padding-block: var(--space-5);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.qualityRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

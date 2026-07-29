@@ -345,6 +345,190 @@ def test_short_numeric_elevated_passage_without_coherence_stays_numeric_or_table
 
 
 # --------------------------------------------------------------------------
+# 10b: rendered-table evidence overriding the ordinary_prose_false_positive
+# rescue (M6 readiness refinement) -- calibrated against the corpus's own 60
+# ordinary_prose_false_positive rows, see module docstring of
+# structured_content_audit.py.
+# --------------------------------------------------------------------------
+
+
+def _rescue_ctx(text: str, *, passage_type: PassageType = PassageType.TABLE_CONTEXT, heading_text=None):
+    """Passages routed through the TABLE_CONTEXT coherence-proxy rescue path
+    (word_count >= 40, sentence punctuation, low fragment ratio -- no digit-
+    ratio gate), so `_rendered_table_evidence` can be exercised directly
+    without also having to tune digit_ratio into the narrow
+    numeric_or_table_like_source band. `test_numeric_elevated_branch_also_
+    receives_rendered_table_override` below separately confirms the other
+    rescue path (passage_type=PARAGRAPH, elevated digit ratio) invokes the
+    same override."""
+    return sca.PassageAuditInput(
+        passage_id=None,
+        raw_text=text,
+        heading_text=heading_text,
+        word_count=len(text.split()),
+        passage_type=passage_type,
+    )
+
+
+def test_repeated_grouped_numeric_table_overrides_false_positive_rescue():
+    text = (
+        "NOTES TO THE FINANCIAL STATEMENTS Net cash generated from operating activities 88 339 (350 390) "
+        "Net cash utilised in investing activities (117 390) (54 194) Net cash generated from financing "
+        "activities (33 470) 79 836 Net (decrease) increase in cash and cash equivalents (401 024) (324 748) "
+        "Cash and cash equivalents at the beginning of the year for reconciliation purposes only here today. "
+    )
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert result.suggested_action == sca.EXCLUDE
+    assert sca.excluded_in_variant_b(result.category, result.is_two_char_heading) is True
+
+
+def test_numeric_elevated_branch_also_receives_rendered_table_override():
+    """The same override applies via the other rescue path
+    (passage_type=PARAGRAPH with elevated-but-under-threshold digit ratio),
+    not just the TABLE_CONTEXT path exercised by the other tests here."""
+    rows = [
+        "Operating activities 88 339 versus 350 390 prior.",
+        "Investing activities 117 390 versus 54 194 prior.",
+        "Financing activities 33 470 versus 79 836 prior.",
+        "Cash equivalents movement 401 024 versus 324 748 prior.",
+        "Amounts presented for year under review here.",
+    ]
+    text = " ".join(rows)
+    assert sca.NUMERIC_ELEVATED_THRESHOLD <= sca.digit_ratio(text) < sca.FALSE_POSITIVE_MAX_DIGIT_RATIO
+    result = sca.classify_passage(_rescue_ctx(text, passage_type=PassageType.PARAGRAPH))
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert result.suggested_action == sca.EXCLUDE
+
+
+def test_single_bridged_grouped_numeric_run_overrides_false_positive_rescue():
+    padding = (
+        "The following amounts were disclosed by the group for completeness and are set out in full below "
+        "for the reader's convenience and for comparison against the corresponding prior year figures noted. "
+    )
+    text = padding + (
+        "AS AT 31 DECEMBER 2021 164,164,019 152,945,657 177,982,469 178,224,185 Non-controlling interests "
+        "11(f) TOTAL EQUITY movements for the year under review across every reporting segment presented here. "
+    ) + padding
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert result.suggested_action == sca.EXCLUDE
+
+
+def test_isolated_large_rand_figures_in_real_sentence_stay_false_positive():
+    """Regression: a genuine narrative sentence mentioning two large,
+    isolated Rand figures must not be caught by the grouped-numeric rule --
+    only *tightly adjacent* or *single-run-bridged* grouped numbers are
+    evidence of a rendered table."""
+    sentence = (
+        "Revenue in 2023 was R4 200 000 000 compared to R3 800 000 000 in 2022 representing growth of 11 "
+        "percent driven by 4 new stores across 9 regions in the current financial year under review overall. "
+    )
+    text = sentence * 2
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.ORDINARY_PROSE_FALSE_POSITIVE
+    assert result.suggested_action == sca.RETAIN
+
+
+def test_repeated_paired_year_comparison_overrides_false_positive_rescue():
+    text = (
+        "Capitals impacted across the group this year include the following highlights worth noting overall. "
+        "10% employee turnover (2021: 11.3%) 83% of the workforce are black (2021: 82%) 71% of the workforce "
+        "are women (2021: 70%) 58% of the workforce are black women (2021: 57%) representing our progress here. "
+    )
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert "paired-year" in result.rule_evidence
+
+
+def test_single_paired_year_comparison_stays_false_positive():
+    """A single inline prior-year comparison is ordinary disclosure prose,
+    not evidence of a rendered KPI table."""
+    sentence = (
+        "Turnover increased by 12 percent this year (2020: 9 percent) driven by strong volume growth across "
+        "every operating segment and region in which the group conducts its core underlying business overall. "
+    )
+    text = sentence * 2
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.ORDINARY_PROSE_FALSE_POSITIVE
+
+
+def test_grant_date_rights_series_table_overrides_false_positive_rescue():
+    padding = (
+        "The following inputs were used by the group when measuring these share-based payment arrangements "
+        "during the year under review and are set out below for the reader's reference and completeness. "
+    )
+    text = padding + (
+        "Fair Value at Grant Date Rights Series 6 17/09/2015 Refer below 2,666,090 16/09/2019 AUD 0.1510 "
+        "Rights Series 7 07/12/2015 Refer below 5,000,000 06/12/2020 AUD 0.1753 Rights Series 9 20/11/2015 "
+        "Refer below 8,500,000 01/03/2021 AUD 0.1867 representing outstanding performance rights at year end. "
+    )
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert "grant/vesting" in result.rule_evidence
+
+
+def test_single_fair_value_mention_without_corroboration_stays_false_positive():
+    sentence = (
+        "The directors considered the fair value of these assets, being the price at which an orderly "
+        "transaction between market participants would occur, and concluded no further adjustment was needed. "
+    )
+    text = sentence * 2
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.ORDINARY_PROSE_FALSE_POSITIVE
+
+
+def test_shareholder_register_heading_overrides_false_positive_rescue():
+    text = (
+        "Princess Aurora Company Pte Ltd 304,223,209 19.74 Sociedad Quimica y Minera 296,896,737 19.26 "
+        "Dingyi Group Investment Ltd 199,018,281 12.91 Mr David Stevens 109,000,000 7.07 representing the "
+        "twenty largest holders of the company's issued share capital as recorded in the register at year end. "
+    )
+    ctx = _rescue_ctx(
+        text, heading_text="Twenty largest holders of quoted equity securities (ordinary shares / CDIs)"
+    )
+    result = sca.classify_passage(ctx)
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert "shareholder" in result.rule_evidence
+
+
+def test_committee_attendance_matrix_overrides_false_positive_rescue():
+    text = (
+        "Board Number of meetings held 6 Scheduled 4 Special Attendance ATM Mokgokong Chairperson 4 1 "
+        "MJ Madungandaba Deputy Chairperson 4 2 Independent Non-executive Directors Y Masithela 4 1 GL Napier "
+        "4 2 NB Bam 4 2 LL Dhlamini 2 0 as recorded for the year under review across every scheduled session. "
+    )
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.FINANCIAL_TABLE_RENDERED_AS_PROSE
+    assert "attendance" in result.rule_evidence
+
+
+def test_repeated_currency_code_sequence_is_flagged_for_review_not_excluded():
+    text = (
+        "31 December 2020 31 December 2019 CAD GBP XAF ZAR EUR GBP XAF ZAR FINANCIAL ASSETS Derivative "
+        "financial liability sensitivity analysis A reasonably possible strengthening or weakening of the "
+        "CAD, GBP, XAF and ZAR against USD at year end would have affected profit or loss by the amounts above. "
+    )
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.CURRENCY_EXPOSURE_TABLE_MIXED
+    assert result.suggested_action == sca.REVIEW
+    # Never blanket-excluded: mixed real-narrative content stays available.
+    assert sca.excluded_in_variant_b(result.category, result.is_two_char_heading) is False
+
+
+def test_genuine_narrative_prose_with_no_table_evidence_stays_false_positive():
+    text = (
+        "Likewise, companies in South Africa have faced growing business continuity challenges in the face "
+        "of heightened load-shedding. According to industry analysts, recent events accelerated the "
+        "digitisation of customer interactions across every part of our business during the year under review "
+        "and management expects this trend to continue for the foreseeable future given current conditions. "
+    )
+    result = sca.classify_passage(_rescue_ctx(text))
+    assert result.category == sca.ORDINARY_PROSE_FALSE_POSITIVE
+    assert result.suggested_action == sca.RETAIN
+
+
+# --------------------------------------------------------------------------
 # 11: deterministic review sampling
 # --------------------------------------------------------------------------
 

@@ -1,0 +1,7 @@
+.section {
+  padding-block: var(--space-5);
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
