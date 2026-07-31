@@ -49,6 +49,12 @@ def test_expected_tables_present_at_head(app_engine):
         "discovery_items",
         "metric_definitions",
         "metric_label_thresholds",
+        "passage_embeddings",
+        "retrieval_contexts",
+        "retrieval_context_language_categories",
+        "retrieval_context_risk_subcategories",
+        "qa_chunks",
+        "qa_chunk_passages",
     }
     assert expected <= app_tables
 
@@ -68,6 +74,12 @@ def test_expected_views_present_at_head(app_engine):
         "current_passage_comparisons",
         "current_passage_language_signals",
         "current_discovery_items",
+        "current_passage_embeddings",
+        "current_retrieval_contexts",
+        "current_retrieval_context_language_categories",
+        "current_retrieval_context_risk_subcategories",
+        "current_qa_chunks",
+        "current_qa_chunk_passages",
     } <= views
 
 
@@ -102,6 +114,79 @@ def test_app_0006_downgrade_to_app_0005_and_reupgrade(app_engine):
         assert "disclosure_change_quality" in columns
         view_columns = {c["name"] for c in inspector.get_columns("current_report_comparisons", schema="app")}
         assert "disclosure_change_quality" in view_columns
+    finally:
+        command.upgrade(cfg, "head")
+
+
+def test_app_0007_downgrade_to_app_0006_and_reupgrade(app_engine):
+    cfg = _app_alembic_config(app_engine)
+    try:
+        command.downgrade(cfg, "app_0006")
+
+        inspector = inspect(app_engine)
+        app_tables = set(inspector.get_table_names(schema="app"))
+        assert "passage_embeddings" not in app_tables
+        assert "retrieval_contexts" not in app_tables
+        views = set(inspector.get_view_names(schema="app"))
+        assert "current_passage_embeddings" not in views
+        assert "current_retrieval_contexts" not in views
+        # pgvector extension itself is left installed on downgrade (see the
+        # migration's downgrade() docstring) -- it must not be dropped.
+        with app_engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT extname FROM pg_extension WHERE extname = 'vector'")
+            ).first()
+        assert row is not None
+
+        command.upgrade(cfg, "head")
+
+        inspector = inspect(app_engine)
+        app_tables = set(inspector.get_table_names(schema="app"))
+        assert {
+            "passage_embeddings",
+            "retrieval_contexts",
+            "retrieval_context_language_categories",
+            "retrieval_context_risk_subcategories",
+        } <= app_tables
+        views = set(inspector.get_view_names(schema="app"))
+        assert {
+            "current_passage_embeddings",
+            "current_retrieval_contexts",
+            "current_retrieval_context_language_categories",
+            "current_retrieval_context_risk_subcategories",
+        } <= views
+    finally:
+        command.upgrade(cfg, "head")
+
+
+def test_app_0008_downgrade_to_app_0007_and_reupgrade(app_engine):
+    cfg = _app_alembic_config(app_engine)
+    try:
+        command.downgrade(cfg, "app_0007")
+
+        inspector = inspect(app_engine)
+        app_tables = set(inspector.get_table_names(schema="app"))
+        assert "qa_chunks" not in app_tables
+        assert "qa_chunk_passages" not in app_tables
+        views = set(inspector.get_view_names(schema="app"))
+        assert "current_qa_chunks" not in views
+        assert "current_qa_chunk_passages" not in views
+        columns = {c["name"] for c in inspector.get_columns("publications", schema="app_internal")}
+        assert "qa_chunk_count" not in columns
+        assert "qa_chunk_passage_mapping_count" not in columns
+        # app.passage_embeddings (app_0007) is untouched by downgrading past
+        # app_0008 -- 7B.2 is purely additive.
+        assert "passage_embeddings" in app_tables
+
+        command.upgrade(cfg, "head")
+
+        inspector = inspect(app_engine)
+        app_tables = set(inspector.get_table_names(schema="app"))
+        assert {"qa_chunks", "qa_chunk_passages"} <= app_tables
+        views = set(inspector.get_view_names(schema="app"))
+        assert {"current_qa_chunks", "current_qa_chunk_passages"} <= views
+        columns = {c["name"] for c in inspector.get_columns("publications", schema="app_internal")}
+        assert {"qa_chunk_count", "qa_chunk_passage_mapping_count"} <= columns
     finally:
         command.upgrade(cfg, "head")
 

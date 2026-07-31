@@ -382,6 +382,25 @@ def build_manual_alignment_pair(
         _passage(later_seg, later_report, i, text, ptype) for i, (text, ptype) in enumerate(later_texts)
     ]
 
+    def _embed_one(run: EmbeddingRun, passage: Passage, seed: int) -> None:
+        db_session.add(
+            PassageEmbedding(
+                embedding_run_id=run.id, passage_id=passage.id, embedding=_vec(0.5 + seed * 1e-6), input_token_count=5,
+                truncated=False,
+            )
+        )
+
+    # Milestone 7B.1: real `PassageEmbedding` rows for every hand-specified
+    # passage, so `PublicationBuilder`'s current-embedding resolution has
+    # something real to find -- this fixture previously only set the
+    # EmbeddingRun's summary counts without ever inserting the rows it
+    # claimed to have embedded.
+    for i, passage in enumerate(earlier_passages):
+        _embed_one(earlier_emb, passage, i)
+    for i, passage in enumerate(later_passages):
+        _embed_one(later_emb, passage, i)
+    db_session.flush()
+
     pair = ReportPair(
         company_id=company.id,
         earlier_report_id=earlier_report.id,

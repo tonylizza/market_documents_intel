@@ -145,16 +145,75 @@ export const METHODOLOGY_SECTIONS: MethodologySectionContent[] = [
     id: "passage-search",
     title: "Passage search",
     paragraphs: [
-      "The Passages page searches every published passage using PostgreSQL's conventional, keyword-based full-text " +
-        "search -- it is not semantic or AI-generated retrieval, and it does not understand meaning or synonyms " +
-        "beyond ordinary English stemming (e.g. \"disclosed\" matching \"disclosure\").",
-      "A passage's heading is weighted above its body text, so a keyword appearing in a heading ranks a result " +
-        "higher than the same keyword appearing only in body text. Structured filters (company, report period, " +
-        "alignment status, confidence, financial-language category, and others) are all based on the same " +
-        "published, controlled classifications used elsewhere in this application -- never an invented or " +
-        "free-text value.",
+      "The Passages page supports three search modes: Keyword, Semantic, and Hybrid. Keyword search uses " +
+        "PostgreSQL's conventional full-text search -- it does not understand meaning or synonyms beyond ordinary " +
+        "English stemming (e.g. \"disclosed\" matching \"disclosure\"). Semantic search finds passages with similar " +
+        "meaning even when the wording differs, using a sentence-embedding model. Hybrid search combines both " +
+        "using reciprocal rank fusion. Keyword is the default mode; Semantic and Hybrid are available but did not " +
+        "outperform Keyword on this corpus in evaluation (see below), so they are offered as clearly labeled " +
+        "additional modes rather than the default.",
+      "A passage's heading is weighted above its body text in Keyword search, so a keyword appearing in a heading " +
+        "ranks a result higher than the same keyword appearing only in body text. Structured filters (company, " +
+        "report period, alignment status, confidence, financial-language category, and others) apply identically " +
+        "across all three modes and are all based on the same published, controlled classifications used elsewhere " +
+        "in this application -- never an invented or free-text value.",
       "An empty search with no filters is never used to dump the entire corpus at once; a search or at least one " +
-        "filter is required before results are shown.",
+        "filter is required before results are shown (Semantic and Hybrid additionally require an actual search " +
+        "term -- structured filters alone cannot be ranked by meaning).",
+    ],
+  },
+  {
+    id: "semantic-and-hybrid-retrieval",
+    title: "Semantic and hybrid retrieval",
+    paragraphs: [
+      "Semantic search uses BAAI/bge-small-en-v1.5, a compact, locally-run sentence-embedding model, to turn each " +
+        "published passage and each search query into a 384-dimensional vector, then ranks passages by vector " +
+        "similarity (cosine distance) rather than shared literal words.",
+      "Exactly one vector is stored per published passage, never one per report comparison. Roughly two-thirds of " +
+        "passages in this corpus are the later side of one comparison and the earlier side of the next, so the " +
+        "same passage can be a valid search result in more than one comparison context. Rather than duplicate the " +
+        "vector, each valid comparison-side interpretation is expanded at search time into its own \"retrieval " +
+        "context\" -- the highest-ranked context for a passage is shown first, and any other valid comparison " +
+        "contexts for the same passage are available through an \"also appears in\" expander rather than being " +
+        "silently dropped or duplicated as separate results.",
+      "Both exact (mathematically precise) and HNSW (approximate, indexed) vector search are implemented. Exact " +
+        "search is the correctness baseline. Measured against the real corpus (see the Milestone 7B.1 report), " +
+        "HNSW matched exact search's recall exactly while running noticeably faster, so HNSW is the current " +
+        "default -- exact search remains available as a diagnostic/benchmark reference.",
+      "Semantic similarity is a relative ranking signal, not a probability, confidence percentage, or proof of a " +
+        "factual relationship between the query and the result. A weak-match notice is shown when no result clears " +
+        "a similarity floor calibrated from real evaluation data (the gap between queries with a known good answer " +
+        "and queries about topics genuinely absent from this corpus) -- results are still shown below that floor, " +
+        "just without an implied confident match.",
+      "Roughly half of this corpus is very short (heading fragments, running headers, table labels), and raw " +
+        "cosine similarity alone tends to rank these highly despite carrying little substantive meaning. Semantic " +
+        "results are re-ranked using deterministic, corpus-derived passage-quality signals -- word count, whether " +
+        "the passage's text is essentially just its own heading, whether the heading repeats across the corpus as " +
+        "a structural label rather than a distinguishing title, and whether the passage carries a published " +
+        "financial-language signal -- to bound down (never zero out) the ranking of low-substance fragments. A " +
+        "genuinely short but financially dense passage is never penalized for its length: the underlying raw " +
+        "similarity score is always preserved and shown separately from this adjustment, and the technical " +
+        "details for any result show a plain-language reason whenever an adjustment was applied.",
+      "No large-language-model calls, generated answers, or generated summaries are involved anywhere in this " +
+        "retrieval process -- every result is a real, published passage excerpt, never model-generated text. " +
+        "Query text is sent only to a locally-hosted embedding service under this application's own control, never " +
+        "to an external or third-party AI provider.",
+    ],
+    technicalDetails: [
+      "Retrieval evaluation: an 83-case, version-controlled evaluation dataset spanning direct keyword, phrase, " +
+        "semantic-paraphrase, filter-sensitive, comparison-status, repeated-passage, weak-match, no-answer, and " +
+        "short-passage (both genuinely substantive and known heading-fragment traps) query types was run against " +
+        "the real corpus across five configurations (keyword, semantic-exact, semantic-HNSW, hybrid-exact, " +
+        "hybrid-HNSW), each compared before and after the passage-quality re-ranking described above. Keyword " +
+        "search had the strongest overall recall and nDCG@10 both before and after re-ranking, so it remains the " +
+        "default; Hybrid and Semantic are retained as explicitly labeled alternative modes. Re-ranking measurably " +
+        "reduced the rate of irrelevant short fragments occupying top-5 semantic results without regressing " +
+        "recall on any evaluated query type; it did not change which mode is the default.",
+      "Weak-match threshold: recalibrated from a 50-case real-similarity sample (10 no-answer, 40 answerable " +
+        "queries). The two distributions overlap substantially at this corpus's short-fragment density, so no " +
+        "similarity threshold cleanly separates them -- the shipped floor is set to never wrongly suppress a " +
+        "genuinely answerable query, which means a minority of no-answer queries can still appear as a weak but " +
+        "present match rather than being reliably flagged as unanswerable.",
     ],
   },
   {
@@ -197,11 +256,12 @@ export const METHODOLOGY_SECTIONS: MethodologySectionContent[] = [
     ],
   },
   {
-    id: "future-semantic-retrieval",
-    title: "Future semantic retrieval",
+    id: "future-grounded-qa",
+    title: "Future grounded question-answering",
     paragraphs: [
-      "Semantic, meaning-based retrieval and grounded question-answering over the corpus are planned for a later " +
-        "milestone and are not available yet. This application also does not provide a PDF viewer or document " +
+      "Grounded question-answering (asking a natural-language question and receiving a generated answer with " +
+        "citations) is planned for a later milestone and is not available yet -- this application never generates " +
+        "answers, summaries, or findings today. This application also does not provide a PDF viewer or document " +
         "downloads -- all evidence is shown as extracted, published passage text.",
     ],
   },

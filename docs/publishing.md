@@ -300,3 +300,95 @@ database during this milestone's implementation).
   embedding model, model revision, dimensions, vector) can be added without
   redesigning passage identity. Embeddings are deliberately not published
   in 7A.1.
+
+## Milestone 7B.1: passage embeddings and retrieval contexts
+
+Implements the note above. Migration `app_0007` (revises `app_0006`) adds:
+
+- `CREATE EXTENSION IF NOT EXISTS vector` (fails clearly on a provider
+  without pgvector, rather than silently skipping vector support).
+- `app.passage_embeddings` -- one deduplicated `VECTOR(384)` row per
+  published passage (unique on `publication_id, passage_id, embedding_model,
+  embedding_model_revision`), HNSW cosine index
+  (`ix_app_passage_embeddings_hnsw_cosine`), plus source-lineage columns
+  (`source_embedding_id`, `source_embedding_run_id`) and a self-consistency
+  `embedding_text_hash`.
+- `app.retrieval_contexts` -- one row per valid `(passage, passage
+  comparison, report side)` interpretation, plus `REPORT_ONLY` rows for the
+  small number of passages with no comparison link at all. Built by a
+  single deterministic rule in `publisher.py`: one context per non-null
+  `earlier_passage_id`/`later_passage_id` on each `app.passage_comparisons`
+  row -- this alone implements every alignment-status side rule (NEW is
+  later-side only, REMOVED is earlier-side only, matched statuses get both
+  sides, one-sided AMBIGUOUS preserves whichever side exists) without any
+  status-specific branching.
+- `app.retrieval_context_language_categories` /
+  `app.retrieval_context_risk_subcategories` -- normalized category/
+  subcategory child tables (mirrors the existing
+  `passage_language_signals` normalization choice), populated from
+  non-zero published language signals for the same `(passage_comparison_id,
+  report_side)` scope.
+- Four new `current_*` views (`app.current_passage_embeddings`,
+  `app.current_retrieval_contexts`, and the two category views), created
+  via their own `RETRIEVAL_CURRENT_VIEWS` tuple in `schema.py` --
+  deliberately **not** merged into the existing `CURRENT_VIEWS` tuple that
+  `app_0005`/`app_0006` already replay on every upgrade/downgrade, since
+  merging them would make a from-scratch `upgrade head` try to create these
+  views before `app_0007`'s own tables exist.
+- `app_readonly` is granted `SELECT` on the four new views only -- never on
+  the raw `app.passage_embeddings`/`app.retrieval_contexts` tables.
+
+### Embedding-coverage policy
+
+The research embedding pipeline skips (never truncates) a passage whose
+token count exceeds the model's 512-token limit. On the real corpus this
+affects a small fraction of passages (measured: 207 of 22,169, ~0.93%,
+concentrated in a few long report sections). Rather than hard-failing
+publication over every individual gap, `validate_persisted` requires
+**aggregate** embedding coverage to stay at or above `MINIMUM_EMBEDDING_
+COVERAGE` (95%, see `publishing/validation.py`) and records every
+individual gap in `publication_embedding_missing_audit.csv` for review.
+
+### New publisher build steps
+
+For each current, non-excluded passage: resolve its current research
+embedding via the existing `get_current_embedding_run`/segmentation-run
+lineage (`source_dataset.py`), verify dimensions match `APP_EMBEDDING_
+DIMENSION` (384), compute `embedding_text_hash` and `vector_norm`, and
+insert a deterministic `app.passage_embeddings` row. Retrieval contexts and
+their category rows are then derived from the already-built `app.passage_
+comparisons`/`app.passage_language_signals` rows in the same build pass.
+
+### New validation checks
+
+Embedding-coverage threshold, no-duplicate-vector, dimension/zero-vector
+integrity, no-duplicate-context, context-references-published-passage/
+embedding/passage-comparison, report-side-matches-passage-comparison-side,
+NEW-is-later-side/REMOVED-is-earlier-side, REPORT_ONLY-has-no-comparison-
+fields, and retrieval-context categories/quality fields agree with the
+published `passage_language_signals`/`report_comparisons` rows they were
+derived from. See `publishing/validation.py` for the full list.
+
+### New audit CSVs
+
+`publication_embedding_audit.csv`, `publication_embedding_lineage_audit.csv`,
+`publication_embedding_missing_audit.csv`,
+`publication_vector_integrity_audit.csv`,
+`publication_retrieval_context_audit.csv`,
+`publication_retrieval_context_duplicate_audit.csv` -- written by `market-
+documents publish audit` alongside the existing 7A.1 audit files.
+
+### New CLI command
+
+`market-documents publish benchmark --publication-id <id>` -- runs the
+exact-vs-HNSW retrieval benchmark (`publishing/retrieval_benchmark.py`)
+against a publication's embeddings and writes `publication_retrieval_
+benchmark.csv`.
+
+### Real-data results (publication `2026-07-29.1`)
+
+21,962 embeddings (99.07% coverage), 36,597 retrieval contexts (4
+`REPORT_ONLY`), 0 duplicate vectors/contexts. Benchmark: exact and HNSW
+both sub-3ms at this corpus scale; HNSW recall@10 = 1.0 relative to exact
+(unfiltered and company-filtered), ~30% lower unfiltered latency. Full
+figures in the Milestone 7B.1 final report.

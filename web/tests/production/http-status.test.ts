@@ -170,4 +170,38 @@ describe("production HTTP status codes (real next build + next start)", () => {
     const body = await response.text();
     expect(body).toContain("Page not found");
   });
+
+  it("GET /evidence-review returns 200 (orientation state, no query)", async () => {
+    const response = await fetch(`${BASE_URL}/evidence-review`);
+    expect(response.status).toBe(200);
+  });
+
+  it("GET /evidence-review?q=... returns 200 even without a configured query-embedding service (keyword-only fallback)", async () => {
+    const response = await fetch(`${BASE_URL}/evidence-review?q=${encodeURIComponent("What is the company's liquidity risk?")}`);
+    expect(response.status).toBe(200);
+  });
+
+  it("GET /ask returns 200 (orientation state, no query)", async () => {
+    const response = await fetch(`${BASE_URL}/ask`);
+    expect(response.status).toBe(200);
+  });
+
+  it("GET /ask?q=... returns 200 even without a configured query-embedding service or GEMINI_API_KEY (PROVIDER_UNAVAILABLE/INSUFFICIENT_EVIDENCE fallback, never a crash)", async () => {
+    const response = await fetch(`${BASE_URL}/ask?q=${encodeURIComponent("What is the company's liquidity risk?")}`);
+    expect(response.status).toBe(200);
+  });
+
+  it("GET /ask?q=...&company=...&year=... (with filters) returns 200", async () => {
+    const response = await fetch(`${BASE_URL}/ask?q=${encodeURIComponent("What is ACT's strategy?")}&company=ACT&year=2024`);
+    expect(response.status).toBe(200);
+  });
+
+  it("GET /ask?q=... response body never contains a raw embedding vector", async () => {
+    const response = await fetch(`${BASE_URL}/ask?q=${encodeURIComponent("What is the company's liquidity risk?")}`);
+    const body = await response.text();
+    // A 384-dimensional cosine-normalized vector is a long run of small
+    // signed decimals -- this pattern would only match an accidentally
+    // serialized raw vector, never ordinary page content/citations.
+    expect(body).not.toMatch(/(-?0\.\d+,\s*){20,}/);
+  });
 });

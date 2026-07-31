@@ -4,12 +4,15 @@ import { useRef } from "react";
 import Link from "next/link";
 import type { PassageFilterOptions, PassageSearchParams, PassageSortKey } from "@/lib/domain/passage";
 import { PASSAGE_SORT_KEYS } from "@/lib/domain/passage";
+import type { RetrievalMode } from "@/lib/domain/retrieval";
 import { PASSAGE_SORT_LABELS } from "@/lib/config/passage-vocabulary";
+import { SearchModeSelector } from "@/components/SearchModeSelector";
 import styles from "./PassageSearchFilters.module.css";
 
 export interface PassageSearchFiltersProps {
   params: PassageSearchParams;
   filterOptions: PassageFilterOptions;
+  mode: RetrievalMode;
 }
 
 const TRISTATE_OPTIONS: { value: string; label: string }[] = [
@@ -30,7 +33,7 @@ function triState(value: boolean | null): string {
  * (`parsePassageSearchParams` is the single source of truth for the
  * allowed set) -- there is no free-text sort/order-by field anywhere here.
  */
-export function PassageSearchFilters({ params, filterOptions }: PassageSearchFiltersProps) {
+export function PassageSearchFilters({ params, filterOptions, mode }: PassageSearchFiltersProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const subcategoryOptions = params.category ? (filterOptions.subcategoriesByCategory[params.category] ?? []) : [];
 
@@ -40,6 +43,7 @@ export function PassageSearchFilters({ params, filterOptions }: PassageSearchFil
 
   return (
     <form ref={formRef} method="get" action="/passages" role="search" aria-label="Passage search" className={styles.form}>
+      <SearchModeSelector mode={mode} onChange={submitOnChange} />
       <div className={styles.queryRow}>
         <label htmlFor="passage-query" className={styles.queryLabel}>
           Search passage text

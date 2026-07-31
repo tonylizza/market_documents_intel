@@ -61,6 +61,29 @@ GRANT SELECT ON
     app.current_discovery_items
 TO app_readonly;
 
+-- Milestone 7B.1: comparison-aware semantic retrieval. app_readonly gets
+-- SELECT on the current vector/context views only -- never on the raw
+-- app.passage_embeddings/app.retrieval_contexts tables (a raw grant would
+-- let a compromised or buggy frontend query across every historical
+-- publication's vectors, not just the active one).
+GRANT SELECT ON
+    app.current_passage_embeddings,
+    app.current_retrieval_contexts,
+    app.current_retrieval_context_language_categories,
+    app.current_retrieval_context_risk_subcategories
+TO app_readonly;
+
+-- Milestone 7B.2: standard-RAG Q&A retrieval chunks. Same discipline as the
+-- 7B.1 grant above -- app_readonly gets SELECT on the current-view wrapper
+-- only, never on raw app.qa_chunks/app.qa_chunk_passages (which would leak
+-- every historical publication's chunks/vectors, not just the active one).
+-- The disposable qa_experiment schema (7B.1d research spike) gets no grant
+-- at all -- app_readonly has zero access to it, by design.
+GRANT SELECT ON
+    app.current_qa_chunks,
+    app.current_qa_chunk_passages
+TO app_readonly;
+
 -- Milestone 7A.2: metric_definitions/metric_label_thresholds have no
 -- current_* view wrapper (7A.1 only defined the eight views above), but the
 -- application needs their display metadata (name/unit/description,

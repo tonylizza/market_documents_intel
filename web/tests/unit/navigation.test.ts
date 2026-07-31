@@ -26,4 +26,9 @@ describe("PRIMARY_NAVIGATION", () => {
     expect(labels).toContain("Passages");
     expect(labels).not.toContain("Ask the Reports");
   });
+
+  it("does not link /evidence-review (Milestone 7B.1b's experimental analyst-review route)", () => {
+    const hrefs = PRIMARY_NAVIGATION.map((item) => item.href);
+    expect(hrefs).not.toContain("/evidence-review");
+  });
 });

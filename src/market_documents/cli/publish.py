@@ -7,13 +7,17 @@ from alembic import command
 from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from market_documents.config import get_settings
 from market_documents.db.session import get_session
 from market_documents.publishing import audit
-from market_documents.publishing.models import ApplicationState, Publication, PublicationStatus
+from market_documents.publishing.models import ApplicationState, Company, Publication, PublicationStatus
 from market_documents.publishing.publisher import PublicationBuilder, activate_publication, cleanup_publications
+from market_documents.publishing.retrieval_benchmark import (
+    run_company_filtered_benchmark,
+    run_unfiltered_benchmark,
+)
 from market_documents.publishing.session import app_session_scope, assert_distinct_databases
 from market_documents.publishing.validation import validate_persisted
 
@@ -278,7 +282,96 @@ def audit_cmd(
             audit.build_deterministic_publication_review_sample_rows(session, publication_id),
             output_dir / "deterministic_publication_review_sample.csv",
         )
+        audit.write_audit_csv(
+            audit.build_publication_embedding_audit_rows(session, publication_id),
+            output_dir / "publication_embedding_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_embedding_lineage_audit_rows(session, publication_id),
+            output_dir / "publication_embedding_lineage_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_embedding_missing_audit_rows(session, publication_id),
+            output_dir / "publication_embedding_missing_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_vector_integrity_audit_rows(session, publication_id),
+            output_dir / "publication_vector_integrity_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_retrieval_context_audit_rows(session, publication_id),
+            output_dir / "publication_retrieval_context_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_retrieval_context_duplicate_audit_rows(session, publication_id),
+            output_dir / "publication_retrieval_context_duplicate_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_qa_chunk_embedding_audit_rows(session, publication_id),
+            output_dir / "qa_chunk_embedding_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_qa_chunk_lineage_audit_rows(session, publication_id),
+            output_dir / "qa_chunk_lineage_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_qa_chunk_duplicate_audit_rows(session, publication_id),
+            output_dir / "qa_chunk_duplicate_audit.csv",
+        )
+        audit.write_audit_csv(
+            audit.build_publication_qa_chunk_vector_integrity_audit_rows(session, publication_id),
+            output_dir / "qa_chunk_vector_integrity_audit.csv",
+        )
     typer.echo(f"[OK]   audit CSVs written to {output_dir}")
+
+
+@app.command("benchmark")
+def benchmark_cmd(
+    publication_id: uuid.UUID = typer.Option(..., "--publication-id"),
+    target_database_url: str = typer.Option(None, "--target-database-url", envvar="APP_DATABASE_URL"),
+    output_dir: Path = typer.Option(Path("data/audits"), "--output-dir"),
+    top_k: int = typer.Option(10, "--top-k"),
+) -> None:
+    """Compare exact vs. HNSW retrieval on this publication's embeddings and
+    write `publication_retrieval_benchmark.csv`."""
+    url = _target_url(target_database_url)
+    rows = []
+    with app_session_scope(url) as session:
+        unfiltered = run_unfiltered_benchmark(session, publication_id, top_k=top_k)
+        rows.append(unfiltered)
+        typer.echo(f"[unfiltered] {unfiltered}")
+
+        first_company_id = session.execute(
+            select(Company.id).where(Company.publication_id == publication_id).order_by(Company.display_order).limit(1)
+        ).scalar_one_or_none()
+        if first_company_id is not None:
+            filtered = run_company_filtered_benchmark(session, publication_id, first_company_id, top_k=top_k)
+            rows.append(filtered)
+            typer.echo(f"[company-filtered] {filtered}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "publication_retrieval_benchmark.csv"
+    with csv_path.open("w", newline="") as fh:
+        import csv as csv_module
+
+        writer = csv_module.DictWriter(
+            fh,
+            fieldnames=[
+                "scope",
+                "query_count",
+                "recall_at_1",
+                "recall_at_5",
+                "recall_at_10",
+                "mean_exact_latency_ms",
+                "mean_indexed_latency_ms",
+                "indexed_plan_uses_vector_index",
+                "meets_minimum_recall_at_10",
+            ],
+        )
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(vars(r))
+    typer.echo(f"[OK]   benchmark CSV written to {csv_path}")
 
 
 @app.command("cleanup")

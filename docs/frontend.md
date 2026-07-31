@@ -785,3 +785,90 @@ fixture data to test against.
 Semantic/embedding-based search, grounded Q&A, a PDF viewer, exports,
 authentication, saved searches, annotations, and web-triggered publishing
 are all out of scope for 7A.4 and were not started (Milestone 7B).
+
+## Milestone 7B.1: comparison-aware semantic retrieval
+
+Adds pgvector-backed passage embeddings, comparison-aware retrieval
+contexts, and Keyword/Semantic/Hybrid search to `/passages`. See
+`docs/publishing.md` for the application-schema/publisher changes; this
+section covers the frontend and deployment side.
+
+### New environment variables
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `QUERY_EMBEDDING_SERVICE_URL` | Base URL of the standalone Python query-embedding service (server-side only, never sent to the browser). | none -- required for Semantic/Hybrid |
+| `QUERY_EMBEDDING_TIMEOUT_MS` | Timeout for one `/embed-query` HTTP call. | `8000` |
+| `QUERY_EMBEDDING_MODEL` / `QUERY_EMBEDDING_MODEL_REVISION` / `QUERY_EMBEDDING_DIMENSIONS` | Expected model identity -- a mismatch against what the service actually returns fails the request safely rather than comparing incompatible vectors. | `BAAI/bge-small-en-v1.5` / pinned SHA / `384` |
+| `SEMANTIC_RETRIEVAL_MODE` | `exact` \| `hnsw` \| `auto`. | `hnsw` (see benchmark below) |
+| `PASSAGE_SEARCH_DEFAULT_MODE` | `keyword` \| `semantic` \| `hybrid` -- which mode `/passages` uses when no `mode` URL param is present. | `keyword` (evaluation-driven, see below) |
+| `SEMANTIC_CANDIDATE_LIMIT` / `LEXICAL_CANDIDATE_LIMIT` | Candidate pool size before context expansion/fusion. | `100` / `100` |
+| `RETRIEVAL_CONTEXTS_PER_PASSAGE` | Max contexts shown per passage before the rest fold into "also appears in". | `2` |
+| `RETRIEVAL_RRF_K` | Reciprocal rank fusion constant. | `60` |
+| `RETRIEVAL_MIN_SIMILARITY` | Weak-match similarity floor, calibrated from the real evaluation dataset (see `evaluation/`). | `0.71` |
+
+`QUERY_EMBEDDING_SERVICE_URL` is never read from a Client Component (same
+`server-only` import-scan enforcement as `APP_READONLY_DATABASE_URL`). No
+query text is ever sent to any host other than this configured, first-party
+service -- there is no external/hosted embedding provider code path in this
+milestone.
+
+### Embedding-service deployment
+
+`src/market_documents/embedding_service/app.py` (Python/FastAPI) exposes
+`/health`, `/metadata`, and `/embed-query` only -- no corpus data, no
+arbitrary model selection. Run locally with:
+
+```bash
+.venv/bin/uvicorn market_documents.embedding_service.app:app --port 8081
+```
+
+For conventional Node/container hosting, deploy this as a small separate
+process/container next to (not inside) the Next.js deployment, and point
+`QUERY_EMBEDDING_SERVICE_URL` at it. It loads the Hugging Face model once
+per process (first request after startup is slower; the model is cached in
+memory afterward) -- do not attempt to run it as a Vercel serverless
+function per request; prefer a long-lived Node-compatible host, a small
+VM/container, or a managed Python app-hosting product.
+
+### Vector search mode: exact vs HNSW
+
+Both exact and HNSW cosine search are implemented
+(`lib/db/vector-query.ts`, `lib/repositories/postgres-semantic-retrieval-
+repository.ts`). Measured against the real, live corpus (~22,169 vectors,
+publication `2026-07-29.1`): HNSW recall@10 = 1.0 relative to exact
+(unfiltered and company-filtered), with roughly 30% lower unfiltered query
+latency (1.87ms vs. 2.70ms) -- see the Milestone 7B.1 final report for the
+full benchmark. HNSW is therefore the default; exact remains available as
+the correctness baseline and is used for the evaluation dataset's
+`_exact` metrics.
+
+### Default search mode
+
+`PASSAGE_SEARCH_DEFAULT_MODE=keyword` by default. This is an evaluation-
+driven decision, not an assumption: `evaluation/run-evaluation.ts` runs a
+46-case dataset against the real corpus across five configurations
+(keyword, semantic-exact, semantic-HNSW, hybrid-exact, hybrid-HNSW).
+Keyword had the best recall@5/recall@10/MRR/nDCG@10 on this corpus; Hybrid
+and Semantic remain available as explicitly labeled alternative modes.
+Re-run the evaluation after any embedding-model change, corpus growth, or
+retrieval-tuning change before reconsidering the default.
+
+### Health checks
+
+`GET $QUERY_EMBEDDING_SERVICE_URL/health` returns `{"status": "ok",
+"model_loaded": true}` once the model has loaded; `/embed-query` returns
+`503` if the model failed to load and `504` on a timeout -- the frontend
+degrades Hybrid search to lexical-only results (with a visible notice)
+rather than failing the whole search when the embedding service is down,
+and shows a dedicated "Semantic search is temporarily unavailable" state
+for Semantic-only mode.
+
+### Rollback
+
+No new database is introduced by this milestone; rollback is the existing
+application-publication rollback (`market-documents publish promote
+--publication-id <older-ready-or-superseded-id>`, see `docs/publishing.md`)
+plus, if needed, stopping/reverting the embedding-service deployment and
+unsetting `QUERY_EMBEDDING_SERVICE_URL` (Semantic/Hybrid then show the
+provider-unavailable state; Keyword search is entirely unaffected).

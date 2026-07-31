@@ -37,6 +37,7 @@ from market_documents.models import (
     ReportPairLanguageFeatures,
     TextBlock,
 )
+from market_documents.models.embedding import PassageEmbedding
 from market_documents.models.enums import MetadataStatus
 from market_documents.publishing.labels import PUBLICATION_EXCLUDED_CATEGORIES
 from market_documents.services.extraction import get_narrative_document
@@ -48,6 +49,7 @@ from market_documents.services.financial_language_signals import (
     get_current_language_signal_run,
     get_current_pair_language_features,
 )
+from market_documents.services.passage_embedding import get_current_embedding_run
 from market_documents.services.passage_segmentation import get_current_segmentation_run
 from market_documents.services.structured_content_audit import (
     Classification,
@@ -61,6 +63,13 @@ class PassageDataset:
     passage: Passage
     classification: Classification | None
     excluded_as_artifact: bool
+    # Milestone 7B.1: the passage's current accepted source embedding, if
+    # one exists. `None` means the passage's segmentation run has no current
+    # successful embedding run, or the run completed without producing a
+    # vector for this specific passage (e.g. skipped for exceeding the
+    # model's token limit) -- either way, publishing must know eligibility
+    # was checked, not silently omit the embedding.
+    embedding: PassageEmbedding | None
 
 
 @dataclass(frozen=True)
@@ -131,6 +140,23 @@ def _resolve_report_extraction(session: Session, report: Report) -> ReportExtrac
     return ReportExtractionInfo(narrative_document=narrative_document, extraction_run=extraction_run)
 
 
+def _current_embeddings_by_passage(
+    session: Session, segmentation_run_id: uuid.UUID, passage_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, PassageEmbedding]:
+    if not passage_ids:
+        return {}
+    embedding_run = get_current_embedding_run(session, segmentation_run_id)
+    if embedding_run is None:
+        return {}
+    rows = session.scalars(
+        select(PassageEmbedding).where(
+            PassageEmbedding.embedding_run_id == embedding_run.id,
+            PassageEmbedding.passage_id.in_(passage_ids),
+        )
+    ).all()
+    return {row.passage_id: row for row in rows}
+
+
 def _resolve_passages_for_report(
     session: Session, report: Report, narrative_document: NarrativeDocument | None
 ) -> list[PassageDataset]:
@@ -147,6 +173,9 @@ def _resolve_passages_for_report(
         )
     )
     block_types_by_passage = _block_types_by_passage(session, [p.id for p in passages])
+    embeddings_by_passage = _current_embeddings_by_passage(
+        session, segmentation_run.id, [p.id for p in passages]
+    )
 
     datasets = []
     for passage in passages:
@@ -166,6 +195,7 @@ def _resolve_passages_for_report(
                 passage=passage,
                 classification=classification,
                 excluded_as_artifact=category in PUBLICATION_EXCLUDED_CATEGORIES,
+                embedding=embeddings_by_passage.get(passage.id),
             )
         )
     return datasets

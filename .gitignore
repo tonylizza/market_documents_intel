@@ -11,6 +11,10 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 CLAUDE.md
+#docs/frontend.md
+#docs/publishing.md
+docs/qa-retrieval-chunks.md
+
 
 # Third-party reference dictionaries (e.g. Loughran-McDonald Master
 # Dictionary): licensed for academic/non-commercial use, redistribution not

@@ -1,0 +1,9 @@
+label,n,retrieval_miss_count,retrieval_miss_among_baseline_13,sufficient_set_recovery_rate,precision_at_3_mean,recall_at_5_mean,no_answer_false_support_rate,correct_abstention_rate,citation_completeness_rate,duplicate_evidence_rate,latency_p50,latency_p95,ready_for_next_phase,readiness_failures
+BASELINE_CANONICAL,74,15,13,0.4407,0.2034,0.5169,0.0667,0.9333,1.0000,0.0000,143,335,false,"RETRIEVAL_MISS 15 > 5; sufficient-set recovery 44.1% < 70%; precision@3 0.203 < 0.25"
+HEADING_PLUS_PASSAGE,74,11,10,0.4576,0.2034,0.5254,0.0667,0.9333,1.0000,0.0000,182,384,false,"RETRIEVAL_MISS 11 > 5; sufficient-set recovery 45.8% < 70%; precision@3 0.203 < 0.25"
+PREVIOUS_PLUS_CURRENT,74,14,12,0.4407,0.2034,0.5169,0.0667,0.9333,1.0000,0.0000,189,359,false,"RETRIEVAL_MISS 14 > 5; sufficient-set recovery 44.1% < 70%; precision@3 0.203 < 0.25"
+CURRENT_PLUS_NEXT,74,14,13,0.4407,0.2034,0.5169,0.0667,0.9333,1.0000,0.0000,220,475,false,"RETRIEVAL_MISS 14 > 5; sufficient-set recovery 44.1% < 70%; precision@3 0.203 < 0.25"
+LOCAL_WINDOW,74,14,12,0.4407,0.2034,0.5169,0.0667,0.9333,1.0000,0.0000,233,453,false,"RETRIEVAL_MISS 14 > 5; sufficient-set recovery 44.1% < 70%; precision@3 0.203 < 0.25"
+FIXED_TOKEN_WINDOW_256_64,74,12,10,0.4576,0.2034,0.5339,0.0667,0.9333,1.0000,0.0000,254,568,false,"RETRIEVAL_MISS 12 > 5; sufficient-set recovery 45.8% < 70%; precision@3 0.203 < 0.25"
+COMPARISON_PAIR,74,13,12,0.4407,0.1893,0.5085,0.0667,0.9333,1.0000,0.0000,286,665,false,"RETRIEVAL_MISS 13 > 5; sufficient-set recovery 44.1% < 70%; precision@3 0.189 < 0.25"
+ALL_STRATEGIES_COMBINED,74,15,13,0.4407,0.2034,0.5169,0.0667,0.9333,1.0000,0.0000,242,533,false,"RETRIEVAL_MISS 15 > 5; sufficient-set recovery 44.1% < 70%; precision@3 0.203 < 0.25"

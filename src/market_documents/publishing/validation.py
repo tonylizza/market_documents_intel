@@ -18,14 +18,25 @@ from sqlalchemy.orm import Session
 
 from market_documents.publishing import labels
 from market_documents.publishing.models import (
+    APP_EMBEDDING_DIMENSION,
     Company,
     DiscoveryItem,
     MetricDefinition,
     Passage,
     PassageComparison,
+    PassageLanguageSignal,
     Report,
     ReportComparison,
 )
+from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
+from market_documents.publishing.models import QaChunk, QaChunkPassage
+from market_documents.publishing.models import (
+    RetrievalContext,
+    RetrievalContextLanguageCategory,
+    RetrievalContextRiskSubcategory,
+)
+from market_documents.publishing.retrieval_contexts import embedding_text_hash as compute_embedding_text_hash
+from market_documents.publishing.retrieval_contexts import vector_norm_nonzero
 
 
 @dataclass(frozen=True)
@@ -52,6 +63,21 @@ class ValidationSummary:
 
 
 _MATCHED_STATUSES = frozenset({"UNCHANGED", "LIGHTLY_MODIFIED", "SUBSTANTIALLY_MODIFIED"})
+
+# Milestone 7B.1 embedding-coverage policy: the research embedding pipeline
+# skips (never truncates) any passage whose token count exceeds the model's
+# maximum (currently 512) -- a deliberate, documented research-side choice
+# (see `services/passage_embedding.py::_run_embedding`), not a lineage bug.
+# On the real corpus this affects a small, real minority of passages
+# (measured at publish time: ~1% -- see `publication_embedding_missing_
+# audit.csv`). Rather than either (a) hard-failing on every single missing
+# embedding, which would make semantic-search coverage all-or-nothing and
+# block promotion over a handful of unusually long passages, or (b) silently
+# ignoring the gap, this threshold requires the *aggregate* coverage to stay
+# high while always recording every individual gap in the audit CSV for
+# human review. 95% is a genuine quality floor with real headroom below the
+# ~99% actually observed -- not fitted to this run's exact numbers.
+MINIMUM_EMBEDDING_COVERAGE = 0.95
 
 
 def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> ValidationSummary:
@@ -229,6 +255,225 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             "feature_gated_discovery_excludes_non_primary_eligible",
             comp is not None and bool(comp.disclosure_change_primary_eligible),
             f"{item.discovery_type}:{item.report_comparison_id}",
+        )
+
+    # --- Milestone 7B.1: passage embeddings ---
+    embeddings = list(
+        app_session.scalars(
+            select(AppPassageEmbedding).where(AppPassageEmbedding.publication_id == publication_id)
+        )
+    )
+    embedding_by_passage_id = {e.passage_id: e for e in embeddings}
+    passages_by_id = {p.id: p for p in passages}
+
+    check(
+        "no_duplicate_passage_embeddings",
+        len({(e.passage_id, e.embedding_model, e.embedding_model_revision) for e in embeddings})
+        == len(embeddings),
+    )
+    missing_embedding_count = sum(1 for p in passages if p.id not in embedding_by_passage_id)
+    embedding_coverage = 1.0 - (missing_embedding_count / len(passages)) if passages else 1.0
+    check(
+        "embedding_coverage_meets_minimum",
+        len(passages) == 0 or embedding_coverage >= MINIMUM_EMBEDDING_COVERAGE,
+        f"{missing_embedding_count}/{len(passages)} passages missing a current source embedding "
+        f"({embedding_coverage:.4f} coverage, minimum {MINIMUM_EMBEDDING_COVERAGE})",
+    )
+    for e in embeddings:
+        check("passage_embedding_references_published_passage", e.passage_id in passages_by_id, str(e.id))
+        check(
+            "passage_embedding_dimensions_match_configured_column",
+            e.dimensions == APP_EMBEDDING_DIMENSION == len(e.embedding),
+            str(e.id),
+        )
+        check("passage_embedding_vector_not_zero", vector_norm_nonzero(e.embedding), str(e.id))
+        app_passage = passages_by_id.get(e.passage_id)
+        if app_passage is not None:
+            check(
+                "passage_embedding_text_hash_self_consistent",
+                e.embedding_text_hash == compute_embedding_text_hash(app_passage.text),
+                str(e.id),
+            )
+
+    # --- Milestone 7B.1: retrieval contexts ---
+    contexts = list(
+        app_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == publication_id))
+    )
+    passage_comparisons_by_id = {pc.id: pc for pc in passage_comparisons}
+    check(
+        "no_duplicate_retrieval_contexts",
+        len(
+            {
+                (ctx.passage_id, ctx.passage_comparison_id, ctx.report_side, ctx.context_type)
+                for ctx in contexts
+            }
+        )
+        == len(contexts),
+    )
+    for ctx in contexts:
+        check("retrieval_context_references_published_passage", ctx.passage_id in passages_by_id, str(ctx.id))
+        embedding = embedding_by_passage_id.get(ctx.passage_id)
+        check(
+            "retrieval_context_references_published_embedding",
+            embedding is not None and ctx.passage_embedding_id == embedding.id,
+            str(ctx.id),
+        )
+        if ctx.context_type == "REPORT_ONLY":
+            check(
+                "report_only_context_has_no_comparison_fields",
+                ctx.passage_comparison_id is None
+                and ctx.report_comparison_id is None
+                and ctx.report_side is None,
+                str(ctx.id),
+            )
+            continue
+
+        check("comparison_linked_context_has_report_side", ctx.report_side in ("EARLIER", "LATER"), str(ctx.id))
+        pc = passage_comparisons_by_id.get(ctx.passage_comparison_id)
+        check(
+            "comparison_linked_context_references_published_passage_comparison",
+            pc is not None,
+            str(ctx.id),
+        )
+        if pc is None:
+            continue
+        side_passage_id = pc.earlier_passage_id if ctx.report_side == "EARLIER" else pc.later_passage_id
+        check(
+            "retrieval_context_side_matches_passage_comparison_side",
+            ctx.passage_id == side_passage_id,
+            str(ctx.id),
+        )
+        if pc.alignment_status == "NEW":
+            check("new_context_is_later_side", ctx.report_side == "LATER", str(ctx.id))
+        elif pc.alignment_status == "REMOVED":
+            check("removed_context_is_earlier_side", ctx.report_side == "EARLIER", str(ctx.id))
+        comp = comparisons_by_id.get(ctx.report_comparison_id)
+        check(
+            "retrieval_context_quality_matches_parent_comparison",
+            comp is not None
+            and ctx.report_side_quality == comp.report_side_quality
+            and ctx.alignment_change_quality == comp.alignment_change_quality
+            and ctx.irregular_gap_flag == comp.is_irregular_gap,
+            str(ctx.id),
+        )
+
+    # --- Milestone 7B.1: retrieval-context categories agree with published
+    # passage-language signals for the same (passage_comparison_id, side) ---
+    signals = list(
+        app_session.scalars(
+            select(PassageLanguageSignal).where(PassageLanguageSignal.publication_id == publication_id)
+        )
+    )
+    nonzero_categories_by_scope: dict[tuple, set[str]] = defaultdict(set)
+    nonzero_risk_subcats_by_scope: dict[tuple, set[str]] = defaultdict(set)
+    for s in signals:
+        if s.adjusted_count <= 0:
+            continue
+        scope = (s.passage_comparison_id, s.report_side)
+        nonzero_categories_by_scope[scope].add(s.category)
+        if s.category == "risk" and s.subcategory is not None:
+            nonzero_risk_subcats_by_scope[scope].add(s.subcategory)
+
+    context_ids = {ctx.id for ctx in contexts}
+    categories = list(
+        app_session.scalars(
+            select(RetrievalContextLanguageCategory).where(
+                RetrievalContextLanguageCategory.publication_id == publication_id
+            )
+        )
+    )
+    risk_subcats = list(
+        app_session.scalars(
+            select(RetrievalContextRiskSubcategory).where(
+                RetrievalContextRiskSubcategory.publication_id == publication_id
+            )
+        )
+    )
+    categories_by_context: dict[uuid.UUID, set[str]] = defaultdict(set)
+    for c in categories:
+        check("retrieval_context_category_references_published_context", c.retrieval_context_id in context_ids, str(c.id))
+        categories_by_context[c.retrieval_context_id].add(c.category)
+    risk_subcats_by_context: dict[uuid.UUID, set[str]] = defaultdict(set)
+    for rs in risk_subcats:
+        check(
+            "retrieval_context_risk_subcategory_references_published_context",
+            rs.retrieval_context_id in context_ids,
+            str(rs.id),
+        )
+        risk_subcats_by_context[rs.retrieval_context_id].add(rs.subcategory)
+
+    for ctx in contexts:
+        if ctx.context_type != "COMPARISON_LINKED":
+            continue
+        scope = (ctx.passage_comparison_id, ctx.report_side)
+        check(
+            "retrieval_context_language_categories_match_passage_language_signals",
+            categories_by_context.get(ctx.id, set()) == nonzero_categories_by_scope.get(scope, set()),
+            str(ctx.id),
+        )
+        check(
+            "retrieval_context_risk_subcategories_match_passage_language_signals",
+            risk_subcats_by_context.get(ctx.id, set()) == nonzero_risk_subcats_by_scope.get(scope, set()),
+            str(ctx.id),
+        )
+
+    # --- Milestone 7B.2: Q&A retrieval chunks ---
+    qa_chunks = list(app_session.scalars(select(QaChunk).where(QaChunk.publication_id == publication_id)))
+    qa_chunk_passages = list(
+        app_session.scalars(select(QaChunkPassage).where(QaChunkPassage.publication_id == publication_id))
+    )
+    qa_chunks_by_id = {c.id: c for c in qa_chunks}
+
+    check(
+        "no_duplicate_qa_chunk_index",
+        len({(c.publication_id, c.report_id, c.chunk_index) for c in qa_chunks}) == len(qa_chunks),
+    )
+    hashes_by_report: dict[uuid.UUID, set[str]] = defaultdict(set)
+    for c in qa_chunks:
+        check("qa_chunk_references_published_report", c.report_id in reports_by_id, str(c.id))
+        report = reports_by_id.get(c.report_id)
+        if report is not None:
+            # Zero cross-report chunks: a chunk's company must match its own
+            # report's company -- `build_qa_chunks` only ever sees one
+            # report's passages per call, so any mismatch here would mean a
+            # publisher wiring bug, not a chunking-algorithm bug.
+            check("qa_chunk_company_matches_report_company", c.company_id == report.company_id, str(c.id))
+        check("qa_chunk_page_range_valid", c.page_start <= c.page_end, str(c.id))
+        check(
+            "qa_chunk_dimensions_match_configured_column",
+            c.dimensions == APP_EMBEDDING_DIMENSION == len(c.embedding),
+            str(c.id),
+        )
+        check("qa_chunk_vector_not_zero", vector_norm_nonzero(c.embedding), str(c.id))
+        check(
+            "qa_chunk_embedding_text_hash_self_consistent",
+            c.embedding_text_hash == compute_embedding_text_hash(c.text),
+            str(c.id),
+        )
+        check(
+            "no_duplicate_qa_chunk_text_hash_within_report",
+            c.embedding_text_hash not in hashes_by_report[c.report_id],
+            str(c.id),
+        )
+        hashes_by_report[c.report_id].add(c.embedding_text_hash)
+
+    mapping_counts_by_chunk: dict[uuid.UUID, int] = defaultdict(int)
+    for m in qa_chunk_passages:
+        check("qa_chunk_passage_references_published_chunk", m.qa_chunk_id in qa_chunks_by_id, str(m.id))
+        check("qa_chunk_passage_references_published_passage", m.passage_id in passages_by_id, str(m.id))
+        chunk = qa_chunks_by_id.get(m.qa_chunk_id)
+        passage = passages_by_id.get(m.passage_id)
+        if chunk is not None and passage is not None:
+            # No orphan mappings across a report boundary either: a chunk's
+            # member passage must belong to the same report as the chunk.
+            check("qa_chunk_passage_same_report", chunk.report_id == passage.report_id, str(m.id))
+        mapping_counts_by_chunk[m.qa_chunk_id] += 1
+
+    for c in qa_chunks:
+        check(
+            "qa_chunk_has_complete_source_lineage",
+            mapping_counts_by_chunk.get(c.id, 0) > 0,
+            str(c.id),
         )
 
     return summary

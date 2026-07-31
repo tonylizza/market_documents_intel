@@ -1,0 +1,3 @@
+scope,query_count,recall_at_1,recall_at_5,recall_at_10,mean_exact_latency_ms,mean_indexed_latency_ms,indexed_plan_uses_vector_index,meets_minimum_recall_at_10
+unfiltered,30,1.0,1.0,1.0,2.7023100012835735,1.869334134971723,True,True
+company:9c67eb8e-7f17-57ea-b5c3-90fe76285c53,5,1.0,1.0,1.0,2.2380599984899163,2.201002003857866,True,True

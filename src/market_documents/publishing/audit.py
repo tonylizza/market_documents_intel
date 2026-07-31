@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from market_documents.publishing.models import (
+    APP_EMBEDDING_DIMENSION,
     Company,
     DiscoveryItem,
     LanguageMetric,
@@ -24,7 +25,11 @@ from market_documents.publishing.models import (
     Publication,
     Report,
     ReportComparison,
+    RetrievalContext,
 )
+from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
+from market_documents.publishing.models import QaChunk, QaChunkPassage
+from market_documents.publishing.retrieval_contexts import vector_norm_nonzero
 
 
 def write_audit_csv(rows: list, output_path: Path) -> None:
@@ -58,6 +63,8 @@ class PublicationRunAuditRow:
     language_metric_count: int | None
     passage_language_signal_count: int | None
     discovery_item_count: int | None
+    qa_chunk_count: int | None
+    qa_chunk_passage_mapping_count: int | None
     failure_reason: str | None
 
 
@@ -81,6 +88,8 @@ def build_publication_run_audit_rows(app_session: Session) -> list[PublicationRu
             language_metric_count=p.language_metric_count,
             passage_language_signal_count=p.passage_language_signal_count,
             discovery_item_count=p.discovery_item_count,
+            qa_chunk_count=p.qa_chunk_count,
+            qa_chunk_passage_mapping_count=p.qa_chunk_passage_mapping_count,
             failure_reason=p.failure_reason,
         )
         for p in publications
@@ -324,6 +333,8 @@ def build_publication_table_count_rows(app_session: Session, publication_id: uui
         "discovery_items": DiscoveryItem,
         "metric_definitions": MetricDefinition,
         "metric_label_thresholds": MetricLabelThreshold,
+        "qa_chunks": QaChunk,
+        "qa_chunk_passages": QaChunkPassage,
     }
     rows = []
     for name, model in tables.items():
@@ -383,3 +394,381 @@ def build_deterministic_publication_review_sample_rows(
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Milestone 7B.1: passage embeddings and retrieval contexts
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PublicationEmbeddingAuditRow:
+    publication_id: str
+    target_passage_id: str
+    target_embedding_id: str
+    embedding_model: str
+    embedding_model_revision: str
+    dimensions: int
+    vector_norm: float
+    vector_is_nonzero: bool
+
+
+def build_publication_embedding_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationEmbeddingAuditRow]:
+    embeddings = list(
+        app_session.scalars(
+            select(AppPassageEmbedding)
+            .where(AppPassageEmbedding.publication_id == publication_id)
+            .order_by(AppPassageEmbedding.passage_id)
+        )
+    )
+    return [
+        PublicationEmbeddingAuditRow(
+            publication_id=str(publication_id),
+            target_passage_id=str(e.passage_id),
+            target_embedding_id=str(e.id),
+            embedding_model=e.embedding_model,
+            embedding_model_revision=e.embedding_model_revision,
+            dimensions=e.dimensions,
+            vector_norm=e.vector_norm,
+            vector_is_nonzero=vector_norm_nonzero(e.embedding),
+        )
+        for e in embeddings
+    ]
+
+
+@dataclass
+class PublicationEmbeddingLineageAuditRow:
+    publication_id: str
+    target_passage_id: str
+    target_embedding_id: str
+    source_embedding_id: str
+    source_embedding_run_id: str
+
+
+def build_publication_embedding_lineage_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationEmbeddingLineageAuditRow]:
+    embeddings = list(
+        app_session.scalars(
+            select(AppPassageEmbedding)
+            .where(AppPassageEmbedding.publication_id == publication_id)
+            .order_by(AppPassageEmbedding.passage_id)
+        )
+    )
+    return [
+        PublicationEmbeddingLineageAuditRow(
+            publication_id=str(publication_id),
+            target_passage_id=str(e.passage_id),
+            target_embedding_id=str(e.id),
+            source_embedding_id=str(e.source_embedding_id),
+            source_embedding_run_id=str(e.source_embedding_run_id),
+        )
+        for e in embeddings
+    ]
+
+
+@dataclass
+class PublicationEmbeddingMissingAuditRow:
+    publication_id: str
+    target_passage_id: str
+    ticker: str
+    source_passage_id: str
+    heading: str | None
+
+
+def build_publication_embedding_missing_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationEmbeddingMissingAuditRow]:
+    """Every currently-published passage with no corresponding
+    `app.passage_embeddings` row -- non-empty means the default eligibility
+    policy (every current passage must have a current accepted source
+    embedding) was not met, which also fails `validate_persisted`."""
+    passages = list(
+        app_session.execute(
+            select(Passage, Company.ticker)
+            .join(Company, Passage.company_id == Company.id)
+            .where(Passage.publication_id == publication_id)
+            .order_by(Company.ticker, Passage.passage_index)
+        ).all()
+    )
+    embedded_passage_ids = set(
+        app_session.scalars(
+            select(AppPassageEmbedding.passage_id).where(AppPassageEmbedding.publication_id == publication_id)
+        )
+    )
+    return [
+        PublicationEmbeddingMissingAuditRow(
+            publication_id=str(publication_id),
+            target_passage_id=str(p.id),
+            ticker=ticker,
+            source_passage_id=str(p.source_passage_id),
+            heading=p.heading,
+        )
+        for p, ticker in passages
+        if p.id not in embedded_passage_ids
+    ]
+
+
+@dataclass
+class PublicationVectorIntegrityAuditRow:
+    publication_id: str
+    target_embedding_id: str
+    target_passage_id: str
+    dimensions_ok: bool
+    vector_nonzero: bool
+
+
+def build_publication_vector_integrity_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationVectorIntegrityAuditRow]:
+    embeddings = list(
+        app_session.scalars(
+            select(AppPassageEmbedding)
+            .where(AppPassageEmbedding.publication_id == publication_id)
+            .order_by(AppPassageEmbedding.passage_id)
+        )
+    )
+    return [
+        PublicationVectorIntegrityAuditRow(
+            publication_id=str(publication_id),
+            target_embedding_id=str(e.id),
+            target_passage_id=str(e.passage_id),
+            dimensions_ok=e.dimensions == APP_EMBEDDING_DIMENSION == len(e.embedding),
+            vector_nonzero=vector_norm_nonzero(e.embedding),
+        )
+        for e in embeddings
+    ]
+
+
+@dataclass
+class PublicationRetrievalContextAuditRow:
+    publication_id: str
+    target_context_id: str
+    target_passage_id: str
+    context_type: str
+    report_side: str | None
+    alignment_status: str | None
+    target_passage_comparison_id: str | None
+    target_report_comparison_id: str | None
+    ticker: str
+
+
+def build_publication_retrieval_context_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationRetrievalContextAuditRow]:
+    rows = list(
+        app_session.execute(
+            select(RetrievalContext, Company.ticker)
+            .join(Company, RetrievalContext.company_id == Company.id)
+            .where(RetrievalContext.publication_id == publication_id)
+            .order_by(Company.ticker, RetrievalContext.passage_id, RetrievalContext.report_side)
+        ).all()
+    )
+    return [
+        PublicationRetrievalContextAuditRow(
+            publication_id=str(publication_id),
+            target_context_id=str(ctx.id),
+            target_passage_id=str(ctx.passage_id),
+            context_type=ctx.context_type,
+            report_side=ctx.report_side,
+            alignment_status=ctx.alignment_status,
+            target_passage_comparison_id=str(ctx.passage_comparison_id) if ctx.passage_comparison_id else None,
+            target_report_comparison_id=str(ctx.report_comparison_id) if ctx.report_comparison_id else None,
+            ticker=ticker,
+        )
+        for ctx, ticker in rows
+    ]
+
+
+@dataclass
+class PublicationRetrievalContextDuplicateAuditRow:
+    publication_id: str
+    passage_id: str
+    passage_comparison_id: str | None
+    report_side: str | None
+    context_type: str
+    duplicate_count: int
+
+
+def build_publication_retrieval_context_duplicate_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationRetrievalContextDuplicateAuditRow]:
+    """Expected to be empty -- the DB unique constraint already prevents
+    this, so a non-empty result here would indicate the constraint itself
+    was bypassed (e.g. a raw SQL path outside the ORM)."""
+    contexts = list(
+        app_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == publication_id))
+    )
+    counts: dict[tuple, int] = {}
+    for ctx in contexts:
+        key = (ctx.passage_id, ctx.passage_comparison_id, ctx.report_side, ctx.context_type)
+        counts[key] = counts.get(key, 0) + 1
+    return [
+        PublicationRetrievalContextDuplicateAuditRow(
+            publication_id=str(publication_id),
+            passage_id=str(key[0]),
+            passage_comparison_id=str(key[1]) if key[1] else None,
+            report_side=key[2],
+            context_type=key[3],
+            duplicate_count=count,
+        )
+        for key, count in counts.items()
+        if count > 1
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Milestone 7B.2: Q&A retrieval chunks
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PublicationQaChunkEmbeddingAuditRow:
+    publication_id: str
+    target_chunk_id: str
+    target_report_id: str
+    chunk_index: int
+    embedding_model: str
+    embedding_model_revision: str
+    dimensions: int
+    vector_norm: float
+    vector_is_nonzero: bool
+    truncation_policy: str
+    token_count: int
+
+
+def build_publication_qa_chunk_embedding_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationQaChunkEmbeddingAuditRow]:
+    chunks = list(
+        app_session.scalars(
+            select(QaChunk)
+            .where(QaChunk.publication_id == publication_id)
+            .order_by(QaChunk.report_id, QaChunk.chunk_index)
+        )
+    )
+    return [
+        PublicationQaChunkEmbeddingAuditRow(
+            publication_id=str(publication_id),
+            target_chunk_id=str(c.id),
+            target_report_id=str(c.report_id),
+            chunk_index=c.chunk_index,
+            embedding_model=c.embedding_model,
+            embedding_model_revision=c.embedding_model_revision,
+            dimensions=c.dimensions,
+            vector_norm=c.vector_norm,
+            vector_is_nonzero=vector_norm_nonzero(c.embedding),
+            truncation_policy=c.truncation_policy,
+            token_count=c.token_count,
+        )
+        for c in chunks
+    ]
+
+
+@dataclass
+class PublicationQaChunkLineageAuditRow:
+    publication_id: str
+    target_chunk_id: str
+    target_report_id: str
+    ticker: str
+    chunk_index: int
+    page_start: int
+    page_end: int
+    section_heading: str | None
+    member_passage_count: int
+
+
+def build_publication_qa_chunk_lineage_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationQaChunkLineageAuditRow]:
+    rows = list(
+        app_session.execute(
+            select(QaChunk, Company.ticker)
+            .join(Company, QaChunk.company_id == Company.id)
+            .where(QaChunk.publication_id == publication_id)
+            .order_by(Company.ticker, QaChunk.report_id, QaChunk.chunk_index)
+        ).all()
+    )
+    mapping_counts: dict[uuid.UUID, int] = {}
+    for chunk_id, count in app_session.execute(
+        select(QaChunkPassage.qa_chunk_id, func.count())
+        .where(QaChunkPassage.publication_id == publication_id)
+        .group_by(QaChunkPassage.qa_chunk_id)
+    ).all():
+        mapping_counts[chunk_id] = count
+    return [
+        PublicationQaChunkLineageAuditRow(
+            publication_id=str(publication_id),
+            target_chunk_id=str(c.id),
+            target_report_id=str(c.report_id),
+            ticker=ticker,
+            chunk_index=c.chunk_index,
+            page_start=c.page_start,
+            page_end=c.page_end,
+            section_heading=c.section_heading,
+            member_passage_count=mapping_counts.get(c.id, 0),
+        )
+        for c, ticker in rows
+    ]
+
+
+@dataclass
+class PublicationQaChunkDuplicateAuditRow:
+    publication_id: str
+    target_report_id: str
+    embedding_text_hash: str
+    duplicate_count: int
+
+
+def build_publication_qa_chunk_duplicate_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationQaChunkDuplicateAuditRow]:
+    """Expected to be empty -- `publisher.py` already deduplicates
+    byte-identical chunk text within a report before persisting, so a
+    non-empty result here would indicate that dedup step was bypassed."""
+    chunks = list(app_session.scalars(select(QaChunk).where(QaChunk.publication_id == publication_id)))
+    counts: dict[tuple, int] = {}
+    for c in chunks:
+        key = (c.report_id, c.embedding_text_hash)
+        counts[key] = counts.get(key, 0) + 1
+    return [
+        PublicationQaChunkDuplicateAuditRow(
+            publication_id=str(publication_id),
+            target_report_id=str(key[0]),
+            embedding_text_hash=key[1],
+            duplicate_count=count,
+        )
+        for key, count in counts.items()
+        if count > 1
+    ]
+
+
+@dataclass
+class PublicationQaChunkVectorIntegrityAuditRow:
+    publication_id: str
+    target_chunk_id: str
+    target_report_id: str
+    dimensions_ok: bool
+    vector_nonzero: bool
+
+
+def build_publication_qa_chunk_vector_integrity_audit_rows(
+    app_session: Session, publication_id: uuid.UUID
+) -> list[PublicationQaChunkVectorIntegrityAuditRow]:
+    chunks = list(
+        app_session.scalars(
+            select(QaChunk).where(QaChunk.publication_id == publication_id).order_by(QaChunk.report_id, QaChunk.chunk_index)
+        )
+    )
+    return [
+        PublicationQaChunkVectorIntegrityAuditRow(
+            publication_id=str(publication_id),
+            target_chunk_id=str(c.id),
+            target_report_id=str(c.report_id),
+            dimensions_ok=c.dimensions == APP_EMBEDDING_DIMENSION == len(c.embedding),
+            vector_nonzero=vector_norm_nonzero(c.embedding),
+        )
+        for c in chunks
+    ]

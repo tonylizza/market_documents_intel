@@ -16,6 +16,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -33,6 +34,17 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# Fixed at the current source model's output size (BAAI/bge-small-en-v1.5,
+# see `market_documents.services.embedding_config`). Deliberately not
+# imported from the research package (the app schema stays independent of
+# research modules) -- kept in sync by convention and by
+# `publishing.validation`'s dimension check against the resolved source
+# embedding at build time. A future model with a different dimension
+# requires either a new migration changing this column, or a second
+# versioned embedding table -- never a silent reinterpretation of existing
+# vectors.
+APP_EMBEDDING_DIMENSION = 384
 
 
 class AppBase(DeclarativeBase):
@@ -103,6 +115,9 @@ class Publication(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     language_metric_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     passage_language_signal_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     discovery_item_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Milestone 7B.2
+    qa_chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    qa_chunk_passage_mapping_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     validation_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -571,3 +586,297 @@ class MetricLabelThreshold(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     maximum_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Milestone 7B.1: comparison-aware semantic retrieval (Option C)
+# ---------------------------------------------------------------------------
+
+
+class PassageEmbedding(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One deduplicated vector per published passage -- never one per
+    retrieval context. A passage that participates in two passage
+    comparisons still has exactly one row here; `RetrievalContext` is what
+    fans a single vector out into its valid comparison-specific
+    interpretations (see module docstring notes in `publisher.py`)."""
+
+    __tablename__ = "passage_embeddings"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id", "passage_id", "embedding_model", "embedding_model_revision",
+            name="uq_app_passage_embeddings_scope",
+        ),
+        Index("ix_app_passage_embeddings_publication_id", "publication_id"),
+        Index("ix_app_passage_embeddings_passage_id", "passage_id"),
+        Index(
+            "ix_app_passage_embeddings_hnsw_cosine",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    passage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Research-side lineage -- traceable but never queried live from here;
+    # the research database is never reachable from the application layer.
+    source_embedding_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_embedding_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    embedding_model_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    # sha256 of the exact `app.passages.text` this vector was computed from.
+    # The research side has no equivalent hash (see docstring in
+    # `publishing.retrieval_contexts`) -- this is a forward-looking drift
+    # detector, not a cross-checked value at publish time.
+    embedding_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    embedding: Mapped[list[float]] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=False)
+    vector_norm: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class RetrievalContext(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One analytical interpretation of one passage: either linked to a
+    specific passage-comparison side, or (rarely) a `REPORT_ONLY` context
+    for a passage that never participates in any published comparison.
+
+    Deliberately keyed so a passage can have more than one row here (one per
+    valid comparison side it occupies) while `PassageEmbedding` stays
+    deduplicated at the passage level -- see the Option C architecture note
+    in `publisher.py`.
+    """
+
+    __tablename__ = "retrieval_contexts"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id", "passage_id", "passage_comparison_id", "report_side", "context_type",
+            name="uq_app_retrieval_contexts_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_app_retrieval_contexts_publication_id", "publication_id"),
+        Index("ix_app_retrieval_contexts_passage_id", "passage_id"),
+        Index("ix_app_retrieval_contexts_passage_embedding_id", "passage_embedding_id"),
+        Index("ix_app_retrieval_contexts_passage_comparison_id", "passage_comparison_id"),
+        Index("ix_app_retrieval_contexts_report_comparison_id", "report_comparison_id"),
+        Index("ix_app_retrieval_contexts_report_id", "report_id"),
+        Index("ix_app_retrieval_contexts_company_id", "company_id"),
+        CheckConstraint(
+            "context_type IN ('COMPARISON_LINKED', 'REPORT_ONLY')",
+            name="ck_app_retrieval_contexts_context_type",
+        ),
+        CheckConstraint(
+            "(context_type = 'COMPARISON_LINKED' AND passage_comparison_id IS NOT NULL "
+            "AND report_comparison_id IS NOT NULL AND report_side IS NOT NULL) "
+            "OR (context_type = 'REPORT_ONLY' AND passage_comparison_id IS NULL "
+            "AND report_comparison_id IS NULL AND report_side IS NULL)",
+            name="ck_app_retrieval_contexts_type_consistency",
+        ),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    passage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=False
+    )
+    passage_embedding_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.passage_embeddings.id", ondelete="CASCADE"), nullable=False
+    )
+    passage_comparison_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.passage_comparisons.id", ondelete="CASCADE"), nullable=True
+    )
+    report_comparison_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.report_comparisons.id", ondelete="CASCADE"), nullable=True
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.reports.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.companies.id", ondelete="CASCADE"), nullable=False
+    )
+
+    context_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    report_side: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    alignment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    alignment_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    report_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    earlier_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    later_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    passage_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    primary_narrative_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    feature_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    structured_content_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    report_side_quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    alignment_change_quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    collision_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    split_merge_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    irregular_gap_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class RetrievalContextLanguageCategory(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """Distinct financial-language categories with at least one non-zero
+    signal for this context's (passage_comparison_id, report_side) scope --
+    normalized rather than JSONB/array so the frontend can filter/index by
+    category the same way it already does against `passage_language_signals`."""
+
+    __tablename__ = "retrieval_context_language_categories"
+    __table_args__ = (
+        UniqueConstraint(
+            "retrieval_context_id", "category", name="uq_app_rc_language_categories_scope"
+        ),
+        Index("ix_app_rc_language_categories_publication_id", "publication_id"),
+        Index("ix_app_rc_language_categories_context_id", "retrieval_context_id"),
+        Index("ix_app_rc_language_categories_category", "category"),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    retrieval_context_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.retrieval_contexts.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class RetrievalContextRiskSubcategory(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """Distinct risk subcategories (category='risk') with at least one
+    non-zero signal for this context's scope."""
+
+    __tablename__ = "retrieval_context_risk_subcategories"
+    __table_args__ = (
+        UniqueConstraint(
+            "retrieval_context_id", "subcategory", name="uq_app_rc_risk_subcategories_scope"
+        ),
+        Index("ix_app_rc_risk_subcategories_publication_id", "publication_id"),
+        Index("ix_app_rc_risk_subcategories_context_id", "retrieval_context_id"),
+        Index("ix_app_rc_risk_subcategories_subcategory", "subcategory"),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    retrieval_context_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.retrieval_contexts.id", ondelete="CASCADE"), nullable=False
+    )
+    subcategory: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Milestone 7B.2: standard-RAG Q&A retrieval chunks
+# ---------------------------------------------------------------------------
+#
+# A second, additive vector representation alongside `PassageEmbedding` --
+# never a replacement. `PassageEmbedding` stays the citation/comparison
+# identity (one deduplicated vector per passage); `QaChunk` exists purely to
+# improve retrieval recall for free-text questions, built from overlapping
+# ~350-token windows over a report's passages (see `publishing.qa_chunking`).
+# A `QaChunk` is never a citation object on its own -- `/ask` always resolves
+# final citations back through `QaChunkPassage` to real `app.passages`
+# rows, report pages, and (transitively) comparisons, exactly like the
+# 7B.1d `qa_experiment` spike's parent-mapping discipline, but against a
+# real, published, `app_readonly`-servable table.
+
+
+class QaChunk(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One overlapping ~350-token retrieval chunk, one embedding each.
+    Deduplicated within a report by `embedding_text_hash` at build time
+    (see `publisher.py`) -- two windows that happen to produce byte-identical
+    text collapse to one row via the deterministic id, never two."""
+
+    __tablename__ = "qa_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id", "report_id", "chunk_index", name="uq_app_qa_chunks_pub_report_index"
+        ),
+        Index("ix_app_qa_chunks_publication_id", "publication_id"),
+        Index("ix_app_qa_chunks_report_id", "report_id"),
+        Index("ix_app_qa_chunks_company_id", "company_id"),
+        Index(
+            "ix_app_qa_chunks_hnsw_cosine",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        CheckConstraint("page_start <= page_end", name="ck_app_qa_chunks_page_range"),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.reports.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.companies.id", ondelete="CASCADE"), nullable=False
+    )
+
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    section_heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    truncation_policy: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    embedding_model_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=False)
+    vector_norm: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # GENERATED ALWAYS ... STORED: same pattern as `Passage.search_vector`,
+    # enabling optional lexical retrieval over chunk text (brief: "optional
+    # lexical retrieval over Q&A chunk text").
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('pg_catalog.english', coalesce(section_heading, '')), 'A') || "
+            "setweight(to_tsvector('pg_catalog.english', text), 'B')",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
+
+class QaChunkPassage(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """Many-to-many mapping of a chunk to every canonical `app.passages` row
+    its character span overlaps -- the parent-resolution table `/ask`
+    citations resolve through to reach a real, stable passage identity."""
+
+    __tablename__ = "qa_chunk_passages"
+    __table_args__ = (
+        UniqueConstraint("qa_chunk_id", "passage_id", name="uq_app_qa_chunk_passages_scope"),
+        Index("ix_app_qa_chunk_passages_publication_id", "publication_id"),
+        Index("ix_app_qa_chunk_passages_qa_chunk_id", "qa_chunk_id"),
+        Index("ix_app_qa_chunk_passages_passage_id", "passage_id"),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    qa_chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.qa_chunks.id", ondelete="CASCADE"), nullable=False
+    )
+    passage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=False
+    )
+    member_order: Mapped[int] = mapped_column(Integer, nullable=False)

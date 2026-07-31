@@ -19,6 +19,7 @@ from market_documents.publishing import labels
 from market_documents.publishing.discovery import DiscoveryCandidate, rank_discovery_items
 from market_documents.publishing.findings import ComparisonMetrics, eligible_candidates, select_findings
 from market_documents.publishing.models import (
+    APP_EMBEDDING_DIMENSION,
     ApplicationState,
     Company,
     DiscoveryItem,
@@ -28,13 +29,30 @@ from market_documents.publishing.models import (
     Passage,
     PassageComparison,
     PassageLanguageSignal,
+)
+from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
+from market_documents.publishing.models import QaChunk as AppQaChunk
+from market_documents.publishing.models import QaChunkPassage as AppQaChunkPassage
+from market_documents.publishing.models import (
     Publication,
     PublicationStatus,
     Report,
     ReportComparison,
+    RetrievalContext,
+    RetrievalContextLanguageCategory,
+    RetrievalContextRiskSubcategory,
+)
+from market_documents.publishing.qa_chunking import QaPassageRow, build_qa_chunks
+from market_documents.publishing.retrieval_contexts import (
+    LanguageSignalTag,
+    distinct_categories,
+    distinct_risk_subcategories,
+    embedding_text_hash,
+    vector_norm,
 )
 from market_documents.publishing.source_dataset import ComparisonDataset, ResearchSnapshot, resolve_research_snapshot
 from market_documents.publishing.validation import validate_persisted
+from market_documents.services.embedding_config import EMBEDDING_CONFIG, MODEL_NAME, MODEL_REVISION
 from market_documents.services.financial_language_config import CORE_CATEGORIES, CUSTOM_TAXONOMY_CATEGORIES
 from market_documents.services.financial_language_metrics import (
     PRIMARY_NARRATIVE_EXCLUDED_CATEGORIES,
@@ -43,6 +61,7 @@ from market_documents.services.financial_language_metrics import (
 )
 from market_documents.services.feature_config import FEATURE_CONFIG
 from market_documents.services.feature_metrics import passage_excluded_from_features
+from market_documents.services.passage_embedding import get_embedding_model
 
 # Which quality dimension gates each discovery/finding candidate -- used to
 # choose which already-computed quality label to attach to a discovery item.
@@ -552,6 +571,10 @@ class PublicationBuilder:
 
         # --- Passages ---
         app_passages: dict[uuid.UUID, Passage] = {}
+        # Milestone 7B.1: one deduplicated vector per published passage,
+        # keyed by *source* passage id (same key space as app_passages) so
+        # the retrieval-context pass below can look both up together.
+        app_passage_embeddings: dict[uuid.UUID, AppPassageEmbedding] = {}
         for report_source_id, passage_datasets in snapshot.passages_by_report.items():
             app_report = app_reports.get(report_source_id)
             if app_report is None:
@@ -585,12 +608,45 @@ class PublicationBuilder:
                 app_passages[passage.id] = app_passage
                 app_session.add(app_passage)
 
+                source_embedding = pd.embedding
+                if source_embedding is None:
+                    # No current accepted source embedding -- left out of
+                    # app_passage_embeddings entirely (never a zero/placeholder
+                    # vector). `validate_persisted` fails the publication
+                    # unless this passage is a documented exclusion.
+                    continue
+                embedding_run = source_embedding.embedding_run
+                vector = list(source_embedding.embedding)
+                app_embedding = AppPassageEmbedding(
+                    id=labels.derive_id(pv, "passage_embeddings", str(passage.id)),
+                    publication_id=pub_id,
+                    passage_id=app_passage_id,
+                    source_embedding_id=source_embedding.id,
+                    source_embedding_run_id=embedding_run.id,
+                    embedding_model=embedding_run.model_name,
+                    embedding_model_revision=embedding_run.model_revision,
+                    dimensions=len(vector),
+                    embedding_text_hash=embedding_text_hash(app_passage.text),
+                    embedding=vector,
+                    vector_norm=vector_norm(vector),
+                )
+                app_passage_embeddings[passage.id] = app_embedding
+                app_session.add(app_embedding)
+
         app_session.flush()
 
         # --- Passage comparisons and passage-language signals ---
         passage_comparison_count = 0
         passage_language_signal_count = 0
         language_metric_count = 0
+        # Milestone 7B.1 bookkeeping, filled in alongside the loop below and
+        # consumed by the "Retrieval contexts" pass after it: one record per
+        # created PassageComparison (so contexts can be derived without a
+        # second query pass), plus every language-signal category/subcategory
+        # observed per (passage_comparison_id, report_side) so context
+        # category rows can be deduplicated deterministically.
+        pc_records: list[tuple[PassageComparison, ReportComparison, Passage | None, Passage | None]] = []
+        signal_tags_by_pc_side: dict[tuple[uuid.UUID, str], list[LanguageSignalTag]] = {}
 
         for cd in snapshot.comparisons:
             app_comparison = app_comparisons.get(cd.pair.id)
@@ -621,31 +677,31 @@ class PublicationBuilder:
                 if alignment.alignment_status == AlignmentStatus.REMOVED and earlier_app is None:
                     continue
                 app_pc_id = labels.derive_id(pv, "passage_comparisons", str(alignment.id))
-                app_session.add(
-                    PassageComparison(
-                        id=app_pc_id,
-                        publication_id=pub_id,
-                        source_alignment_id=alignment.id,
-                        report_comparison_id=app_comparison.id,
-                        earlier_passage_id=earlier_app.id if earlier_app else None,
-                        later_passage_id=later_app.id if later_app else None,
-                        alignment_status=alignment.alignment_status.value,
-                        alignment_type=alignment.alignment_type.value,
-                        confidence=alignment.confidence.value,
-                        confidence_label=labels.confidence_label(alignment.confidence.value),
-                        semantic_similarity=alignment.semantic_similarity,
-                        lexical_similarity=alignment.lexical_cosine_similarity,
-                        heading_similarity=alignment.heading_similarity,
-                        content_score=alignment.combined_score,
-                        position_difference=alignment.position_difference,
-                        collision_flag=classify_collision(alignment.review_reason),
-                        split_merge_flag=alignment.alignment_type
-                        in (AlignmentType.ONE_TO_TWO, AlignmentType.TWO_TO_ONE),
-                        primary_alignment=alignment.primary_alignment,
-                        review_reason=alignment.review_reason,
-                    )
+                app_pc = PassageComparison(
+                    id=app_pc_id,
+                    publication_id=pub_id,
+                    source_alignment_id=alignment.id,
+                    report_comparison_id=app_comparison.id,
+                    earlier_passage_id=earlier_app.id if earlier_app else None,
+                    later_passage_id=later_app.id if later_app else None,
+                    alignment_status=alignment.alignment_status.value,
+                    alignment_type=alignment.alignment_type.value,
+                    confidence=alignment.confidence.value,
+                    confidence_label=labels.confidence_label(alignment.confidence.value),
+                    semantic_similarity=alignment.semantic_similarity,
+                    lexical_similarity=alignment.lexical_cosine_similarity,
+                    heading_similarity=alignment.heading_similarity,
+                    content_score=alignment.combined_score,
+                    position_difference=alignment.position_difference,
+                    collision_flag=classify_collision(alignment.review_reason),
+                    split_merge_flag=alignment.alignment_type
+                    in (AlignmentType.ONE_TO_TWO, AlignmentType.TWO_TO_ONE),
+                    primary_alignment=alignment.primary_alignment,
+                    review_reason=alignment.review_reason,
                 )
+                app_session.add(app_pc)
                 app_alignment_by_source[alignment.id] = app_pc_id
+                pc_records.append((app_pc, app_comparison, earlier_app, later_app))
                 passage_comparison_count += 1
 
             app_session.flush()
@@ -782,6 +838,9 @@ class PublicationBuilder:
                             )
                         )
                         passage_language_signal_count += 1
+                        signal_tags_by_pc_side.setdefault((app_pc_id, signal.report_side.value), []).append(
+                            LanguageSignalTag(category=category, subcategory=None, adjusted_count=raw_count)
+                        )
 
                     for hit in cd.category_hits_by_signal_id.get(signal.id, []):
                         if hit.hit_count <= 0:
@@ -810,6 +869,257 @@ class PublicationBuilder:
                             )
                         )
                         passage_language_signal_count += 1
+                        signal_tags_by_pc_side.setdefault((app_pc_id, signal.report_side.value), []).append(
+                            LanguageSignalTag(
+                                category=hit.category, subcategory=hit.subcategory, adjusted_count=adjusted
+                            )
+                        )
+
+        app_session.flush()
+
+        # --- Retrieval contexts (Milestone 7B.1) ---
+        # One context per non-null side pointer on each created
+        # PassageComparison -- this single rule is what naturally implements
+        # every alignment-status side rule the milestone requires: NEW rows
+        # only ever have later_passage_id set (later-side context only),
+        # REMOVED rows only ever have earlier_passage_id set (earlier-side
+        # only), matched statuses have both set (both sides), and one-sided
+        # AMBIGUOUS rows preserve whichever side is actually present. No
+        # alignment_status branching is needed here.
+        retrieval_context_count = 0
+        comparison_participant_source_ids: set[uuid.UUID] = set()
+
+        for app_pc, app_comparison, earlier_app, later_app in pc_records:
+            sides = (
+                ("EARLIER", earlier_app, app_comparison.earlier_report_id, app_comparison.earlier_period_end),
+                ("LATER", later_app, app_comparison.later_report_id, app_comparison.later_period_end),
+            )
+            for side_value, side_app, side_report_id, side_period_end in sides:
+                if side_app is None:
+                    continue
+                comparison_participant_source_ids.add(side_app.source_passage_id)
+                side_embedding = app_passage_embeddings.get(side_app.source_passage_id)
+                if side_embedding is None:
+                    # No current source embedding for this side -- no
+                    # retrieval context can be built (FK requires one), but
+                    # the passage/comparison rows themselves are still
+                    # published; `validate_persisted` surfaces the gap.
+                    continue
+                tags = signal_tags_by_pc_side.get((app_pc.id, side_value), [])
+                app_session.add(
+                    RetrievalContext(
+                        id=labels.derive_id(pv, "retrieval_contexts", str(app_pc.id), side_value),
+                        publication_id=pub_id,
+                        passage_id=side_app.id,
+                        passage_embedding_id=side_embedding.id,
+                        passage_comparison_id=app_pc.id,
+                        report_comparison_id=app_comparison.id,
+                        report_id=side_report_id,
+                        company_id=app_comparison.company_id,
+                        context_type="COMPARISON_LINKED",
+                        report_side=side_value,
+                        alignment_status=app_pc.alignment_status,
+                        alignment_type=app_pc.alignment_type,
+                        confidence=app_pc.confidence,
+                        report_period_end=side_period_end,
+                        earlier_period_end=app_comparison.earlier_period_end,
+                        later_period_end=app_comparison.later_period_end,
+                        heading=side_app.heading,
+                        passage_type=side_app.passage_type,
+                        primary_narrative_eligible=side_app.primary_narrative_eligible,
+                        feature_eligible=side_app.feature_eligible,
+                        structured_content_category=side_app.structured_content_category,
+                        report_side_quality=app_comparison.report_side_quality,
+                        alignment_change_quality=app_comparison.alignment_change_quality,
+                        collision_flag=app_pc.collision_flag,
+                        split_merge_flag=app_pc.split_merge_flag,
+                        irregular_gap_flag=app_comparison.is_irregular_gap,
+                    )
+                )
+                retrieval_context_count += 1
+                for category in distinct_categories(tags):
+                    app_session.add(
+                        RetrievalContextLanguageCategory(
+                            id=labels.derive_id(
+                                pv, "retrieval_context_language_categories", str(app_pc.id), side_value, category
+                            ),
+                            publication_id=pub_id,
+                            retrieval_context_id=labels.derive_id(
+                                pv, "retrieval_contexts", str(app_pc.id), side_value
+                            ),
+                            category=category,
+                        )
+                    )
+                for subcategory in distinct_risk_subcategories(tags):
+                    app_session.add(
+                        RetrievalContextRiskSubcategory(
+                            id=labels.derive_id(
+                                pv, "retrieval_context_risk_subcategories", str(app_pc.id), side_value, subcategory
+                            ),
+                            publication_id=pub_id,
+                            retrieval_context_id=labels.derive_id(
+                                pv, "retrieval_contexts", str(app_pc.id), side_value
+                            ),
+                            subcategory=subcategory,
+                        )
+                    )
+
+        # --- Retrieval contexts: REPORT_ONLY ---
+        # A passage that never occupies any side of any published passage
+        # comparison (no alignment ever referenced it, or every alignment
+        # that could have referenced it was excluded) would otherwise be
+        # entirely unretrievable via semantic/hybrid search -- publish a
+        # minimal context so it stays searchable, per the milestone's
+        # "recommended eligibility" policy. Real corpus measurement (see the
+        # Milestone 7B.1 report) found this affects ~0.1% of passages.
+        for source_passage_id, app_passage in app_passages.items():
+            if source_passage_id in comparison_participant_source_ids:
+                continue
+            embedding = app_passage_embeddings.get(source_passage_id)
+            if embedding is None:
+                continue
+            app_session.add(
+                RetrievalContext(
+                    id=labels.derive_id(pv, "retrieval_contexts", str(app_passage.id), "REPORT_ONLY"),
+                    publication_id=pub_id,
+                    passage_id=app_passage.id,
+                    passage_embedding_id=embedding.id,
+                    passage_comparison_id=None,
+                    report_comparison_id=None,
+                    report_id=app_passage.report_id,
+                    company_id=app_passage.company_id,
+                    context_type="REPORT_ONLY",
+                    report_side=None,
+                    alignment_status=None,
+                    alignment_type=None,
+                    confidence=None,
+                    report_period_end=app_passage.report_period_end,
+                    earlier_period_end=None,
+                    later_period_end=None,
+                    heading=app_passage.heading,
+                    passage_type=app_passage.passage_type,
+                    primary_narrative_eligible=app_passage.primary_narrative_eligible,
+                    feature_eligible=app_passage.feature_eligible,
+                    structured_content_category=app_passage.structured_content_category,
+                    report_side_quality=None,
+                    alignment_change_quality=None,
+                    collision_flag=False,
+                    split_merge_flag=False,
+                    irregular_gap_flag=False,
+                )
+            )
+            retrieval_context_count += 1
+
+        app_session.flush()
+
+        # --- Q&A retrieval chunks (Milestone 7B.2) ---
+        # A second, additive vector representation, never a replacement for
+        # `app_passage_embeddings` above -- see the module docstring on
+        # `QaChunk`. Built per report (never crossing a report boundary,
+        # enforced here by construction: `build_qa_chunks` is called once
+        # per report's own sorted passage list, never a merged list) from
+        # `app_passages`' already-published, artifact-filtered rows -- a
+        # source passage excluded upstream (artifact, or no accepted
+        # embedding) simply isn't a QaPassageRow member and can't be quoted
+        # in a chunk.
+        embedding_model = get_embedding_model()
+        qa_chunk_count = 0
+        qa_chunk_passage_mapping_count = 0
+        for report_source_id, passage_datasets in snapshot.passages_by_report.items():
+            app_report = app_reports.get(report_source_id)
+            if app_report is None:
+                continue
+            report_passage_rows: list[QaPassageRow] = []
+            for pd in sorted(passage_datasets, key=lambda pd: pd.passage.passage_index):
+                if pd.excluded_as_artifact:
+                    continue
+                app_passage = app_passages.get(pd.passage.id)
+                if app_passage is None:
+                    continue
+                report_passage_rows.append(
+                    QaPassageRow(
+                        id=app_passage.id,
+                        report_id=app_passage.report_id,
+                        company_id=app_passage.company_id,
+                        passage_index=pd.passage.passage_index,
+                        heading=app_passage.heading,
+                        text=app_passage.text,
+                        first_page_number=app_passage.first_page_number,
+                        last_page_number=app_passage.last_page_number,
+                    )
+                )
+            if not report_passage_rows:
+                continue
+
+            chunk_candidates = build_qa_chunks(report_passage_rows, embedding_model.count_tokens)
+            if not chunk_candidates:
+                continue
+
+            # Batched, never one giant single-call encode of an entire
+            # report's chunks -- `encode_batch` forwards `batch_size=len
+            # (texts)` straight to the model (a single unbatched forward
+            # pass), which is fine for canonical-passage-sized inputs but
+            # exhausts GPU/MPS memory once a report has hundreds of chunks.
+            # Same batch size the canonical embedding pipeline already uses
+            # (`services.passage_embedding._run_embedding`).
+            encoded: list = []
+            texts = [c.text for c in chunk_candidates]
+            for batch_start in range(0, len(texts), EMBEDDING_CONFIG.batch_size):
+                batch = texts[batch_start : batch_start + EMBEDDING_CONFIG.batch_size]
+                encoded.extend(embedding_model.encode_batch(batch))
+            seen_hashes: set[str] = set()
+            for candidate, enc in zip(chunk_candidates, encoded):
+                text_hash = embedding_text_hash(candidate.text)
+                if text_hash in seen_hashes:
+                    # Two windows in the same report producing byte-identical
+                    # text (short trailing chunks are the common case) --
+                    # `uq_app_qa_chunks_pub_report_index` would still accept
+                    # a second row (chunk_index differs), but a duplicate
+                    # vector adds retrieval noise with zero new coverage, so
+                    # it's skipped here rather than persisted and later
+                    # flagged by validate_persisted's duplicate-hash check.
+                    continue
+                seen_hashes.add(text_hash)
+
+                chunk_id = labels.derive_id(
+                    pv, "qa_chunks", str(candidate.report_id), str(candidate.chunk_index)
+                )
+                vector = list(enc.vector)
+                app_session.add(
+                    AppQaChunk(
+                        id=chunk_id,
+                        publication_id=pub_id,
+                        report_id=candidate.report_id,
+                        company_id=candidate.company_id,
+                        chunk_index=candidate.chunk_index,
+                        text=candidate.text,
+                        section_heading=candidate.section_heading,
+                        page_start=candidate.page_start,
+                        page_end=candidate.page_end,
+                        token_count=candidate.token_count,
+                        truncation_policy=candidate.truncation_policy,
+                        embedding_model=MODEL_NAME,
+                        embedding_model_revision=MODEL_REVISION,
+                        dimensions=len(vector),
+                        embedding_text_hash=text_hash,
+                        embedding=vector,
+                        vector_norm=vector_norm(vector),
+                    )
+                )
+                qa_chunk_count += 1
+                for member_order, member_passage_id in enumerate(candidate.member_passage_ids):
+                    app_session.add(
+                        AppQaChunkPassage(
+                            id=labels.derive_id(
+                                pv, "qa_chunk_passages", str(chunk_id), str(member_passage_id)
+                            ),
+                            publication_id=pub_id,
+                            qa_chunk_id=chunk_id,
+                            passage_id=member_passage_id,
+                            member_order=member_order,
+                        )
+                    )
+                    qa_chunk_passage_mapping_count += 1
 
         app_session.flush()
 
@@ -866,6 +1176,8 @@ class PublicationBuilder:
             "language_metric_count": language_metric_count,
             "passage_language_signal_count": passage_language_signal_count,
             "discovery_item_count": len(ranked_items),
+            "qa_chunk_count": qa_chunk_count,
+            "qa_chunk_passage_mapping_count": qa_chunk_passage_mapping_count,
         }
 
 
