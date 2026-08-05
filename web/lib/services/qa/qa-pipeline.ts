@@ -1,8 +1,7 @@
 import "server-only";
 import { PostgresSemanticRetrievalRepository } from "@/lib/repositories/postgres-semantic-retrieval-repository";
 import { PostgresCompanyRepository } from "@/lib/repositories/postgres-company-repository";
-import { CachingQueryEmbeddingProvider, HttpQueryEmbeddingProvider, queryEmbeddingCacheKeyPrefix, loadHttpQueryEmbeddingProviderConfig } from "@/lib/services/query-embedding-provider";
-import { QueryEmbeddingProviderError } from "@/lib/services/query-embedding-provider";
+import { QueryEmbeddingProviderError, createQueryEmbeddingProvider } from "@/lib/services/query-embedding-provider";
 import { parsePassageSearchParams } from "@/lib/services/passage-search-params";
 import { analyzeQuestion } from "@/lib/services/qa/query-analysis";
 import { generateCandidates } from "@/lib/services/qa/candidate-generation";
@@ -59,21 +58,19 @@ export async function runEvidencePipeline(question: string): Promise<EvidencePip
   let embedding = null;
   try {
     // Config loading (throws `QueryEmbeddingProviderError` synchronously
-    // when `QUERY_EMBEDDING_SERVICE_URL` is unset) is deliberately inside
+    // when the selected provider is unconfigured) is deliberately inside
     // this same try/catch as the network call -- a missing/misconfigured
     // embedding service must degrade to keyword-only candidate generation,
     // never fail the whole request (milestone: "provider failure degrades
     // safely to deterministic baseline").
-    const providerConfig = loadHttpQueryEmbeddingProviderConfig();
-    const embeddingProvider = new CachingQueryEmbeddingProvider(
-      new HttpQueryEmbeddingProvider(providerConfig),
-      queryEmbeddingCacheKeyPrefix(providerConfig),
-    );
+    const embeddingProvider = createQueryEmbeddingProvider();
     embedding = await embeddingProvider.embedQuery(question);
   } catch (error) {
     if (!(error instanceof QueryEmbeddingProviderError)) throw error;
     // Degrades safely to keyword-only candidate generation -- never fails
     // the whole request just because the embedding service is unavailable.
+    // Logged server-side (message only) for operational visibility.
+    console.error("Query-embedding provider failed, degrading to keyword-only:", error.message);
   }
 
   const [publicationId, candidates] = await Promise.all([

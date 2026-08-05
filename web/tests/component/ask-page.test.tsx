@@ -11,11 +11,23 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+class MockQaQuestionTooLongError extends Error {}
+
 vi.mock("@/lib/services/qa/qa-orchestrator", () => ({
+  MAX_QUESTION_LENGTH_CHARS: 500,
+  QaQuestionTooLongError: MockQaQuestionTooLongError,
   runQaPipeline: async () => {
     if (mockShouldThrow) throw new Error("connection refused");
     return mockResult;
   },
+}));
+
+vi.mock("@/lib/services/qa/quota-service", () => ({
+  hashClientId: (raw: string) => `hashed:${raw}`,
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined }),
 }));
 
 vi.mock("@/lib/repositories/postgres-company-repository", () => ({
@@ -190,6 +202,13 @@ describe("AskPage", () => {
     render(ui);
     expect(await screen.findByText("Partially answered -- see what's missing below")).toBeInTheDocument();
     expect(screen.getByText(/covenant compliance specifically/)).toBeInTheDocument();
+  });
+
+  it("rejects an oversized question without calling the pipeline", async () => {
+    const { default: AskPage } = await import("@/app/ask/page");
+    const ui = await AskPage({ searchParams: Promise.resolve({ q: "x".repeat(501) }) });
+    render(ui);
+    expect(screen.getByText(/Question is too long/)).toBeInTheDocument();
   });
 
   it("shows an error state when the pipeline throws", async () => {

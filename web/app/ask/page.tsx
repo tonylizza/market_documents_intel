@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
@@ -7,8 +8,11 @@ import { AnswerStatusBanner } from "@/components/AnswerStatusBanner";
 import { QaEvidenceList } from "@/components/QaEvidenceList";
 import { AskForm } from "@/components/AskForm";
 import { PostgresCompanyRepository } from "@/lib/repositories/postgres-company-repository";
-import { runQaPipeline } from "@/lib/services/qa/qa-orchestrator";
+import { MAX_QUESTION_LENGTH_CHARS, QaQuestionTooLongError, runQaPipeline } from "@/lib/services/qa/qa-orchestrator";
+import { hashClientId } from "@/lib/services/qa/quota-service";
 import styles from "./page.module.css";
+
+const CLIENT_ID_COOKIE = "mdi_cid";
 
 export const metadata: Metadata = { title: "Ask" };
 
@@ -62,12 +66,27 @@ export default async function AskPage({ searchParams }: AskPageProps) {
 
   let result: Awaited<ReturnType<typeof runQaPipeline>> | null = null;
   let pipelineFailed = false;
+  let questionTooLong = false;
   if (question !== "") {
-    try {
-      result = await runQaPipeline(question, { companyTicker: companyFilter, reportYear: yearFilter });
-    } catch (error) {
-      pipelineFailed = true;
-      console.error("Failed to run Q&A pipeline:", (error as Error).message);
+    if (question.length > MAX_QUESTION_LENGTH_CHARS) {
+      // Server-side request validation (brief: "maximum question length:
+      // approximately 500 characters") -- rejected before any retrieval or
+      // generation work happens, never a silent truncation.
+      questionTooLong = true;
+    } else {
+      try {
+        const cookieStore = await cookies();
+        const rawClientId = cookieStore.get(CLIENT_ID_COOKIE)?.value ?? null;
+        const clientIdHash = rawClientId ? hashClientId(rawClientId) : null;
+        result = await runQaPipeline(question, { companyTicker: companyFilter, reportYear: yearFilter }, clientIdHash);
+      } catch (error) {
+        if (error instanceof QaQuestionTooLongError) {
+          questionTooLong = true;
+        } else {
+          pipelineFailed = true;
+          console.error("Failed to run Q&A pipeline:", (error as Error).message);
+        }
+      }
     }
   }
 
@@ -95,6 +114,8 @@ export default async function AskPage({ searchParams }: AskPageProps) {
           title="Enter a question to get a grounded answer"
           description="Nothing is submitted to any external service other than the configured answer-generation provider, and only retrieved report excerpts (never raw vectors) are ever sent to it."
         />
+      ) : questionTooLong ? (
+        <ErrorState title={`Question is too long (maximum ${MAX_QUESTION_LENGTH_CHARS} characters).`} />
       ) : pipelineFailed || !result ? (
         <ErrorState title="Ask is temporarily unavailable" />
       ) : (

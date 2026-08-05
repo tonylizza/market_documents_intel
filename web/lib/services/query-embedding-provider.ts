@@ -137,6 +137,199 @@ export class HttpQueryEmbeddingProvider implements QueryEmbeddingProvider {
   }
 }
 
+export interface CloudflareQueryEmbeddingProviderConfig {
+  accountId: string;
+  apiToken: string;
+  model: string;
+  timeoutMs: number;
+  expectedDimensions: number;
+  maxQueryChars: number;
+  debugLogQueries: boolean;
+}
+
+export function loadCloudflareQueryEmbeddingProviderConfig(): CloudflareQueryEmbeddingProviderConfig {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !apiToken) {
+    throw new QueryEmbeddingProviderError(
+      "CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must both be set for the Cloudflare query-embedding provider.",
+    );
+  }
+  return {
+    accountId,
+    apiToken,
+    // Exact production model identifier -- never client-selectable (see
+    // Phase 4/5 compatibility experiment: mean-pooling vs. the corpus's
+    // canonical CLS-pooling local model, accepted on measured retrieval
+    // quality, not byte-identical output).
+    model: process.env.CLOUDFLARE_EMBEDDING_MODEL ?? "@cf/baai/bge-small-en-v1.5",
+    timeoutMs: Number.parseInt(process.env.QUERY_EMBEDDING_TIMEOUT_MS ?? "8000", 10),
+    expectedDimensions: Number.parseInt(process.env.QUERY_EMBEDDING_DIMENSIONS ?? "384", 10),
+    maxQueryChars: Number.parseInt(process.env.QUERY_EMBEDDING_MAX_QUERY_CHARS ?? "2000", 10),
+    // Off by default -- query text must never enter production logs unless
+    // explicitly opted into for debugging (milestone constraint).
+    debugLogQueries: process.env.QUERY_EMBEDDING_DEBUG_LOG === "true",
+  };
+}
+
+/** Retryable (network/timeout/5xx) failure -- distinguished from auth/quota/
+ * malformed-output failures below, which must never be retried. Still a
+ * `QueryEmbeddingProviderError` so existing `instanceof` call sites keep
+ * working unchanged after the bounded retry is exhausted. */
+class CloudflareTransientError extends QueryEmbeddingProviderError {
+  constructor(message: string) {
+    super(message);
+    this.name = "CloudflareTransientError";
+  }
+}
+
+/**
+ * Server-side Cloudflare Workers AI implementation of `QueryEmbeddingProvider`
+ * (Milestone 7B.3). Calls the REST `ai/run` endpoint directly from the
+ * Next.js server -- no separate Cloudflare Worker, no client-selectable
+ * model, no raw vector ever returned to the browser (this class is only
+ * ever invoked from other server-only modules). At most one bounded retry
+ * on a transient failure; 401/403/429 and malformed/invalid-dimension
+ * output fail immediately, never retried.
+ */
+export class CloudflareQueryEmbeddingProvider implements QueryEmbeddingProvider {
+  constructor(private readonly config: CloudflareQueryEmbeddingProviderConfig = loadCloudflareQueryEmbeddingProviderConfig()) {}
+
+  async embedQuery(text: string): Promise<QueryEmbedding> {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      throw new QueryEmbeddingProviderError("query text is empty after normalization");
+    }
+    if (normalized.length > this.config.maxQueryChars) {
+      throw new QueryEmbeddingProviderError(
+        `query text exceeds maximum length of ${this.config.maxQueryChars} characters`,
+      );
+    }
+
+    try {
+      return await this.callOnce(normalized);
+    } catch (error) {
+      if (error instanceof CloudflareTransientError) {
+        // One bounded retry, transient failures only.
+        return await this.callOnce(normalized);
+      }
+      throw error;
+    }
+  }
+
+  private async callOnce(normalized: string): Promise<QueryEmbedding> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const start = Date.now();
+
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${this.config.accountId}/ai/run/${this.config.model}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${this.config.apiToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ text: [normalized] }),
+          signal: controller.signal,
+          // Never cached -- a live query embedding must always be a fresh call.
+          cache: "no-store",
+        },
+      );
+    } catch (error) {
+      clearTimeout(timeout);
+      if ((error as { name?: string })?.name === "AbortError") {
+        throw new CloudflareTransientError("Cloudflare embedding request timed out.");
+      }
+      throw new CloudflareTransientError("Cloudflare embedding service is unavailable.");
+    }
+    clearTimeout(timeout);
+
+    if (response.status === 401 || response.status === 403) {
+      // Never retried -- a bad/expired token won't fix itself on retry.
+      throw new QueryEmbeddingProviderError(`Cloudflare embedding request rejected (HTTP ${response.status}).`);
+    }
+    if (response.status === 429) {
+      // Never retried -- retrying a quota error only makes it worse.
+      throw new QueryEmbeddingProviderError("Cloudflare embedding quota exceeded.");
+    }
+    if (!response.ok) {
+      throw new CloudflareTransientError(`Cloudflare embedding service returned HTTP ${response.status}.`);
+    }
+
+    let body: { success?: boolean; result?: { data?: unknown[] } };
+    try {
+      body = await response.json();
+    } catch {
+      throw new QueryEmbeddingProviderError("Cloudflare embedding response was not valid JSON.");
+    }
+
+    const vectorRaw = body?.result?.data?.[0];
+    if (!body?.success || !Array.isArray(vectorRaw) || vectorRaw.length === 0) {
+      throw new QueryEmbeddingProviderError("Cloudflare embedding response was malformed.");
+    }
+    if (vectorRaw.length !== this.config.expectedDimensions || !vectorRaw.every((x) => typeof x === "number" && Number.isFinite(x))) {
+      throw new QueryEmbeddingModelMismatchError(
+        `Cloudflare embedding dimension/validity mismatch: got ${vectorRaw.length} values, expected ${this.config.expectedDimensions} finite numbers.`,
+      );
+    }
+    const numericVector = vectorRaw as number[];
+
+    // Deterministic normalization -- Cloudflare's output is already
+    // near-unit-norm (measured 1.0 +/- ~0.0002 in the Phase 4 compatibility
+    // experiment) but is not guaranteed exactly 1.0, and the stored corpus
+    // vectors are always exactly L2-normalized (see `embedding_config.py`).
+    const norm = Math.sqrt(numericVector.reduce((sum, x) => sum + x * x, 0));
+    if (!(norm > 0)) {
+      throw new QueryEmbeddingProviderError("Cloudflare embedding vector had zero norm.");
+    }
+    const vector = numericVector.map((x) => x / norm);
+
+    if (this.config.debugLogQueries) {
+      console.debug("[cloudflare-query-embedding]", { latencyMs: Date.now() - start, normalizedTextLength: normalized.length });
+    }
+
+    return {
+      vector,
+      model: this.config.model,
+      // Cloudflare's response carries no revision/version identifier for
+      // the underlying weights (unlike the local FastAPI service's
+      // `model_revision`) -- "workers-ai" documents the provider surface
+      // itself rather than asserting a specific pinned revision.
+      modelRevision: "workers-ai",
+      dimensions: vector.length,
+      normalizedQueryText: normalized,
+      latencyMs: Date.now() - start,
+      tokenCount: null,
+      provider: "cloudflare-workers-ai",
+    } satisfies QueryEmbedding;
+  }
+}
+
+export type QueryEmbeddingProviderSelector = "local" | "cloudflare";
+
+export function resolveQueryEmbeddingProviderSelector(): QueryEmbeddingProviderSelector {
+  const raw = (process.env.QUERY_EMBEDDING_PROVIDER ?? "local").trim().toLowerCase();
+  if (raw === "cloudflare") return "cloudflare";
+  if (raw === "local") return "local";
+  throw new QueryEmbeddingProviderError(`Unknown QUERY_EMBEDDING_PROVIDER "${raw}"; expected "local" or "cloudflare".`);
+}
+
+/** Single construction point for every `/ask` and `/evidence-review`
+ * caller -- deployment-level `QUERY_EMBEDDING_PROVIDER` selects local vs.
+ * Cloudflare; never a per-request/client-selectable choice. Always wraps
+ * the inner provider in the existing in-process LRU cache. */
+export function createQueryEmbeddingProvider(): QueryEmbeddingProvider {
+  if (resolveQueryEmbeddingProviderSelector() === "cloudflare") {
+    const config = loadCloudflareQueryEmbeddingProviderConfig();
+    return new CachingQueryEmbeddingProvider(new CloudflareQueryEmbeddingProvider(config), `cloudflare:${config.model}`);
+  }
+  const config = loadHttpQueryEmbeddingProviderConfig();
+  return new CachingQueryEmbeddingProvider(new HttpQueryEmbeddingProvider(config), queryEmbeddingCacheKeyPrefix(config));
+}
+
 const QUERY_EMBEDDING_CACHE_MAX_ENTRIES = 200;
 
 declare global {

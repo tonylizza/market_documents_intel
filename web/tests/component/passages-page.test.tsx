@@ -167,6 +167,7 @@ vi.mock("@/lib/services/query-embedding-provider", () => ({
     expectedDimensions: 384,
   }),
   queryEmbeddingCacheKeyPrefix: () => "test-prefix",
+  createQueryEmbeddingProvider: () => ({ embedQuery: async () => ({}) }),
 }));
 
 vi.mock("@/lib/repositories/postgres-semantic-retrieval-repository", () => ({

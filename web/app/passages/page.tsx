@@ -5,7 +5,7 @@ import { buildPassageSearchViewModel } from "@/lib/services/passage-search-servi
 import { parsePassageSearchParams, hasSearchableInput, type RawSearchParamsInput } from "@/lib/services/passage-search-params";
 import { parseRetrievalMode } from "@/lib/services/retrieval-search-params";
 import { searchHybrid, searchSemantic } from "@/lib/services/retrieval-service";
-import { CachingQueryEmbeddingProvider, HttpQueryEmbeddingProvider, queryEmbeddingCacheKeyPrefix, loadHttpQueryEmbeddingProviderConfig } from "@/lib/services/query-embedding-provider";
+import { createQueryEmbeddingProvider } from "@/lib/services/query-embedding-provider";
 import { getRetrievalConfig } from "@/lib/config/retrieval-config";
 import type { RetrievalPage } from "@/lib/domain/retrieval";
 import { PageHeader } from "@/components/PageHeader";
@@ -36,11 +36,7 @@ const MODE_DESCRIPTIONS = {
 
 async function buildRetrievalPage(mode: "semantic" | "hybrid", params: ReturnType<typeof parsePassageSearchParams>, maxResults: number): Promise<RetrievalPage> {
   const semanticRepository = new PostgresSemanticRetrievalRepository();
-  const providerConfig = loadHttpQueryEmbeddingProviderConfig();
-  const embeddingProvider = new CachingQueryEmbeddingProvider(
-    new HttpQueryEmbeddingProvider(providerConfig),
-    queryEmbeddingCacheKeyPrefix(providerConfig),
-  );
+  const embeddingProvider = createQueryEmbeddingProvider();
   return mode === "semantic"
     ? searchSemantic(semanticRepository, embeddingProvider, params, maxResults)
     : searchHybrid(semanticRepository, embeddingProvider, params, maxResults);

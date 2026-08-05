@@ -154,6 +154,7 @@ export async function searchSemantic(
     embedding = await embeddingProvider.embedQuery(params.query);
   } catch (error) {
     if (error instanceof QueryEmbeddingProviderError) {
+      console.error("Query-embedding provider failed, semantic search unavailable:", error.message);
       return { results: [], mode: "semantic", weakMatchNotice: false, providerUnavailable: true };
     }
     throw error;
@@ -244,6 +245,7 @@ export async function searchHybrid(
       // fusion rather than failing the whole search (a partial, honestly
       // labeled result beats an outage-shaped error for a filter-driven
       // corpus search).
+      console.error("Query-embedding provider failed, hybrid search degrading to lexical-only:", error.message);
       return searchHybridLexicalOnly(repository, params, maxResults, lexicalCandidates);
     }
     throw error;

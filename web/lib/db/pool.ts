@@ -22,11 +22,19 @@ declare global {
 function createPool(): Pool {
   const config = loadDatabaseConfig();
 
+  // Neon's serverless proxy routes a connection to the correct compute by
+  // TLS SNI (see Neon's Node.js connection docs) -- `servername` is set
+  // explicitly rather than left to Node's implicit derivation, which is
+  // not guaranteed to match the connection-string host in every runtime
+  // (observed live: identical connection string/role/grants succeeded via
+  // psycopg but intermittently mis-resolved permissions via node-postgres
+  // without an explicit `servername`, milestone 7B.3 Preview deployment).
+  const host = new URL(config.connectionString).hostname;
   const ssl =
     config.sslMode === "require" || config.sslMode === "no-verify"
-      ? { rejectUnauthorized: false }
+      ? { rejectUnauthorized: false, servername: host }
       : config.sslMode === "verify-full" || config.sslMode === "verify-ca"
-        ? { rejectUnauthorized: true }
+        ? { rejectUnauthorized: true, servername: host }
         : undefined;
 
   return new Pool({

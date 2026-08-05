@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CachingQueryEmbeddingProvider,
+  CloudflareQueryEmbeddingProvider,
   HttpQueryEmbeddingProvider,
   QueryEmbeddingModelMismatchError,
   QueryEmbeddingProviderError,
+  createQueryEmbeddingProvider,
   queryEmbeddingCacheKeyPrefix,
+  resolveQueryEmbeddingProviderSelector,
 } from "@/lib/services/query-embedding-provider";
 
 const CONFIG = {
@@ -73,6 +76,131 @@ describe("HttpQueryEmbeddingProvider", () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED")) as unknown as typeof fetch;
     const provider = new HttpQueryEmbeddingProvider(CONFIG);
     await expect(provider.embedQuery("x")).rejects.toBeInstanceOf(QueryEmbeddingProviderError);
+  });
+});
+
+const CF_CONFIG = {
+  accountId: "test-account",
+  apiToken: "test-token",
+  model: "@cf/baai/bge-small-en-v1.5",
+  timeoutMs: 5000,
+  expectedDimensions: 384,
+  maxQueryChars: 2000,
+  debugLogQueries: false,
+};
+
+function mockCfFetch(response: unknown, ok = true, status = 200) {
+  const fn = vi.fn().mockResolvedValue({ ok, status, json: async () => response });
+  global.fetch = fn as unknown as typeof fetch;
+  return fn;
+}
+
+function cfBody(overrides: Partial<{ success: boolean; data: number[][] }> = {}) {
+  return {
+    success: true,
+    result: { data: overrides.data ?? [new Array(384).fill(0.05)], shape: [1, 384], pooling: "mean" },
+    errors: [],
+    messages: [],
+  };
+}
+
+describe("CloudflareQueryEmbeddingProvider", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns a validated, L2-normalized QueryEmbedding on success", async () => {
+    mockCfFetch(cfBody());
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    const result = await provider.embedQuery("liquidity risk");
+    expect(result.vector).toHaveLength(384);
+    expect(result.provider).toBe("cloudflare-workers-ai");
+    expect(result.model).toBe(CF_CONFIG.model);
+    const norm = Math.sqrt(result.vector.reduce((s, x) => s + x * x, 0));
+    expect(norm).toBeCloseTo(1, 5);
+  });
+
+  it("throws QueryEmbeddingModelMismatchError on dimension mismatch", async () => {
+    mockCfFetch(cfBody({ data: [new Array(128).fill(0.1)] }));
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    await expect(provider.embedQuery("x")).rejects.toBeInstanceOf(QueryEmbeddingModelMismatchError);
+  });
+
+  it("rejects an oversized query without calling the network", async () => {
+    const fetchMock = mockCfFetch(cfBody());
+    const provider = new CloudflareQueryEmbeddingProvider({ ...CF_CONFIG, maxQueryChars: 5 });
+    await expect(provider.embedQuery("this is way too long")).rejects.toBeInstanceOf(QueryEmbeddingProviderError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not retry on 401/403", async () => {
+    const fetchMock = mockCfFetch({}, false, 401);
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    await expect(provider.embedQuery("x")).rejects.toBeInstanceOf(QueryEmbeddingProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry on 429", async () => {
+    const fetchMock = mockCfFetch({}, false, 429);
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    await expect(provider.embedQuery("x")).rejects.toBeInstanceOf(QueryEmbeddingProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries exactly once on a transient 500, then succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => cfBody() });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    const result = await provider.embedQuery("liquidity");
+    expect(result.vector).toHaveLength(384);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after one retry on a persistent transient failure", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    await expect(provider.embedQuery("x")).rejects.toBeInstanceOf(QueryEmbeddingProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws QueryEmbeddingProviderError on a malformed response", async () => {
+    mockCfFetch({ success: false, errors: ["boom"] });
+    const provider = new CloudflareQueryEmbeddingProvider(CF_CONFIG);
+    await expect(provider.embedQuery("x")).rejects.toBeInstanceOf(QueryEmbeddingProviderError);
+  });
+});
+
+describe("createQueryEmbeddingProvider / resolveQueryEmbeddingProviderSelector", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("defaults to the local provider when QUERY_EMBEDDING_PROVIDER is unset", () => {
+    delete process.env.QUERY_EMBEDDING_PROVIDER;
+    expect(resolveQueryEmbeddingProviderSelector()).toBe("local");
+  });
+
+  it("selects cloudflare when QUERY_EMBEDDING_PROVIDER=cloudflare", () => {
+    process.env.QUERY_EMBEDDING_PROVIDER = "cloudflare";
+    expect(resolveQueryEmbeddingProviderSelector()).toBe("cloudflare");
+  });
+
+  it("rejects an unknown provider selector", () => {
+    process.env.QUERY_EMBEDDING_PROVIDER = "openai";
+    expect(() => resolveQueryEmbeddingProviderSelector()).toThrow(QueryEmbeddingProviderError);
+  });
+
+  it("createQueryEmbeddingProvider throws clearly when cloudflare is selected but unconfigured", () => {
+    process.env.QUERY_EMBEDDING_PROVIDER = "cloudflare";
+    delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    expect(() => createQueryEmbeddingProvider()).toThrow(QueryEmbeddingProviderError);
   });
 });
 

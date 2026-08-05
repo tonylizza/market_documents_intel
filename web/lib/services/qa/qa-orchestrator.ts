@@ -1,20 +1,26 @@
 import "server-only";
 import { PostgresCompanyRepository } from "@/lib/repositories/postgres-company-repository";
 import { PostgresQaChunkRepository } from "@/lib/repositories/postgres-qa-chunk-repository";
-import {
-  CachingQueryEmbeddingProvider,
-  HttpQueryEmbeddingProvider,
-  QueryEmbeddingProviderError,
-  loadHttpQueryEmbeddingProviderConfig,
-  queryEmbeddingCacheKeyPrefix,
-} from "@/lib/services/query-embedding-provider";
+import { QueryEmbeddingProviderError, createQueryEmbeddingProvider } from "@/lib/services/query-embedding-provider";
 import { GeminiGenerationProvider } from "@/lib/services/generation/gemini-provider";
 import { getGenerationConfig } from "@/lib/config/generation-config";
 import { retrieveQaEvidence } from "@/lib/services/qa/qa-chunk-retrieval-service";
 import { generateQaAnswer } from "@/lib/services/qa/qa-answer-service";
+import { checkAndIncrementQuota, loadQuotaLimits } from "@/lib/services/qa/quota-service";
 import { bothSidesPresent, groupEvidenceByCompanyAndReport, routeQuestion, type QaRoute } from "@/lib/services/qa/question-router";
 import type { QaAnswer } from "@/lib/domain/qa-answer";
 import type { QueryAnalysis } from "@/lib/domain/qa-evidence";
+
+/** Abuse-control bound (brief: "maximum question length: approximately 500
+ * characters"). Enforced before any retrieval or generation work happens. */
+export const MAX_QUESTION_LENGTH_CHARS = 500;
+
+export class QaQuestionTooLongError extends Error {
+  constructor() {
+    super(`Question exceeds the maximum length of ${MAX_QUESTION_LENGTH_CHARS} characters.`);
+    this.name = "QaQuestionTooLongError";
+  }
+}
 
 export interface QaFilters {
   companyTicker: string | null;
@@ -44,18 +50,22 @@ export interface QaPipelineResult {
  * pipeline `/evidence-review` uses. Never mutates or reads from
  * `qa_experiment`.
  */
-export async function runQaPipeline(questionText: string, filters: QaFilters = { companyTicker: null, reportYear: null }): Promise<QaPipelineResult> {
+export async function runQaPipeline(
+  questionText: string,
+  filters: QaFilters = { companyTicker: null, reportYear: null },
+  clientIdHash: string | null = null,
+): Promise<QaPipelineResult> {
+  if (questionText.length > MAX_QUESTION_LENGTH_CHARS) {
+    throw new QaQuestionTooLongError();
+  }
+
   const totalStart = Date.now();
 
   const companyRepository = new PostgresCompanyRepository();
   const companies = await companyRepository.listCompanies();
   const decision = routeQuestion(questionText, companies);
 
-  const embeddingConfig = loadHttpQueryEmbeddingProviderConfig();
-  const embeddingProvider = new CachingQueryEmbeddingProvider(
-    new HttpQueryEmbeddingProvider(embeddingConfig),
-    queryEmbeddingCacheKeyPrefix(embeddingConfig),
-  );
+  const embeddingProvider = createQueryEmbeddingProvider();
 
   const chunkRepository = new PostgresQaChunkRepository();
 
@@ -89,7 +99,11 @@ export async function runQaPipeline(questionText: string, filters: QaFilters = {
     if (!(error instanceof QueryEmbeddingProviderError)) throw error;
     // Query-embedding service unavailable -- fall through with zero
     // evidence, which `generateQaAnswer` turns into INSUFFICIENT_EVIDENCE
-    // rather than crashing the page.
+    // rather than crashing the page. Logged server-side only (never a
+    // query-content leak -- message only) so a provider outage is
+    // operationally visible instead of silently indistinguishable from a
+    // genuinely unanswerable question.
+    console.error("Query-embedding provider failed, degrading to zero evidence:", error.message);
     evidence = [];
   }
   const retrievalLatencyMs = Date.now() - retrievalStart;
@@ -103,11 +117,36 @@ export async function runQaPipeline(questionText: string, filters: QaFilters = {
     return true;
   });
 
-  const generationProvider = new GeminiGenerationProvider(getGenerationConfig());
   const singleSidedComparisonWarning = decision.route === "COMPARISON_QA" && !bothSidesPresent(filteredEvidence);
-  const answer = await generateQaAnswer(questionText, filteredEvidence, generationProvider, {
-    singleSidedComparisonWarning,
-  });
+
+  // Daily quota gate (brief: "~10/browser/day, ~100/day globally") -- checked
+  // immediately before the ONE Gemini call this request will ever make.
+  // Retrieval already happened above regardless, so a quota-exhausted
+  // request still returns real evidence/citations, never a fabricated
+  // answer and never a hard failure of the whole page.
+  const quotaLimits = loadQuotaLimits();
+  const quota = clientIdHash
+    ? await checkAndIncrementQuota(clientIdHash, quotaLimits.perClientLimit, quotaLimits.globalLimit)
+    : { allowed: true as const, reason: "within_limit" as const };
+
+  const answer = quota.allowed
+    ? await generateQaAnswer(questionText, filteredEvidence, new GeminiGenerationProvider(getGenerationConfig()), {
+        singleSidedComparisonWarning,
+      })
+    : {
+        status: "PROVIDER_UNAVAILABLE" as const,
+        answerText: null,
+        unsupportedPortion: null,
+        citedEvidence: [],
+        allEvidence: [...filteredEvidence],
+        providerLatencyMs: null,
+        errorDetail:
+          quota.reason === "global_limit"
+            ? "The daily question limit for this application has been reached. Supporting excerpts are still shown below."
+            : quota.reason === "quota_service_unavailable"
+              ? "Generated answers are temporarily unavailable right now. Supporting excerpts are still shown below."
+              : "You've reached today's question limit for this browser. Supporting excerpts are still shown below.",
+      };
 
   const grouped = decision.route === "CORPUS_QA" ? groupEvidenceByCompanyAndReport(answer.allEvidence) : [];
 

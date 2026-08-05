@@ -23,6 +23,14 @@ import { NextRequest, NextResponse } from "next/server";
 // because next.config.ts headers are static and can't vary per request.
 // Forwarding the nonce via a request header lets the App Router read it
 // (via `headers()`) and stamp it onto every inline script it renders.
+// Milestone 7B.3: also assigns an opaque, random first-party cookie used
+// ONLY as the per-browser abuse-control quota key
+// (`lib/services/qa/quota-service.ts` hashes it before it ever reaches the
+// database -- see that module's docstring). Never derived from IP, never
+// used for anything but quota counting, never read client-side (httpOnly).
+const CLIENT_ID_COOKIE = "mdi_cid";
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const cspHeader = [
@@ -45,6 +53,16 @@ export function proxy(request: NextRequest) {
     request: { headers: requestHeaders },
   });
   response.headers.set("Content-Security-Policy", cspHeader);
+
+  if (!request.cookies.has(CLIENT_ID_COOKIE)) {
+    response.cookies.set(CLIENT_ID_COOKIE, crypto.randomUUID(), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: ONE_YEAR_SECONDS,
+    });
+  }
 
   return response;
 }
