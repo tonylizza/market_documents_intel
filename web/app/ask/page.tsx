@@ -75,7 +75,6 @@ export default async function AskPage({ searchParams }: AskPageProps) {
     <>
       <PageHeader
         title="Ask"
-        subtitle="Milestone 7B.2"
         description="Ask a question about the report corpus. Answers are generated only from retrieved report excerpts, with citations to the original report, page, and section -- never from outside knowledge. When evidence is insufficient, the system says so explicitly rather than guessing."
       />
 

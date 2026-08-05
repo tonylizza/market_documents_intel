@@ -15,8 +15,8 @@ describe("PrimaryNavigation", () => {
     expect(screen.getByRole("link", { name: "Companies" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Discover" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Passages" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ask the Reports" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Methodology" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Ask the Reports" })).not.toBeInTheDocument();
   });
 
   it("marks the active route with aria-current", () => {

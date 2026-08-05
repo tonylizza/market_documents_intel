@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PRIMARY_NAVIGATION, RESERVED_NAVIGATION_LABELS } from "@/lib/config/navigation";
 
-const IMPLEMENTED_ROUTES = new Set(["/", "/discover", "/passages", "/methodology"]);
+const IMPLEMENTED_ROUTES = new Set(["/", "/discover", "/passages", "/ask", "/methodology"]);
 
 describe("PRIMARY_NAVIGATION", () => {
   it("only includes routes implemented so far", () => {
@@ -17,14 +17,14 @@ describe("PRIMARY_NAVIGATION", () => {
     }
   });
 
-  it("includes exactly Companies, Discover, Passages, and Methodology", () => {
-    expect(PRIMARY_NAVIGATION.map((item) => item.label)).toEqual(["Companies", "Discover", "Passages", "Methodology"]);
-  });
-
-  it("includes Passages (Milestone 7A.4) but still not Ask the Reports (Milestone 7B)", () => {
-    const labels = PRIMARY_NAVIGATION.map((item) => item.label);
-    expect(labels).toContain("Passages");
-    expect(labels).not.toContain("Ask the Reports");
+  it("includes exactly Companies, Discover, Passages, Ask the Reports, and Methodology", () => {
+    expect(PRIMARY_NAVIGATION.map((item) => item.label)).toEqual([
+      "Companies",
+      "Discover",
+      "Passages",
+      "Ask the Reports",
+      "Methodology",
+    ]);
   });
 
   it("does not link /evidence-review (Milestone 7B.1b's experimental analyst-review route)", () => {

@@ -81,12 +81,27 @@ function extractTickers(question: string, companies: readonly CompanyNameLookup[
   return [...matched];
 }
 
+function extractYears(question: string): number[] {
+  return [...question.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((m) => Number.parseInt(m[1], 10));
+}
+
 function extractDateRange(question: string): { start: string | null; end: string | null } | null {
-  const years = [...question.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((m) => Number.parseInt(m[1], 10));
+  const years = extractYears(question);
   if (years.length === 0) return null;
   const min = Math.min(...years);
   const max = Math.max(...years);
   return { start: `${min}-01-01`, end: `${max}-12-31` };
+}
+
+/** Whether the question names more than one distinct year -- the actual
+ * signal for "this spans multiple report periods". A single year mentioned
+ * (e.g. "in its 2025 financial statements") still produces a full Jan-Dec
+ * `dateRange` (a legitimate one-year filter window), but `start !== end` on
+ * that range is true for every single-year question too, so it must never
+ * be used as the multi-year test -- doing so misroutes single-report
+ * questions naming one year into COMPARISON_QA. */
+function spansMultipleYears(question: string): boolean {
+  return new Set(extractYears(question)).size > 1;
 }
 
 function extractComparisonDirection(question: string): ComparisonDirection {
@@ -121,20 +136,20 @@ function extractSubcategories(question: string): string[] {
   return KNOWN_SUBCATEGORIES.filter((sub) => lower.includes(sub.replace(/_/g, " ")) || lower.includes(sub));
 }
 
-function classifyQuestionType(question: string, direction: ComparisonDirection, dateRange: ReturnType<typeof extractDateRange>): QuestionType {
+function classifyQuestionType(question: string, direction: ComparisonDirection, isMultiYear: boolean): QuestionType {
   if (/\bwhy\b|\bwhat (caused|led to|is the reason)\b|\breason for\b/i.test(question)) return "causal";
   if (/\bhow much\b|\bhow many\b|\bwhat (percentage|amount|proportion)\b/i.test(question)) return "quantitative";
   if (direction !== null || /\bcompar(e|ison|ed)\b|\bversus\b|\bvs\.?\b|\bdifference between\b/i.test(question)) return "comparative";
   if (/\bdoes\b|\bdid\b|\bis there\b|\bwas there\b|\bhas the company\b|\bhave they\b/i.test(question)) return "existence_based";
-  if ((dateRange && dateRange.start !== dateRange.end) || /\bover time\b|\btrend\b|\bhistory\b|\btimeline\b/i.test(question)) {
+  if (isMultiYear || /\bover time\b|\btrend\b|\bhistory\b|\btimeline\b/i.test(question)) {
     return "chronological";
   }
   return "descriptive";
 }
 
-function classifyScope(tickers: string[], direction: ComparisonDirection, dateRange: ReturnType<typeof extractDateRange>): RequestedScope {
+function classifyScope(tickers: string[], direction: ComparisonDirection, isMultiYear: boolean): RequestedScope {
   if (tickers.length === 0) return "corpus_wide";
-  if (tickers.length === 1 && (direction !== null || (dateRange && dateRange.start !== dateRange.end))) return "single_comparison";
+  if (tickers.length === 1 && (direction !== null || isMultiYear)) return "single_comparison";
   if (tickers.length === 1) return "single_company";
   return "corpus_wide";
 }
@@ -207,13 +222,14 @@ export function analyzeQuestion(question: string, companies: readonly CompanyNam
   const normalizedQuestion = question.trim().replace(/\s+/g, " ");
   const tickers = extractTickers(normalizedQuestion, companies);
   const dateRange = extractDateRange(normalizedQuestion);
+  const isMultiYear = spansMultipleYears(normalizedQuestion);
   const comparisonDirection = extractComparisonDirection(normalizedQuestion);
   const alignmentStatuses = extractAlignmentStatuses(normalizedQuestion);
   const requestedReportSides = extractReportSides(normalizedQuestion);
   const categories = extractCategories(normalizedQuestion);
   const subcategories = extractSubcategories(normalizedQuestion);
-  const questionType = classifyQuestionType(normalizedQuestion, comparisonDirection, dateRange);
-  const requestedScope = classifyScope(tickers, comparisonDirection, dateRange);
+  const questionType = classifyQuestionType(normalizedQuestion, comparisonDirection, isMultiYear);
+  const requestedScope = classifyScope(tickers, comparisonDirection, isMultiYear);
   const unresolvedTerms = extractUnresolvedTerms(normalizedQuestion, tickers);
   const conceptAnalysis = extractConceptAnalysis(normalizedQuestion, questionType, comparisonDirection);
   // Milestone-6's existing *subcategory* taxonomy (climate_environmental,
