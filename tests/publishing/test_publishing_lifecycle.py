@@ -12,14 +12,22 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _feature_fixtures import build_ready_pair  # noqa: E402
 
-from market_documents.publishing.models import ApplicationState, Company as AppCompany, Publication, PublicationStatus
+from market_documents.publishing.models import (
+    ApplicationState,
+    Company as AppCompany,
+    PassageComparison,
+    PassageLanguageSignal,
+    Publication,
+    PublicationStatus,
+)
 from market_documents.publishing.publisher import PublicationBuilder, activate_publication, cleanup_publications
 from market_documents.services.feature_extraction import build_features
+from market_documents.services.financial_language_config import CORE_CATEGORIES
 
 
 def _build_and_feature(db_session, ticker: str):
@@ -106,6 +114,29 @@ def test_activate_supersedes_prior_active(db_session, app_db_session):
 
     state = app_db_session.get(ApplicationState, "active")
     assert state.active_publication_id == pub_b.id
+
+
+def test_build_omits_zero_count_core_language_signals(db_session, app_db_session):
+    _build_and_feature(db_session, ticker="PUB7")
+    builder = PublicationBuilder(publication_version="test-v7")
+    publication = builder.build(db_session, app_db_session)
+
+    comparison_count = app_db_session.scalar(
+        select(func.count()).select_from(PassageComparison).where(
+            PassageComparison.publication_id == publication.id
+        )
+    )
+    dense_count = comparison_count * 2 * len(CORE_CATEGORIES)
+
+    core_signals = app_db_session.scalars(
+        select(PassageLanguageSignal).where(
+            PassageLanguageSignal.publication_id == publication.id,
+            PassageLanguageSignal.subcategory.is_(None),
+        )
+    ).all()
+
+    assert all(s.raw_count != 0 for s in core_signals)
+    assert len(core_signals) < dense_count
 
 
 def test_cleanup_never_deletes_active(db_session, app_db_session):

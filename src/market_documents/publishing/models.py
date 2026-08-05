@@ -465,10 +465,11 @@ class PassageComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
 
 
 class PassageLanguageSignal(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
-    """One row per passage/category/subcategory combination -- a pivot of the
-    research `PassageLanguageSignal`'s wide per-category columns (for the
-    seven Loughran-McDonald categories) plus one row per non-zero
-    `PassageLanguageCategoryHit` (custom taxonomy)."""
+    """One row per passage/category/subcategory combination with a non-zero
+    count -- a sparse pivot of the research `PassageLanguageSignal`'s wide
+    per-category columns (for the seven Loughran-McDonald categories) plus
+    one row per non-zero `PassageLanguageCategoryHit` (custom taxonomy).
+    Zero-count categories are not materialized."""
 
     __tablename__ = "passage_language_signals"
     __table_args__ = (

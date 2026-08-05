@@ -815,6 +815,8 @@ class PublicationBuilder:
                     )
                     for category in CORE_CATEGORIES:
                         raw_count = getattr(signal, f"{category}_count")
+                        if raw_count == 0:
+                            continue
                         rate = safe_ratio(raw_count * 1000, signal.passage_word_count)
                         app_session.add(
                             PassageLanguageSignal(
