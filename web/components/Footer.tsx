@@ -11,7 +11,7 @@ export function Footer() {
         <p className={styles.links}>
           <Link href="/methodology">Methodology</Link>
         </p>
-        <p className={styles.attribution}>A portfolio research project. Not affiliated with the JSE.</p>
+        <p className={styles.attribution}>Not affiliated with the JSE.</p>
       </div>
     </footer>
   );
