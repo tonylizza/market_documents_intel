@@ -18,8 +18,6 @@ import { formatPeriodEnd } from "@/lib/formatting/dates";
 import { formatCount, formatMetricValue } from "@/lib/formatting/numbers";
 import styles from "./page.module.css";
 
-export const revalidate = 60;
-
 interface ComparisonPageProps {
   params: Promise<{ comparisonId: string }>;
 }

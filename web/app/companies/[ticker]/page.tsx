@@ -19,8 +19,6 @@ import { formatReportRange } from "@/lib/formatting/dates";
 import { formatCount } from "@/lib/formatting/numbers";
 import styles from "./page.module.css";
 
-export const revalidate = 60;
-
 interface CompanyPageProps {
   params: Promise<{ ticker: string }>;
   searchParams: Promise<{ comparison?: string; metric?: string }>;
@@ -44,10 +42,9 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
   const { comparison: comparisonParam, metric: metricParam } = await searchParams;
   const repository = new PostgresCompanyRepository();
 
-  // Deliberately not caught here -- letting DB failures propagate to
-  // error.tsx means Next.js treats the render as failed and keeps serving
-  // the last good ISR cache instead of caching this failure. See
-  // docs/frontend.md ("Caching behavior").
+  // Deliberately not caught here -- letting DB failures propagate lets
+  // error.tsx render the friendly fallback instead of duplicating that
+  // logic inline.
   const history = await repository.getCompanyHistory(ticker);
 
   if (!history) {

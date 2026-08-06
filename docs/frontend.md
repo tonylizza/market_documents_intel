@@ -110,19 +110,44 @@ verification, and no `sslmode` to no SSL at all — matching local Postgres).
 
 ## Caching behavior
 
-`export const revalidate = 60` on `/` and `/methodology` (time-based
-revalidation, Next.js's standard, non-platform-specific ISR mechanism — no
-Vercel-only cache tags or KV). This means:
+Every route renders dynamically (per-request), not via ISR. `app/layout.tsx`
+reads the `x-nonce` header (set per-request by `proxy.ts`, see "CSP nonce
+and dynamic rendering" below) so that Next.js stamps a matching nonce onto
+the scripts/styles it injects; since a layout wraps every route, that single
+`headers()` read forces the whole app into dynamic rendering — no page can
+opt back into ISR/`revalidate` without breaking its own CSP.
 
-- A newly activated publication appears within 60 seconds without a
-  redeploy.
-- The database is not queried on every single request under normal traffic
-  (a public, low-traffic research site) — Next.js serves the prerendered/
-  revalidated HTML in between.
-- `/companies/[ticker]`, `/comparisons/[comparisonId]`, and `/discover` all
-  also set `export const revalidate = 60` (dynamic routes, rendered on
-  first request then cached per distinct ticker/comparison id/query-string
-  combination).
+Consequences:
+
+- A newly activated publication is visible immediately, on the very next
+  request — no propagation delay to reason about.
+- The database is queried on every request to `/`, `/companies/[ticker]`,
+  `/comparisons/[comparisonId]`, `/discover`, and `/methodology`. Acceptable
+  for a public, low-traffic research site given `lib/db/pool.ts`'s pooled,
+  timeout-bounded connections; revisit if traffic grows enough for DB load
+  to matter.
+
+## CSP nonce and dynamic rendering
+
+`proxy.ts` generates a random nonce per request, forwards it to the render
+via the `x-nonce` request header, and sets it in the outgoing
+`Content-Security-Policy` response header (`script-src ... 'nonce-<value>'
+'strict-dynamic'`). A nonce is only valid if it's unique per response and
+matches between that header and every script tag in that exact response —
+which is incompatible with ISR: a cached page's scripts carry whatever
+nonce was baked in at generation time, while `proxy.ts` runs on every
+request and would set a *different* nonce as the header on each cache hit,
+so the two would never match and the browser would block every script
+(this was a confirmed production incident — CSP violations blocked all
+hydration site-wide once `revalidate` was combined with the nonce).
+
+The fix is architectural, not a patch: `app/layout.tsx` must call
+`headers()` to read `x-nonce` (this is what makes Next.js apply the nonce
+to its own injected scripts at all), and no route below it may declare
+`export const revalidate` — Next has already committed the whole tree to
+dynamic rendering by the time a page's own config would be read, so a
+`revalidate` export there is silently ineffective at best and misleading to
+future readers at worst.
 
 ## Database-access architecture
 

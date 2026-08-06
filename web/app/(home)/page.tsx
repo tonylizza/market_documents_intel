@@ -11,18 +11,12 @@ import { formatMetricValue } from "@/lib/formatting/numbers";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME, PRODUCT_SUBTITLE } from "@/lib/config/product";
 import styles from "./page.module.css";
 
-// Ensures a newly activated publication appears without a redeploy, while
-// keeping database load low for a public, low-traffic research site --
-// see docs/frontend.md ("Caching behavior").
-export const revalidate = 60;
-
 export default async function CompaniesHomePage() {
   const repository = new PostgresCompanyRepository();
 
-  // Deliberately not caught here -- letting DB failures propagate to
-  // error.tsx means Next.js treats the render as failed and keeps serving
-  // the last good ISR cache instead of caching this failure. See
-  // docs/frontend.md ("Caching behavior").
+  // Deliberately not caught here -- letting DB failures propagate lets
+  // error.tsx render the friendly fallback instead of duplicating that
+  // logic inline.
   const viewModel = await getCompaniesPageViewModel(repository);
 
   return (

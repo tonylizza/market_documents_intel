@@ -8,8 +8,6 @@ import { DefinitionList } from "@/components/DefinitionList";
 import { ErrorState } from "@/components/ErrorState";
 import styles from "./page.module.css";
 
-export const revalidate = 60;
-
 export const metadata: Metadata = {
   title: "Methodology",
   description: "How disclosure comparisons, quality labels, and discovery rankings are computed.",

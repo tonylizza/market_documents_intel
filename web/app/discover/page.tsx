@@ -10,7 +10,6 @@ import { DiscoveryResultsTable } from "@/components/DiscoveryResultsTable";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = { title: "Discover" };
-export const revalidate = 60;
 
 interface DiscoverPageProps {
   searchParams: Promise<{
@@ -34,10 +33,9 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
   const companyRepository = new PostgresCompanyRepository();
   const discoveryRepository = new PostgresDiscoveryRepository();
 
-  // Deliberately not caught here -- letting DB failures propagate to
-  // error.tsx means Next.js treats the render as failed and keeps serving
-  // the last good ISR cache instead of caching this failure. See
-  // docs/frontend.md ("Caching behavior").
+  // Deliberately not caught here -- letting DB failures propagate lets
+  // error.tsx render the friendly fallback instead of duplicating that
+  // logic inline.
   const viewModel = await getDiscoveryPageViewModel(discoveryRepository, companyRepository, params);
 
   return (
