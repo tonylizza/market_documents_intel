@@ -61,6 +61,7 @@ vi.mock("@/lib/repositories/postgres-discovery-repository", () => ({
 }));
 
 const { default: DiscoverPage } = await import("@/app/discover/page");
+const { default: DiscoverError } = await import("@/app/discover/error");
 
 describe("DiscoverPage", () => {
   it("renders filters and results for the default (first available) ranking", async () => {
@@ -95,11 +96,14 @@ describe("DiscoverPage", () => {
     expect(screen.getAllByText(/category-specific/).length).toBeGreaterThan(0);
   });
 
-  it("renders a safe error state when the database is unavailable", async () => {
+  it("throws instead of swallowing the error, so Next.js does not cache a failed render", async () => {
     mockShouldThrow = true;
-    const jsx = await DiscoverPage({ searchParams: Promise.resolve({}) });
-    render(jsx);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    await expect(DiscoverPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("connection refused");
     mockShouldThrow = false;
+  });
+
+  it("renders a safe error state via the route error boundary", () => {
+    render(<DiscoverError error={new Error("connection refused")} reset={() => {}} />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 });

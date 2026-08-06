@@ -13,7 +13,10 @@ import { toApplicationError } from "./errors";
  */
 const POOL_MAX_CONNECTIONS = 5;
 const STATEMENT_TIMEOUT_MS = 10_000;
-const CONNECTION_TIMEOUT_MS = 5_000;
+// Neon serverless computes autosuspend when idle; waking one on a cold
+// connection can take several seconds, so this must comfortably exceed
+// that cold-start latency rather than just steady-state connect time.
+const CONNECTION_TIMEOUT_MS = 15_000;
 
 declare global {
   var __appReadonlyPool: Pool | undefined;

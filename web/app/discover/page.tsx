@@ -4,7 +4,6 @@ import { PostgresDiscoveryRepository } from "@/lib/repositories/postgres-discove
 import { getDiscoveryPageViewModel } from "@/lib/services/discovery-service";
 import { PageHeader } from "@/components/PageHeader";
 import { SectionHeader } from "@/components/SectionHeader";
-import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
 import { DiscoveryFilters } from "@/components/DiscoveryFilters";
 import { DiscoveryResultsTable } from "@/components/DiscoveryResultsTable";
@@ -35,18 +34,11 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
   const companyRepository = new PostgresCompanyRepository();
   const discoveryRepository = new PostgresDiscoveryRepository();
 
-  let viewModel: Awaited<ReturnType<typeof getDiscoveryPageViewModel>> | null = null;
-  let failed = false;
-  try {
-    viewModel = await getDiscoveryPageViewModel(discoveryRepository, companyRepository, params);
-  } catch (error) {
-    failed = true;
-    console.error("Failed to load discovery page data:", (error as Error).message);
-  }
-
-  if (failed || !viewModel) {
-    return <ErrorState title="Discovery rankings are temporarily unavailable" />;
-  }
+  // Deliberately not caught here -- letting DB failures propagate to
+  // error.tsx means Next.js treats the render as failed and keeps serving
+  // the last good ISR cache instead of caching this failure. See
+  // docs/frontend.md ("Caching behavior").
+  const viewModel = await getDiscoveryPageViewModel(discoveryRepository, companyRepository, params);
 
   return (
     <>

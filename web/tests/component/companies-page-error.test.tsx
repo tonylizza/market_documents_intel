@@ -21,10 +21,19 @@ vi.mock("@/lib/repositories/postgres-company-repository", () => ({
 }));
 
 const { default: CompaniesHomePage } = await import("@/app/(home)/page");
+const { default: CompaniesHomeError } = await import("@/app/(home)/error");
 
 describe("Companies home page -- database unavailable", () => {
-  it("renders a clear service-unavailable state instead of misleading zeroes", async () => {
-    render(await CompaniesHomePage());
+  it("throws instead of swallowing the error, so Next.js does not cache a failed render", async () => {
+    // A page.tsx that catches and returns a 200 ErrorState would get that
+    // failure baked into the ISR cache for the revalidate window. Letting
+    // it throw means Next treats the request as failed and keeps serving
+    // the last good cached page to other visitors.
+    await expect(CompaniesHomePage()).rejects.toThrow("connection refused");
+  });
+
+  it("renders a clear service-unavailable state via the route error boundary", () => {
+    render(<CompaniesHomeError error={new Error("connection refused")} reset={() => {}} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Company data is temporarily unavailable");
     // Never render a fabricated "0 companies" summary alongside the error.
     expect(screen.queryByText("0")).not.toBeInTheDocument();

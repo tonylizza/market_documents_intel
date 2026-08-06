@@ -49,6 +49,7 @@ vi.mock("@/lib/repositories/postgres-company-repository", () => ({
 }));
 
 const { default: CompanyPage } = await import("@/app/companies/[ticker]/page");
+const { default: CompanyPageError } = await import("@/app/companies/[ticker]/error");
 
 describe("CompanyPage", () => {
   it("renders the company header, coverage note, full-history chart, and navigator", async () => {
@@ -100,11 +101,16 @@ describe("CompanyPage", () => {
     ).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
-  it("renders a safe error state when the database is unavailable", async () => {
+  it("throws instead of swallowing the error, so Next.js does not cache a failed render", async () => {
     mockShouldThrow = true;
-    const jsx = await CompanyPage({ params: Promise.resolve({ ticker: "ACT" }), searchParams: Promise.resolve({}) });
-    render(jsx);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    await expect(
+      CompanyPage({ params: Promise.resolve({ ticker: "ACT" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("connection refused");
     mockShouldThrow = false;
+  });
+
+  it("renders a safe error state via the route error boundary", () => {
+    render(<CompanyPageError error={new Error("connection refused")} reset={() => {}} />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 });

@@ -10,7 +10,6 @@ import {
 import { COMPARISON_METRICS, resolveComparisonMetricKey } from "@/lib/config/comparison";
 import { PageHeader } from "@/components/PageHeader";
 import { SectionHeader } from "@/components/SectionHeader";
-import { ErrorState } from "@/components/ErrorState";
 import { QualityBadge } from "@/components/QualityBadge";
 import { FullHistoryChart } from "@/components/FullHistoryChart";
 import { MetricSelector } from "@/components/MetricSelector";
@@ -45,18 +44,12 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
   const { comparison: comparisonParam, metric: metricParam } = await searchParams;
   const repository = new PostgresCompanyRepository();
 
-  let history: Awaited<ReturnType<typeof repository.getCompanyHistory>> = null;
-  let failed = false;
-  try {
-    history = await repository.getCompanyHistory(ticker);
-  } catch (error) {
-    failed = true;
-    console.error("Failed to load company page data:", (error as Error).message);
-  }
+  // Deliberately not caught here -- letting DB failures propagate to
+  // error.tsx means Next.js treats the render as failed and keeps serving
+  // the last good ISR cache instead of caching this failure. See
+  // docs/frontend.md ("Caching behavior").
+  const history = await repository.getCompanyHistory(ticker);
 
-  if (failed) {
-    return <ErrorState title="This company page is temporarily unavailable" />;
-  }
   if (!history) {
     notFound();
   }
