@@ -39,13 +39,14 @@ from sqlalchemy.orm import Session
 
 from market_documents.exceptions import AlignmentNotEligibleError
 from market_documents.models.embedding import EmbeddingRun, PassageEmbedding
-from market_documents.models.enums import AlignmentRunStatus, AlignmentStatus, AlignmentType, ExtractionQuality
+from market_documents.models.enums import AlignmentMatchSource, AlignmentRunStatus, AlignmentStatus, AlignmentType, ExtractionQuality
 from market_documents.models.passage import Passage, PassageSegmentationRun
 from market_documents.models.alignment import AlignmentRun, PassageAlignment
 from market_documents.models.report_pair import ReportPair
 from market_documents.services.alignment_candidates import CandidateMatch, get_semantic_candidates
 from market_documents.services.alignment_config import ALGORITHM_VERSION, ALIGNMENT_CONFIG, AlignmentConfig, compute_configuration_hash
 from market_documents.services.alignment_quality import assess_confidence, classify_alignment, detect_disagreement
+from market_documents.services.alignment_reconciliation import ReconciledPair, embedding_cosine_similarity, reconcile_exact_hash_duplicates
 from market_documents.services.extraction import get_current_extraction_run, get_narrative_document
 from market_documents.services.passage_embedding import get_current_embedding_run
 from market_documents.services.passage_segmentation import get_current_segmentation_run
@@ -690,6 +691,39 @@ def _run_alignment(
         earlier_passages=selection.earlier_passages,
     )
 
+    # --- Milestone 2: exact-hash reconciliation of already-unmatched
+    # REMOVED/NEW passages (see alignment_reconciliation.py). Runs after the
+    # primary matcher, split/merge detection, and collision detection have
+    # all finalized; never touches `accepted`. Split/merge-flagged passages
+    # are excluded from the reconciliation pool -- they will become
+    # AMBIGUOUS below, not REMOVED/NEW, so they are out of this milestone's
+    # scope by definition.
+    accepted_anchors = [
+        (candidate.earlier_passage.passage_index, later_by_id[later_id].passage_index)
+        for later_id, candidate in accepted.items()
+    ]
+    reconciliation_pool_later = [p for p in unmatched_later if p.id not in split_flags]
+    reconciliation_pool_earlier = [p for p in unmatched_earlier if p.id not in merge_flags]
+    reconciled_pairs = reconcile_exact_hash_duplicates(
+        unmatched_earlier=reconciliation_pool_earlier,
+        unmatched_later=reconciliation_pool_later,
+        accepted_anchors=accepted_anchors,
+        earlier_total=earlier_total,
+        later_total=later_total,
+    )
+    reconciled_earlier_ids = {rp.earlier_passage.id for rp in reconciled_pairs}
+    reconciled_later_ids = {rp.later_passage.id for rp in reconciled_pairs}
+
+    reconciled_earlier_embeddings: dict[uuid.UUID, list[float]] = {}
+    if reconciled_pairs:
+        embedding_rows = session.scalars(
+            select(PassageEmbedding).where(
+                PassageEmbedding.embedding_run_id == selection.earlier_embedding_run.id,
+                PassageEmbedding.passage_id.in_(reconciled_earlier_ids),
+            )
+        ).all()
+        reconciled_earlier_embeddings = {row.passage_id: row.embedding for row in embedding_rows}
+
     counts: dict[str, int] = {}
 
     def _record(status: AlignmentStatus) -> None:
@@ -749,7 +783,61 @@ def _run_alignment(
         )
         _record(status)
 
+    for reconciled in reconciled_pairs:
+        earlier_vector = reconciled_earlier_embeddings.get(reconciled.earlier_passage.id)
+        later_vector = selection.later_embeddings_by_passage_id.get(reconciled.later_passage.id)
+        semantic_similarity = (
+            embedding_cosine_similarity(earlier_vector, later_vector)
+            if earlier_vector is not None and later_vector is not None
+            else None
+        )
+        lexical_features = compute_lexical_features(reconciled.earlier_passage, reconciled.later_passage)
+        position_difference = compute_position_difference(
+            reconciled.earlier_passage.passage_index, earlier_total, reconciled.later_passage.passage_index, later_total
+        )
+        composite = lexical_composite(lexical_features)
+        # Diagnostic only, and never fabricated: combined_score is left None
+        # when either side's embedding is unavailable rather than guessing
+        # semantic_similarity (see module docstring, spec section 6/11).
+        combined_score = (
+            compute_combined_score(
+                semantic_similarity=semantic_similarity,
+                lexical_composite=composite,
+                heading_similarity=lexical_features.heading_similarity,
+                position_difference=position_difference,
+            )
+            if semantic_similarity is not None
+            else None
+        )
+        session.add(
+            PassageAlignment(
+                alignment_run_id=run.id,
+                report_pair_id=pair.id,
+                earlier_passage_id=reconciled.earlier_passage.id,
+                later_passage_id=reconciled.later_passage.id,
+                alignment_status=AlignmentStatus.UNCHANGED,
+                alignment_type=AlignmentType.ONE_TO_ONE,
+                semantic_similarity=semantic_similarity,
+                lexical_cosine_similarity=lexical_features.lexical_cosine_similarity,
+                jaccard_similarity=lexical_features.jaccard_similarity,
+                edit_similarity=lexical_features.edit_similarity,
+                heading_similarity=lexical_features.heading_similarity,
+                length_ratio=lexical_features.length_ratio,
+                position_difference=position_difference,
+                combined_score=combined_score,
+                candidate_rank=None,
+                confidence=reconciled.confidence,
+                best_second_margin=None,
+                review_reason=reconciled.review_reason,
+                primary_alignment=True,
+                match_source=reconciled.match_source,
+            )
+        )
+        _record(AlignmentStatus.UNCHANGED)
+
     for later_passage in unmatched_later:
+        if later_passage.id in reconciled_later_ids:
+            continue
         split_note = split_flags.get(later_passage.id)
         status = AlignmentStatus.AMBIGUOUS if split_note else AlignmentStatus.NEW
         confidence_assessment = assess_confidence(
@@ -777,6 +865,8 @@ def _run_alignment(
         _record(status)
 
     for earlier_passage in unmatched_earlier:
+        if earlier_passage.id in reconciled_earlier_ids:
+            continue
         merge_note = merge_flags.get(earlier_passage.id)
         status = AlignmentStatus.AMBIGUOUS if merge_note else AlignmentStatus.REMOVED
         confidence_assessment = assess_confidence(
@@ -803,7 +893,13 @@ def _run_alignment(
         )
         _record(status)
 
-    run.matched_count = len(accepted)
+    # Includes reconciled correspondences alongside primary-matcher
+    # `accepted` matches: `matched_count` means "correspondences
+    # established" regardless of provenance, and alignment_audit.py derives
+    # later/earlier passage totals and match rate from
+    # matched_count + new_count / matched_count + removed_count -- those
+    # would silently undercount without reconciled pairs included here.
+    run.matched_count = len(accepted) + len(reconciled_pairs)
     run.unchanged_count = counts.get("unchanged", 0)
     run.lightly_modified_count = counts.get("lightly_modified", 0)
     run.substantially_modified_count = counts.get("substantially_modified", 0)

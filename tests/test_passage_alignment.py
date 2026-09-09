@@ -6,6 +6,7 @@ from market_documents.models.company import Company
 from market_documents.models.embedding import EMBEDDING_DIMENSION, EmbeddingRun, PassageEmbedding
 from market_documents.models.enums import (
     AlignmentConfidence,
+    AlignmentMatchSource,
     AlignmentRunStatus,
     AlignmentStatus,
     AlignmentType,
@@ -515,6 +516,129 @@ def test_current_alignment_run_selection_prefers_latest_successful(db_session):
 
     current = pa.get_current_alignment_run(db_session, setup.pair.id)
     assert current.id == forced.run.id
+
+
+# ---------------------------------------------------------------------------
+# Milestone 2: exact-hash reconciliation, wired through the full align_pair
+# pipeline. Algorithmic coverage (2:2, 3:2, 2:3, anchors, tie-breaks,
+# residuals) lives in test_alignment_reconciliation.py against the pure
+# functions directly; these tests exercise the DB-integration seams --
+# accepted primary matches untouched, AMBIGUOUS exclusion, provenance
+# persisted, counts, and config-hash/idempotency.
+# ---------------------------------------------------------------------------
+
+
+def test_reconciliation_recovers_unique_exact_hash_pair_without_touching_primary_match(db_session):
+    setup = _setup_pair(db_session, ticker="RECU")
+    text_matched = "the group delivered resilient operating performance across all segments"
+    e_matched = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=0, text=text_matched)
+    l_matched = _passage(db_session, setup.later_seg, setup.later_report, index=0, text=text_matched)
+    _embed(db_session, setup.earlier_emb, e_matched, BASE_VEC)
+    _embed(db_session, setup.later_emb, l_matched, BASE_VEC)
+
+    # Never embedded on either side -- the primary matcher cannot see them
+    # at all, so both would ordinarily become REMOVED/NEW. Force an exact
+    # content_hash match (the fixture normally derives content_hash from
+    # index+segmentation_run too, so real cross-report duplicates need an
+    # explicit override here).
+    e_orphan = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=1, text="USD")
+    l_orphan = _passage(db_session, setup.later_seg, setup.later_report, index=1, text="USD")
+    shared_hash = compute_content_hash("shared-orphan-text")
+    e_orphan.content_hash = shared_hash
+    l_orphan.content_hash = shared_hash
+    db_session.flush()
+
+    outcome = pa.align_pair(db_session, setup.pair)
+    rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=outcome.run.id).all()
+    assert len(rows) == 2
+
+    reconciled_row = next(r for r in rows if r.later_passage_id == l_orphan.id)
+    assert reconciled_row.earlier_passage_id == e_orphan.id
+    assert reconciled_row.alignment_status == AlignmentStatus.UNCHANGED
+    assert reconciled_row.alignment_type == AlignmentType.ONE_TO_ONE
+    assert reconciled_row.match_source == AlignmentMatchSource.EXACT_HASH_RECONCILIATION_UNIQUE
+    assert reconciled_row.confidence == AlignmentConfidence.HIGH
+    assert "exact_hash_reconciliation_unique" in reconciled_row.review_reason
+    assert reconciled_row.candidate_rank is None
+    assert reconciled_row.best_second_margin is None
+
+    # The primary match's own row is completely unaffected by reconciliation
+    # running in the same pass.
+    matched_row = next(r for r in rows if r.later_passage_id == l_matched.id)
+    assert matched_row.earlier_passage_id == e_matched.id
+    assert matched_row.match_source == AlignmentMatchSource.PRIMARY
+    assert matched_row.alignment_status == AlignmentStatus.UNCHANGED
+
+    assert outcome.run.unchanged_count == 2
+    assert outcome.run.new_count == 0
+    assert outcome.run.removed_count == 0
+    assert outcome.run.matched_count == 2
+
+
+def test_reconciliation_excludes_ambiguous_split_flagged_passages(db_session):
+    setup = _setup_pair(db_session, ticker="RECAMB")
+    text = "the full original section text before it was split"
+    e = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=0, text=text)
+    l1 = _passage(db_session, setup.later_seg, setup.later_report, index=0, text=text)
+    l2 = _passage(db_session, setup.later_seg, setup.later_report, index=1, text=text)
+    _embed(db_session, setup.earlier_emb, e, BASE_VEC)
+    _embed(db_session, setup.later_emb, l1, BASE_VEC)  # wins the claim on e
+    _embed(db_session, setup.later_emb, l2, _vec(0.80))  # loses, but strongly re-proposes e -> flagged AMBIGUOUS (split)
+
+    # An unembedded earlier orphan sharing l2's content_hash: if l2 were
+    # eligible for reconciliation this would be a unique exact-hash pair,
+    # but l2 must be excluded because split detection already claimed it.
+    e_orphan = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=1, text="USD")
+    shared_hash = compute_content_hash("shared-split-text")
+    e_orphan.content_hash = shared_hash
+    l2.content_hash = shared_hash
+    db_session.flush()
+
+    outcome = pa.align_pair(db_session, setup.pair)
+    rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=outcome.run.id).all()
+
+    row_l2 = next(r for r in rows if r.later_passage_id == l2.id)
+    assert row_l2.alignment_status == AlignmentStatus.AMBIGUOUS
+    assert row_l2.match_source == AlignmentMatchSource.PRIMARY
+    assert row_l2.earlier_passage_id is None
+
+    row_orphan = next(r for r in rows if r.earlier_passage_id == e_orphan.id)
+    assert row_orphan.alignment_status == AlignmentStatus.REMOVED
+    assert row_orphan.match_source == AlignmentMatchSource.PRIMARY
+    assert row_orphan.later_passage_id is None
+
+
+def test_reconciliation_policy_version_bump_triggers_new_run(db_session, monkeypatch):
+    setup = _simple_matched_pair(db_session, "RECVER")
+    first = pa.align_pair(db_session, setup.pair)
+
+    from market_documents.services import alignment_config
+
+    monkeypatch.setattr(alignment_config, "RECONCILIATION_POLICY_VERSION", 999)
+    second = pa.align_pair(db_session, setup.pair)
+    assert not second.skipped
+    assert second.run.configuration_hash != first.run.configuration_hash
+
+
+def test_reconciled_rows_survive_idempotent_skip(db_session):
+    setup = _setup_pair(db_session, ticker="RECIDEM")
+    e_orphan = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=0, text="USD")
+    l_orphan = _passage(db_session, setup.later_seg, setup.later_report, index=0, text="USD")
+    shared_hash = compute_content_hash("shared-idempotent-text")
+    e_orphan.content_hash = shared_hash
+    l_orphan.content_hash = shared_hash
+    db_session.flush()
+
+    first = pa.align_pair(db_session, setup.pair)
+    first_rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=first.run.id).all()
+    assert len(first_rows) == 1
+    assert first_rows[0].match_source == AlignmentMatchSource.EXACT_HASH_RECONCILIATION_UNIQUE
+
+    second = pa.align_pair(db_session, setup.pair)
+    assert second.skipped
+    assert second.run.id == first.run.id
+    second_rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=second.run.id).all()
+    assert len(second_rows) == 1
 
 
 # ---------------------------------------------------------------------------

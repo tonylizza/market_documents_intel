@@ -34,6 +34,16 @@ CONFIDENCE_THRESHOLDS_VERSION = 2
 # template/boilerplate structure at distance.
 SPLIT_MERGE_POLICY_VERSION = 3
 
+# v1 = post-pass reconciliation of already-unmatched REMOVED/NEW passages
+# whose content_hash is identical (see alignment_reconciliation.py). Runs
+# strictly after the primary matcher, split/merge detection, and collision
+# detection have all finalized; never alters an accepted primary match and
+# never considers a passage split/merge detection already flagged AMBIGUOUS.
+# Acceptance is exact-hash identity only -- position/anchor evidence is used
+# only to choose which duplicate occurrence pairs with which, never as an
+# additional similarity-based acceptance gate.
+RECONCILIATION_POLICY_VERSION = 1
+
 
 @dataclass(frozen=True)
 class AlignmentConfig:
@@ -120,6 +130,7 @@ def compute_configuration_hash(config: AlignmentConfig = ALIGNMENT_CONFIG) -> st
         "classification_thresholds_version": CLASSIFICATION_THRESHOLDS_VERSION,
         "confidence_thresholds_version": CONFIDENCE_THRESHOLDS_VERSION,
         "split_merge_policy_version": SPLIT_MERGE_POLICY_VERSION,
+        "reconciliation_policy_version": RECONCILIATION_POLICY_VERSION,
         "config": asdict(config),
     }
     canonical = json.dumps(payload, sort_keys=True)

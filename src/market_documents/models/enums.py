@@ -135,6 +135,26 @@ class AlignmentConfidence(str, enum.Enum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
+class AlignmentMatchSource(str, enum.Enum):
+    """Provenance of one PassageAlignment correspondence.
+
+    PRIMARY covers every row produced by the primary semantic/lexical
+    matcher (the only source before Milestone 2). The two
+    EXACT_HASH_RECONCILIATION_* values distinguish a correspondence the
+    primary matcher failed to make but a deterministic post-pass recovered
+    from exact `content_hash` equality among already-unmatched REMOVED/NEW
+    passages -- UNIQUE when exactly one unmatched passage existed on each
+    side for that hash, DUPLICATE_CLUSTER when position/anchor evidence was
+    needed to choose among several identical occurrences. See
+    services/alignment_reconciliation.py and
+    docs/exact-hash-reconciliation-experiment.md.
+    """
+
+    PRIMARY = "PRIMARY"
+    EXACT_HASH_RECONCILIATION_UNIQUE = "EXACT_HASH_RECONCILIATION_UNIQUE"
+    EXACT_HASH_RECONCILIATION_DUPLICATE_CLUSTER = "EXACT_HASH_RECONCILIATION_DUPLICATE_CLUSTER"
+
+
 class FeatureRunStatus(str, enum.Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"

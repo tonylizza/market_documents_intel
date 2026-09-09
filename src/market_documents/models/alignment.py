@@ -7,7 +7,13 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from market_documents.db.base import Base, TimestampMixin, UUIDPkMixin
-from market_documents.models.enums import AlignmentConfidence, AlignmentRunStatus, AlignmentStatus, AlignmentType
+from market_documents.models.enums import (
+    AlignmentConfidence,
+    AlignmentMatchSource,
+    AlignmentRunStatus,
+    AlignmentStatus,
+    AlignmentType,
+)
 
 
 class AlignmentRun(UUIDPkMixin, TimestampMixin, Base):
@@ -162,6 +168,15 @@ class PassageAlignment(UUIDPkMixin, TimestampMixin, Base):
     best_second_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     primary_alignment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Provenance: PRIMARY for every row produced by the primary matcher
+    # (all rows before Milestone 2); EXACT_HASH_RECONCILIATION_* for rows
+    # recovered by the post-pass exact-hash reconciliation of already-
+    # unmatched REMOVED/NEW passages (see alignment_reconciliation.py).
+    match_source: Mapped[AlignmentMatchSource] = mapped_column(
+        SAEnum(AlignmentMatchSource, name="alignment_match_source"),
+        nullable=False,
+        default=AlignmentMatchSource.PRIMARY,
+    )
 
     alignment_run: Mapped["AlignmentRun"] = relationship(back_populates="alignments")
     report_pair: Mapped["ReportPair"] = relationship()  # noqa: F821
