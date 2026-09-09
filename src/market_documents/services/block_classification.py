@@ -32,6 +32,7 @@ already claims those.
 """
 
 import re
+from dataclasses import dataclass
 
 from market_documents.models.enums import BlockType
 from market_documents.services.extraction_config import ExtractionConfig
@@ -156,3 +157,90 @@ def classify_block(
         return BlockType.HEADING_CANDIDATE, False, None
 
     return BlockType.PARAGRAPH, False, None
+
+
+@dataclass(frozen=True)
+class PageBlockGeometry:
+    """The minimal per-block view needed for the table-header-fragment
+    second pass: the first-pass block_type plus the same PyMuPDF bbox
+    coordinates already captured during extraction. No new parsing or
+    re-extraction is required -- this is a read of already-computed data."""
+
+    block_type: BlockType
+    x0: float | None
+    y0: float | None
+    x1: float | None
+    y1: float | None
+
+
+def find_table_header_fragment_indices(
+    blocks: list[PageBlockGeometry], config: ExtractionConfig
+) -> set[int]:
+    """Identify HEADING_CANDIDATE blocks on one page that are table
+    column-header/cell fragments rather than genuine narrative headings.
+
+    Ground-truth PDF inspection (docs/passage-ground-truth-validation.md
+    Section 3, "D -- Table header/cell fragments") found that reading-order
+    adjacency to a TABLE_LIKE block is necessary but not sufficient: a
+    genuine short heading (e.g. "Summary of results") can legitimately sit
+    immediately above a table and must not be reclassified. Two additional,
+    purely structural conditions distinguish a real table-header fragment:
+
+    1. Narrow width -- the block is geometrically narrow relative to the
+       widest block on the page (a column-width label or cell, not a
+       full-width section heading).
+    2. Clustering -- it is not alone: at least one other narrow
+       HEADING_CANDIDATE block sits within a short reading-order window,
+       which is the structural signature of a multi-column header row
+       (e.g. "Category" / "Grade" / "Contained" as separate blocks) or a
+       two-line stacked cell (e.g. "Contained" / "KCl (Mt)" split by
+       PyMuPDF into two blocks for one logical column label).
+
+    Both conditions must hold together. This is deliberately conservative:
+    a single wide heading immediately preceding a table, or a single narrow
+    heading with no clustered neighbor, is left classified as
+    HEADING_CANDIDATE. Under-firing (missing some table-header fragments) is
+    the accepted failure mode over over-firing (misclassifying a genuine
+    heading), per the ground-truth investigation's own risk assessment.
+
+    Returns the set of list indices (positions within `blocks`, which must
+    already be in reading order for the page) to reclassify as
+    TABLE_HEADER_FRAGMENT. Does not mutate `blocks`.
+    """
+    widths = [
+        b.x1 - b.x0 for b in blocks if b.x0 is not None and b.x1 is not None and b.x1 > b.x0
+    ]
+    if not widths:
+        return set()
+    page_content_width = max(widths)
+    if page_content_width <= 0:
+        return set()
+
+    def is_narrow(block: PageBlockGeometry) -> bool:
+        if block.x0 is None or block.x1 is None or block.x1 <= block.x0:
+            return False
+        return (block.x1 - block.x0) <= config.table_header_fragment_max_width_ratio * page_content_width
+
+    table_like_indices = [i for i, b in enumerate(blocks) if b.block_type == BlockType.TABLE_LIKE]
+    if not table_like_indices:
+        return set()
+
+    narrow_heading_indices = [
+        i
+        for i, b in enumerate(blocks)
+        if b.block_type == BlockType.HEADING_CANDIDATE and is_narrow(b)
+    ]
+    if len(narrow_heading_indices) < config.table_header_fragment_min_cluster_size:
+        return set()
+
+    window = config.table_header_fragment_adjacency_window
+
+    reclassify: set[int] = set()
+    for i in narrow_heading_indices:
+        near_table = any(abs(i - t) <= window for t in table_like_indices)
+        if not near_table:
+            continue
+        has_cluster_neighbor = any(j != i and abs(j - i) <= window for j in narrow_heading_indices)
+        if has_cluster_neighbor:
+            reclassify.add(i)
+    return reclassify

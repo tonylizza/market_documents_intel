@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from market_documents.exceptions import PdfDecryptionError, PdfExtractionError
-from market_documents.models.enums import ExtractionQuality, ExtractionStatus, MetadataStatus
+from market_documents.models.enums import BlockType, ExtractionQuality, ExtractionStatus, MetadataStatus
 from market_documents.models.extraction import ExtractionRun, NarrativeDocument, Page, TextBlock
 from market_documents.models.report import Report
 from market_documents.services import (
@@ -211,6 +211,8 @@ def _run_extraction(session: Session, report: Report, run: ExtractionRun) -> Non
         font_sizes = [b.font_size for b in extracted_page.blocks if b.font_size is not None]
         page_median_font_size = sorted(font_sizes)[len(font_sizes) // 2] if font_sizes else None
 
+        # First pass: classify each block in isolation (unchanged behavior).
+        first_pass = []
         for reading_order, extracted_block in enumerate(extracted_page.blocks):
             hf_flags = header_footer_flags.get(
                 (extracted_page.page_number, extracted_block.block_index)
@@ -228,6 +230,33 @@ def _run_extraction(session: Session, report: Report, run: ExtractionRun) -> Non
                 config=EXTRACTION_CONFIG,
                 bbox_height=extracted_block.y1 - extracted_block.y0,
             )
+            first_pass.append(
+                (reading_order, extracted_block, is_header, is_footer, block_type, excluded, exclusion_reason)
+            )
+
+        # Second pass: reclassify table column-header/cell fragments using
+        # the whole page's block geometry, which no single-block classifier
+        # call can see (see block_classification::find_table_header_fragment_indices).
+        table_header_fragment_indices = block_classification.find_table_header_fragment_indices(
+            [
+                block_classification.PageBlockGeometry(
+                    block_type=entry[4], x0=entry[1].x0, y0=entry[1].y0, x1=entry[1].x1, y1=entry[1].y1
+                )
+                for entry in first_pass
+            ],
+            EXTRACTION_CONFIG,
+        )
+
+        for idx, (reading_order, extracted_block, is_header, is_footer, block_type, excluded, exclusion_reason) in (
+            enumerate(first_pass)
+        ):
+            if idx in table_header_fragment_indices:
+                block_type = BlockType.TABLE_HEADER_FRAGMENT
+                excluded = True
+                exclusion_reason = (
+                    "table header/cell fragment: narrow heading-candidate block clustered "
+                    "near tabular content"
+                )
 
             session.add(
                 TextBlock(

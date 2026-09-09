@@ -53,13 +53,18 @@ def _table_columns(engine) -> set[str]:
 
 def test_migration_downgrade_and_re_upgrade_round_trips(engine):
     """`engine` (session-scoped, already at head) guarantees the DB exists
-    and starts at head before this test runs."""
+    and starts at head before this test runs.
+
+    Downgrades to this migration's own `down_revision` (not a relative
+    `-1` from `head`) so this test keeps exercising 18e705b62fee's own
+    reversibility even after later migrations are stacked on top of it.
+    """
     cfg = _alembic_config()
     try:
         columns_before = _table_columns(engine)
         assert NEW_COLUMNS.issubset(columns_before)
 
-        command.downgrade(cfg, "-1")
+        command.downgrade(cfg, "21524e40a375")
         columns_after_downgrade = _table_columns(engine)
         assert NEW_COLUMNS.isdisjoint(columns_after_downgrade)
 

@@ -1,5 +1,9 @@
 from market_documents.models.enums import BlockType
-from market_documents.services.block_classification import classify_block
+from market_documents.services.block_classification import (
+    PageBlockGeometry,
+    classify_block,
+    find_table_header_fragment_indices,
+)
 from market_documents.services.extraction_config import ExtractionConfig
 
 CONFIG = ExtractionConfig()
@@ -207,3 +211,118 @@ def test_unknown_bbox_height_does_not_trigger_geometric_rules():
     text = "\n".join(["Af", "Afr", "Afro", "AfroCentric"] * 5)
     block_type, _, _ = _classify(text, bbox_height=None)
     assert block_type != BlockType.OVERLAPPING_TEXT_ARTIFACT
+
+
+# --------------------------------------------------------------------------
+# find_table_header_fragment_indices -- table-header/cell fragment second pass
+#
+# Fixtures below use the real block geometry cited in
+# docs/passage-ground-truth-validation.md Section 3 ("D -- Table header/cell
+# fragments"), so these tests are directly reproducible against the source
+# PDFs named there (KP2 2023 report page 14, KP2 2025 report page 129).
+# --------------------------------------------------------------------------
+
+
+def _geom(block_type, x0, y0, x1, y1):
+    return PageBlockGeometry(block_type=block_type, x0=x0, y0=y0, x1=x1, y1=y1)
+
+
+def test_kp2_mineral_resources_table_header_row_reclassified():
+    """KP2 2023 report, page 14: a two-line multi-column header row
+    ("Category Million Tonnes" / "Grade" / "KCl %" / "Contained" /
+    "KCl (Mt)") immediately preceding numeric TABLE_LIKE rows. Every header
+    fragment should be identified for reclassification."""
+    blocks = [
+        _geom(BlockType.PARAGRAPH, 60, 100, 460, 170),  # a normal wide body paragraph sets page width
+        _geom(BlockType.HEADING_CANDIDATE, 97, 181, 283, 205),  # "Category Million Tonnes"
+        _geom(BlockType.HEADING_CANDIDATE, 299, 181, 324, 194),  # "Grade"
+        _geom(BlockType.HEADING_CANDIDATE, 300, 192, 323, 205),  # "KCl %"
+        _geom(BlockType.HEADING_CANDIDATE, 337, 181, 378, 194),  # "Contained"
+        _geom(BlockType.HEADING_CANDIDATE, 341, 192, 374, 205),  # "KCl (Mt)"
+        _geom(BlockType.TABLE_LIKE, 97, 210, 460, 240),  # numeric mineral-resource row
+        _geom(BlockType.TABLE_LIKE, 97, 241, 460, 271),  # numeric mineral-resource row
+    ]
+    result = find_table_header_fragment_indices(blocks, CONFIG)
+    assert result == {1, 2, 3, 4, 5}
+
+
+def test_kp2_currency_unit_subheader_reclassified():
+    """KP2 2025 report, page 129: "Dec 2025"/"USD" and "Dec 2024"/"USD"
+    column sub-headers, each a separate PyMuPDF block, above a numeric
+    KMP-disclosure table."""
+    blocks = [
+        _geom(BlockType.PARAGRAPH, 60, 100, 460, 170),
+        _geom(BlockType.HEADING_CANDIDATE, 213, 300, 270, 314),  # "Dec 2025"
+        _geom(BlockType.HEADING_CANDIDATE, 226, 316, 250, 328),  # "USD"
+        _geom(BlockType.HEADING_CANDIDATE, 300, 300, 357, 314),  # "Dec 2024"
+        _geom(BlockType.HEADING_CANDIDATE, 313, 316, 337, 328),  # "USD"
+        _geom(BlockType.TABLE_LIKE, 97, 330, 460, 360),
+    ]
+    result = find_table_header_fragment_indices(blocks, CONFIG)
+    assert result == {1, 2, 3, 4}
+
+
+def test_genuine_wide_heading_above_table_not_reclassified():
+    """A genuine section heading ("Summary of results") spans most of the
+    page's content width and has no clustered narrow neighbor -- it must
+    survive as HEADING_CANDIDATE even though a table follows immediately."""
+    blocks = [
+        _geom(BlockType.HEADING_CANDIDATE, 60, 100, 440, 120),  # "Summary of results" -- wide
+        _geom(BlockType.TABLE_LIKE, 60, 130, 440, 160),
+        _geom(BlockType.TABLE_LIKE, 60, 161, 440, 191),
+    ]
+    result = find_table_header_fragment_indices(blocks, CONFIG)
+    assert result == set()
+
+
+def test_isolated_narrow_heading_near_table_not_reclassified_without_cluster():
+    """A single narrow heading-candidate near a table, with no other narrow
+    heading-candidate nearby, is left alone -- clustering evidence is
+    required, not just narrowness plus adjacency."""
+    blocks = [
+        _geom(BlockType.PARAGRAPH, 60, 60, 440, 90),
+        _geom(BlockType.HEADING_CANDIDATE, 300, 100, 340, 114),  # lone narrow fragment, e.g. "Grade"
+        _geom(BlockType.TABLE_LIKE, 60, 120, 440, 150),
+    ]
+    result = find_table_header_fragment_indices(blocks, CONFIG)
+    assert result == set()
+
+
+def test_genuine_short_heading_with_no_table_on_page_not_reclassified():
+    """"Committee" -- a genuine one-word governance subheading with no
+    table anywhere on the page -- must never be reclassified."""
+    blocks = [
+        _geom(BlockType.HEADING_CANDIDATE, 60, 100, 120, 114),  # "Committee"
+        _geom(BlockType.PARAGRAPH, 60, 120, 440, 300),
+    ]
+    result = find_table_header_fragment_indices(blocks, CONFIG)
+    assert result == set()
+
+
+def test_narrow_headings_clustered_but_far_from_any_table_not_reclassified():
+    """Two narrow, clustered heading-candidates that are nowhere near a
+    TABLE_LIKE block (outside the adjacency window) are left alone."""
+    blocks = (
+        [_geom(BlockType.PARAGRAPH, 60, 60, 440, 90)]
+        + [_geom(BlockType.HEADING_CANDIDATE, 100 + i * 5, 100, 120 + i * 5, 114) for i in range(3)]
+        + [_geom(BlockType.PARAGRAPH, 60, 120, 440, 200) for _ in range(10)]
+        + [_geom(BlockType.TABLE_LIKE, 60, 900, 440, 930)]
+    )
+    result = find_table_header_fragment_indices(blocks, CONFIG)
+    assert result == set()
+
+
+def test_no_table_like_block_on_page_short_circuits():
+    blocks = [
+        _geom(BlockType.HEADING_CANDIDATE, 100, 100, 120, 114),
+        _geom(BlockType.HEADING_CANDIDATE, 130, 100, 150, 114),
+    ]
+    assert find_table_header_fragment_indices(blocks, CONFIG) == set()
+
+
+def test_no_geometry_available_short_circuits():
+    blocks = [
+        PageBlockGeometry(block_type=BlockType.HEADING_CANDIDATE, x0=None, y0=None, x1=None, y1=None),
+        PageBlockGeometry(block_type=BlockType.TABLE_LIKE, x0=None, y0=None, x1=None, y1=None),
+    ]
+    assert find_table_header_fragment_indices(blocks, CONFIG) == set()

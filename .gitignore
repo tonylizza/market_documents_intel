@@ -16,6 +16,7 @@ CLAUDE.md
 docs/qa-retrieval-chunks.md
 docs/implementation-details.md
 docs/implementation-details-source-map.md
+docs/passage-pipeline-data-quality-audit.md
 
 
 # Third-party reference dictionaries (e.g. Loughran-McDonald Master

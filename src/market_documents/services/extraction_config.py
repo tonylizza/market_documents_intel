@@ -17,7 +17,7 @@ EXTRACTOR_NAME = "pymupdf"
 
 CLEANING_RULES_VERSION = 1
 QUALITY_THRESHOLDS_VERSION = 1
-CLASSIFICATION_RULES_VERSION = 3
+CLASSIFICATION_RULES_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -63,6 +63,25 @@ class ExtractionConfig:
     # measured 42.7 -- more than an order of magnitude beyond the threshold,
     # so this has no observed false-positive risk on real content.
     overlapping_text_line_density_threshold: float = 2.0
+
+    # Table-header/cell fragment second pass (block_classification.py::
+    # find_table_header_fragment_indices). Reading-order adjacency to a
+    # TABLE_LIKE block alone is not sufficient to identify a table column
+    # header, because a genuine short heading (e.g. "Summary of results")
+    # can legitimately sit immediately above a table -- that case must
+    # survive as HEADING_CANDIDATE. What ground-truth PDF inspection
+    # (docs/passage-ground-truth-validation.md Section 3) confirmed as the
+    # distinguishing structural signature is: the fragment is geometrically
+    # narrow (a column-width cell, not a full-width section heading) AND it
+    # is not alone -- at least one other narrow HEADING_CANDIDATE block sits
+    # within a short window of it, which is what a multi-column header row
+    # (e.g. "Category"/"Grade"/"Contained") or a two-line stacked cell (e.g.
+    # "Contained"/"KCl (Mt)") looks like structurally. Both conditions must
+    # hold, which is why a lone wide "Summary of results" heading is left
+    # alone: it fails the narrowness test, the clustering test, or both.
+    table_header_fragment_max_width_ratio: float = 0.5
+    table_header_fragment_adjacency_window: int = 6
+    table_header_fragment_min_cluster_size: int = 2
 
     # Report-level quality rollup
     low_text_page_tolerance: float = 0.20
