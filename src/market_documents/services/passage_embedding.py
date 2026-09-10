@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from market_documents.config import get_settings
-from market_documents.models.embedding import EmbeddingRun, PassageEmbedding
+from market_documents.models.embedding import EmbeddingRun, PassageEmbedding, PassageRetrievalChunk
 from market_documents.models.enums import EmbeddingRunStatus, PassageSegmentationRunStatus
 from market_documents.models.passage import Passage, PassageSegmentationRun
 from market_documents.services.embedding_config import (
@@ -35,6 +35,8 @@ from market_documents.services.embedding_config import (
     TOKENIZER_REVISION,
     compute_configuration_hash,
 )
+from market_documents.services.retrieval_chunk_config import RETRIEVAL_CHUNK_CONFIG, RETRIEVAL_CHUNKING_VERSION
+from market_documents.services.retrieval_chunking import split_into_retrieval_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +223,76 @@ def embed_segmentation_run(
     return EmbeddingOutcome(segmentation_run_id=segmentation_run.id, run=run)
 
 
+def _embed_oversized_passage_as_retrieval_chunks(
+    session: Session,
+    run: EmbeddingRun,
+    passage: Passage,
+    token_count: int,
+    model: EmbeddingModel,
+) -> tuple[list[str], int]:
+    """Milestone 6: a passage whose full text exceeds the model's token
+    limit is no longer silently invisible to candidate generation. Its
+    canonical `Passage.raw_text` is left completely unchanged (it is never
+    embedded canonically, and never will be for this run); instead it is
+    split into deterministic, token-safe retrieval subchunks (see
+    `retrieval_chunking.py`), each embedded and persisted as its own
+    `PassageRetrievalChunk`, so any subchunk hit can still nominate this
+    passage as a semantic candidate (`alignment_candidates.py`).
+
+    Mirrors the main batch loop's failure isolation below: a batch-level
+    `encode_batch` failure falls back to one-by-one encoding so one bad
+    chunk cannot lose every chunk's result. Returns `(warnings, persisted)`
+    -- `persisted` may be less than the chunk count (or zero) if some/all
+    chunks failed to embed; the caller decides how to count that.
+    """
+    chunks = split_into_retrieval_chunks(
+        passage.raw_text, count_tokens=model.count_tokens, config=RETRIEVAL_CHUNK_CONFIG
+    )
+    texts = [chunk.text for chunk in chunks]
+    try:
+        encoded = model.encode_batch(texts)
+    except Exception as exc:
+        logger.warning("retrieval-chunk embedding failed for passage %s (%s), retrying one by one", passage.id, exc)
+        encoded = []
+        for text in texts:
+            try:
+                encoded.extend(model.encode_batch([text]))
+            except Exception:
+                encoded.append(None)
+
+    warnings = [
+        f"passage {passage.id}: token count {token_count} exceeds model limit "
+        f"({MAXIMUM_MODEL_TOKENS}), split into {len(chunks)} retrieval subchunks "
+        f"(chunking v{RETRIEVAL_CHUNKING_VERSION}) instead of skipped"
+    ]
+    persisted = 0
+    for chunk, result in zip(chunks, encoded):
+        if result is None:
+            warnings.append(f"passage {passage.id} chunk {chunk.chunk_index}: embedding failed, skipped")
+            continue
+        if len(result.vector) != EMBEDDING_DIMENSION:
+            warnings.append(
+                f"passage {passage.id} chunk {chunk.chunk_index}: embedding dimension "
+                f"{len(result.vector)} != expected {EMBEDDING_DIMENSION}, skipped"
+            )
+            continue
+        session.add(
+            PassageRetrievalChunk(
+                embedding_run_id=run.id,
+                passage_id=passage.id,
+                chunk_index=chunk.chunk_index,
+                chunk_text=chunk.text,
+                char_start=chunk.char_start,
+                char_end=chunk.char_end,
+                token_count=chunk.token_count,
+                content_hash=chunk.content_hash,
+                embedding=result.vector,
+            )
+        )
+        persisted += 1
+    return warnings, persisted
+
+
 def _run_embedding(
     session: Session,
     run: EmbeddingRun,
@@ -230,17 +302,26 @@ def _run_embedding(
 ) -> None:
     embedded_count = 0
     skipped_count = 0
+    oversized_chunked_count = 0
+    retrieval_chunk_count = 0
     warnings: list[str] = []
 
     embeddable: list[Passage] = []
     for passage in passages:
         token_count = model.count_tokens(passage.raw_text)
         if token_count > MAXIMUM_MODEL_TOKENS:
-            skipped_count += 1
-            warnings.append(
-                f"passage {passage.id}: token count {token_count} exceeds model limit "
-                f"({MAXIMUM_MODEL_TOKENS}), skipped rather than silently truncated"
+            chunk_warnings, persisted = _embed_oversized_passage_as_retrieval_chunks(
+                session, run, passage, token_count, model
             )
+            warnings.extend(chunk_warnings)
+            if persisted == 0:
+                # Every chunk failed to embed: this passage has no
+                # representation at all, a genuine failure -- not the
+                # "chunked and retrievable" outcome this counter means.
+                skipped_count += 1
+            else:
+                oversized_chunked_count += 1
+                retrieval_chunk_count += persisted
             continue
         embeddable.append(passage)
 
@@ -286,10 +367,19 @@ def _run_embedding(
 
     run.embedded_passage_count = embedded_count
     run.skipped_passage_count = skipped_count
+    run.oversized_chunked_passage_count = oversized_chunked_count
+    run.retrieval_chunk_count = retrieval_chunk_count
     run.completed_at = datetime.now(UTC)
     run.review_reason = "; ".join(warnings) if warnings else None
-    # A partial run (any skip/failure) is never fully successful.
-    run.status = EmbeddingRunStatus.COMPLETED if skipped_count == 0 else EmbeddingRunStatus.COMPLETED_WITH_WARNINGS
+    # A partial run (any skip/failure) is never fully successful. An
+    # oversized-chunked passage is not a failure, but it is not the
+    # ordinary path either, so it still marks the run COMPLETED_WITH_WARNINGS
+    # (review_reason records exactly what happened for each such passage).
+    run.status = (
+        EmbeddingRunStatus.COMPLETED
+        if skipped_count == 0 and oversized_chunked_count == 0
+        else EmbeddingRunStatus.COMPLETED_WITH_WARNINGS
+    )
 
 
 @dataclass

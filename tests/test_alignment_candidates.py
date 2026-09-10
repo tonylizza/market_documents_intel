@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 import pytest
 
 from market_documents.models.company import Company
-from market_documents.models.embedding import EMBEDDING_DIMENSION, EmbeddingRun, PassageEmbedding
+from market_documents.models.embedding import (
+    EMBEDDING_DIMENSION,
+    EmbeddingRun,
+    PassageEmbedding,
+    PassageRetrievalChunk,
+)
 from market_documents.models.enums import (
     EmbeddingRunStatus,
     ExtractionQuality,
@@ -120,6 +125,19 @@ def _embedding(db_session, embedding_run, passage, vector: list[float]) -> Passa
     return embedding
 
 
+def _retrieval_chunk(
+    db_session, embedding_run, passage, *, chunk_index: int, vector: list[float]
+) -> PassageRetrievalChunk:
+    chunk = PassageRetrievalChunk(
+        embedding_run_id=embedding_run.id, passage_id=passage.id, chunk_index=chunk_index,
+        chunk_text=f"chunk {chunk_index} of passage {passage.passage_index}", char_start=0, char_end=10,
+        token_count=10, content_hash=compute_content_hash(f"chunk-{passage.id}-{chunk_index}"), embedding=vector,
+    )
+    db_session.add(chunk)
+    db_session.flush()
+    return chunk
+
+
 def test_candidates_ordered_by_cosine_similarity_descending(db_session):
     report, seg_run, emb_run = _report_and_run(db_session, "CAND1")
     p_high = _passage(db_session, seg_run, report, index=0)
@@ -191,6 +209,104 @@ def test_candidates_restricted_to_specified_embedding_run(db_session):
         top_k=5, min_semantic_similarity=0.0,
     )
     assert [c.passage.id for c in candidates] == [p_a.id]
+
+
+def test_oversized_passage_is_surfaced_via_retrieval_chunks(db_session):
+    # A passage with no PassageEmbedding row at all (oversized -> chunked,
+    # Milestone 6) must still be nominatable as a candidate via its chunks.
+    report, seg_run, emb_run = _report_and_run(db_session, "CAND7")
+    p_oversized = _passage(db_session, seg_run, report, index=0)
+    _retrieval_chunk(db_session, emb_run, p_oversized, chunk_index=0, vector=_vec(0.3))
+    _retrieval_chunk(db_session, emb_run, p_oversized, chunk_index=1, vector=_vec(0.9))
+
+    candidates = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.0,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].passage.id == p_oversized.id
+    assert candidates[0].candidate_source == "retrieval_chunk_max"
+    # Max, not average, across the passage's subchunks.
+    assert candidates[0].semantic_similarity == pytest.approx(0.9, abs=1e-4)
+
+
+def test_canonical_and_retrieval_chunk_candidates_are_merged_and_ranked_together(db_session):
+    report, seg_run, emb_run = _report_and_run(db_session, "CAND8")
+    p_canonical = _passage(db_session, seg_run, report, index=0)
+    p_oversized = _passage(db_session, seg_run, report, index=1)
+    _embedding(db_session, emb_run, p_canonical, _vec(0.6))
+    _retrieval_chunk(db_session, emb_run, p_oversized, chunk_index=0, vector=_vec(0.95))
+
+    candidates = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.0,
+    )
+    assert [c.passage.id for c in candidates] == [p_oversized.id, p_canonical.id]
+    assert candidates[0].candidate_source == "retrieval_chunk_max"
+    assert candidates[1].candidate_source == "canonical_embedding"
+
+
+def test_retrieval_chunk_candidates_respect_min_semantic_similarity(db_session):
+    report, seg_run, emb_run = _report_and_run(db_session, "CAND9")
+    p_oversized = _passage(db_session, seg_run, report, index=0)
+    _retrieval_chunk(db_session, emb_run, p_oversized, chunk_index=0, vector=_vec(0.2))
+
+    candidates = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.5,
+    )
+    assert candidates == []
+
+
+def test_retrieval_chunk_candidates_exclude_excluded_passages(db_session):
+    report, seg_run, emb_run = _report_and_run(db_session, "CAND10")
+    p_excluded = _passage(db_session, seg_run, report, index=0, excluded=True)
+    _retrieval_chunk(db_session, emb_run, p_excluded, chunk_index=0, vector=_vec(0.95))
+
+    candidates = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.0,
+    )
+    assert candidates == []
+
+
+def test_retrieval_chunk_candidate_ranking_is_deterministic(db_session):
+    report, seg_run, emb_run = _report_and_run(db_session, "CAND11")
+    p_a = _passage(db_session, seg_run, report, index=5)
+    p_b = _passage(db_session, seg_run, report, index=1)
+    _retrieval_chunk(db_session, emb_run, p_a, chunk_index=0, vector=_vec(0.5))
+    _retrieval_chunk(db_session, emb_run, p_b, chunk_index=0, vector=_vec(0.5))
+
+    first = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.0,
+    )
+    second = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.0,
+    )
+    assert [c.passage.passage_index for c in first] == [1, 5]
+    assert [c.passage.passage_index for c in first] == [c.passage.passage_index for c in second]
+
+
+def test_more_chunks_do_not_win_without_a_better_max_similarity(db_session):
+    # Section 22 bias check: a passage with many mediocre chunks must not
+    # outrank a passage with one chunk at the same best similarity, since
+    # aggregation is max, not sum/average/count-weighted.
+    report, seg_run, emb_run = _report_and_run(db_session, "CAND12")
+    p_many_chunks = _passage(db_session, seg_run, report, index=0)
+    p_one_chunk = _passage(db_session, seg_run, report, index=1)
+    # Many chunks, but none better than the single-chunk passage's one hit.
+    for i in range(6):
+        _retrieval_chunk(db_session, emb_run, p_many_chunks, chunk_index=i, vector=_vec(0.5))
+    _retrieval_chunk(db_session, emb_run, p_one_chunk, chunk_index=0, vector=_vec(0.5))
+
+    candidates = get_semantic_candidates(
+        db_session, later_embedding_vector=BASE_VEC, earlier_embedding_run_id=emb_run.id,
+        top_k=5, min_semantic_similarity=0.0,
+    )
+    similarities = {c.passage.id: c.semantic_similarity for c in candidates}
+    assert similarities[p_many_chunks.id] == pytest.approx(similarities[p_one_chunk.id], abs=1e-6)
 
 
 def test_candidates_deterministic_tie_break_by_passage_index(db_session):

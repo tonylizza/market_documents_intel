@@ -153,6 +153,15 @@ class PassageAlignment(UUIDPkMixin, TimestampMixin, Base):
     )
 
     semantic_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Milestone 6: which quantity `semantic_similarity` actually is --
+    # "canonical_embedding" (a true full-passage cosine, every pre-Milestone-6
+    # row's implicit meaning) or "retrieval_chunk_max" (the maximum cosine
+    # similarity across an oversized passage's retrieval subchunks, a
+    # documented, different quantity -- see
+    # `alignment_candidates.CandidateMatch`). NULL for every row produced
+    # before this column existed; always interpretable as
+    # "canonical_embedding", the only kind that existed then.
+    semantic_similarity_basis: Mapped[str | None] = mapped_column(String(32), nullable=True)
     lexical_cosine_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
     jaccard_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
     edit_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)

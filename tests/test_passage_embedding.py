@@ -190,18 +190,59 @@ def test_embed_configuration_change_triggers_new_run(db_session, monkeypatch):
     assert second.run.configuration_hash != first.run.configuration_hash
 
 
-def test_oversized_passage_is_skipped_not_truncated(db_session):
+def test_oversized_passage_is_chunked_not_skipped_or_truncated(db_session):
     run = _segmented_run(db_session)
     passages = db_session.query(pe.Passage).filter_by(segmentation_run_id=run.id).all()
-    oversized_text = next(p.raw_text for p in passages if not p.excluded_from_alignment)
+    oversized = next(p for p in passages if not p.excluded_from_alignment)
 
-    model = FakeEmbeddingModel(token_counts={oversized_text: 9999})
+    model = FakeEmbeddingModel(token_counts={oversized.raw_text: 9999})
     outcome = pe.embed_segmentation_run(db_session, run, model=model)
 
     assert outcome.run.status == EmbeddingRunStatus.COMPLETED_WITH_WARNINGS
-    assert outcome.run.skipped_passage_count >= 1
+    # Milestone 6: no longer counted as a skip -- it is retrievable via
+    # PassageRetrievalChunk instead.
+    assert outcome.run.skipped_passage_count == 0
+    assert outcome.run.oversized_chunked_passage_count == 1
+    assert outcome.run.retrieval_chunk_count >= 1
     assert "exceeds model limit" in outcome.run.review_reason
-    assert "truncated" not in outcome.run.review_reason.split("skipped")[0]
+    assert "retrieval subchunks" in outcome.run.review_reason
+    assert "instead of skipped" in outcome.run.review_reason
+
+    # No canonical PassageEmbedding row for the oversized passage...
+    canonical = (
+        db_session.query(pe.PassageEmbedding)
+        .filter_by(embedding_run_id=outcome.run.id, passage_id=oversized.id)
+        .first()
+    )
+    assert canonical is None
+
+    # ...but its full canonical text is unchanged, and it has retrieval
+    # chunks instead, each embedded and traceable back to this passage.
+    from market_documents.models.embedding import PassageRetrievalChunk
+
+    chunks = (
+        db_session.query(PassageRetrievalChunk)
+        .filter_by(embedding_run_id=outcome.run.id, passage_id=oversized.id)
+        .order_by(PassageRetrievalChunk.chunk_index)
+        .all()
+    )
+    assert len(chunks) == outcome.run.retrieval_chunk_count
+    assert [c.chunk_index for c in chunks] == list(range(len(chunks)))
+    assert all(len(c.embedding) == EMBEDDING_DIMENSION for c in chunks)
+    reconstructed = " ".join(c.chunk_text for c in chunks).split()
+    assert reconstructed == oversized.raw_text.split()
+
+
+def test_normal_passage_embedding_path_is_unaffected_by_chunking_support(db_session):
+    run = _segmented_run(db_session)
+    outcome = pe.embed_segmentation_run(db_session, run, model=FakeEmbeddingModel())
+    assert outcome.run.oversized_chunked_passage_count == 0
+    assert outcome.run.retrieval_chunk_count == 0
+
+    from market_documents.models.embedding import PassageRetrievalChunk
+
+    chunks = db_session.query(PassageRetrievalChunk).filter_by(embedding_run_id=outcome.run.id).all()
+    assert chunks == []
 
 
 def test_per_passage_embedding_failure_is_isolated(db_session):

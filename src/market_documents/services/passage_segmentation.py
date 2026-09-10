@@ -11,9 +11,11 @@ testable; only the orchestration functions at the bottom touch the ORM.
 
 import hashlib
 import logging
+import re
 import unicodedata
 import uuid
 from dataclasses import dataclass, field, replace
+from typing import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -59,6 +61,31 @@ class SegmentableBlock:
 
 
 @dataclass(frozen=True)
+class PackedBlockPiece:
+    """One contiguous character span of a `SegmentableBlock`'s text
+    contributed to a single passage.
+
+    `(char_start, char_end)` is `(0, len(block.text))` for the overwhelming
+    majority of pieces -- an unsplit block contributing all of its text to
+    one passage, exactly as before Milestone 6. A piece with a narrower span
+    only exists when `_split_oversized_block_text` divided one oversized
+    block across more than one passage (see that function's docstring).
+    """
+
+    block: SegmentableBlock
+    char_start: int
+    char_end: int
+
+    @property
+    def text(self) -> str:
+        return self.block.text[self.char_start : self.char_end]
+
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+
+@dataclass(frozen=True)
 class SegmentedPassage:
     passage_index: int
     raw_text: str
@@ -74,6 +101,9 @@ class SegmentedPassage:
     excluded_from_alignment: bool
     exclusion_reason: str | None
     source_block_ids: tuple[uuid.UUID, ...]
+    # Parallel to source_block_ids: the exact character span of each piece,
+    # for provenance. `(0, len(block.text))` for an unsplit block.
+    source_block_spans: tuple[tuple[uuid.UUID, int, int], ...]
 
 
 def _normalize(text: str) -> str:
@@ -128,24 +158,108 @@ def _split_into_heading_runs(blocks: list[SegmentableBlock]) -> list[list[Segmen
     return runs
 
 
+_SENTENCE_END = re.compile(r"[.!?;](?=\s|$)")
+_WORD = re.compile(r"\S+\s*")
+
+
+def _sentence_spans(text: str) -> list[tuple[int, int]]:
+    """Contiguous, gapless sentence-ish spans tiling `[0, len(text))`
+    exactly -- each span's end absorbs any trailing whitespace so the spans
+    can be concatenated back into `text` with no loss."""
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for match in _SENTENCE_END.finditer(text):
+        end = match.end()
+        while end < len(text) and text[end].isspace():
+            end += 1
+        if end > start:
+            spans.append((start, end))
+            start = end
+    if start < len(text):
+        spans.append((start, len(text)))
+    return spans
+
+
+def _word_spans(text: str, start: int, end: int) -> list[tuple[int, int]]:
+    """Contiguous, gapless word-ish spans tiling `text[start:end]` exactly,
+    used only as the fallback when a single sentence alone exceeds
+    `max_words` (see `_split_oversized_block_text`)."""
+    spans = [(start + m.start(), start + m.end()) for m in _WORD.finditer(text[start:end])]
+    return spans or [(start, end)]
+
+
+def _pack_spans(
+    text: str,
+    spans: list[tuple[int, int]],
+    max_words: int,
+    finer: Callable[[str, int, int, int], list[tuple[int, int]]] | None,
+) -> list[tuple[int, int]]:
+    """Greedily pack contiguous, gapless spans into pieces of at most
+    `max_words` words each, recursively subdividing (via `finer`) any single
+    span that alone already exceeds `max_words`."""
+    pieces: list[tuple[int, int]] = []
+    cur_start: int | None = None
+    cur_end: int | None = None
+    cur_words = 0
+    for span_start, span_end in spans:
+        seg_words = len(text[span_start:span_end].split())
+        if seg_words > max_words and finer is not None:
+            if cur_start is not None:
+                pieces.append((cur_start, cur_end))
+                cur_start, cur_words = None, 0
+            pieces.extend(finer(text, span_start, span_end, max_words))
+            continue
+        if cur_start is not None and cur_words + seg_words > max_words:
+            pieces.append((cur_start, cur_end))
+            cur_start, cur_end, cur_words = span_start, span_end, seg_words
+        elif cur_start is None:
+            cur_start, cur_end, cur_words = span_start, span_end, seg_words
+        else:
+            cur_end = span_end
+            cur_words += seg_words
+    if cur_start is not None:
+        pieces.append((cur_start, cur_end))
+    return pieces
+
+
+def _split_oversized_block_text(text: str, max_words: int) -> list[tuple[str, int, int]]:
+    """Deterministically split one block's text -- already confirmed larger
+    than `max_words` on its own -- into pieces each at or under `max_words`,
+    preserving exact character coverage of the original text (no gaps, no
+    overlaps, no content loss, no truncation).
+
+    Sentence-boundary greedy packing (mirrors the read-only simulation in
+    `docs/embedding-eligibility-token-limit-diagnostic.md` Section 11), with
+    a word-boundary fallback for the case where one sentence alone exceeds
+    `max_words` -- not observed in the real corpus per that diagnostic, but
+    handled here rather than assumed impossible.
+    """
+
+    def _word_fallback(text: str, start: int, end: int, max_words: int) -> list[tuple[int, int]]:
+        return _pack_spans(text, _word_spans(text, start, end), max_words, finer=None)
+
+    spans = _pack_spans(text, _sentence_spans(text), max_words, finer=_word_fallback)
+    return [(text[start:end], start, end) for start, end in spans]
+
+
 def _finalize_group(
-    group: list[SegmentableBlock],
+    group: list[PackedBlockPiece],
     heading_text: str | None,
     table_adjacent_ids: set[uuid.UUID],
     config: PassageConfig,
 ) -> SegmentedPassage:
-    texts = [b.text.strip() for b in group]
+    texts = [piece.text.strip() for piece in group]
     raw_text = "\n\n".join(texts)
     normalized_text = _normalize(raw_text)
     content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
 
-    first_page = min(b.page_number for b in group)
-    last_page = max(b.page_number for b in group)
+    first_page = min(piece.block.page_number for piece in group)
+    last_page = max(piece.block.page_number for piece in group)
     word_count = len(raw_text.split())
     token_count = len(tokenize(raw_text))
     character_count = len(raw_text)
 
-    block_types_present = {b.block_type for b in group}
+    block_types_present = {piece.block.block_type for piece in group}
     if heading_text is not None:
         passage_type = PassageType.HEADING_WITH_BODY
     elif block_types_present == {BlockType.LIST_ITEM}:
@@ -156,7 +270,7 @@ def _finalize_group(
         passage_type = PassageType.PARAGRAPH
 
     if passage_type in (PassageType.PARAGRAPH, PassageType.MULTI_PARAGRAPH) and any(
-        b.id in table_adjacent_ids for b in group
+        piece.block.id in table_adjacent_ids for piece in group
     ):
         passage_type = PassageType.TABLE_CONTEXT
 
@@ -184,7 +298,8 @@ def _finalize_group(
         passage_type=passage_type,
         excluded_from_alignment=excluded,
         exclusion_reason=reason,
-        source_block_ids=tuple(b.id for b in group),
+        source_block_ids=tuple(piece.block.id for piece in group),
+        source_block_spans=tuple((piece.block.id, piece.char_start, piece.char_end) for piece in group),
     )
 
 
@@ -194,17 +309,42 @@ def _pack_run_into_passages(
     has_heading = run[0].block_type == BlockType.HEADING_CANDIDATE
     heading_text = run[0].text.strip() if has_heading else None
 
-    groups: list[list[SegmentableBlock]] = []
-    current: list[SegmentableBlock] = []
+    groups: list[list[PackedBlockPiece]] = []
+    current: list[PackedBlockPiece] = []
     current_words = 0
     for block in run:
         words = len(block.text.split())
+        if words > config.max_words:
+            # A single incoming block already exceeds max_words on its own:
+            # the ordinary `current and current_words + words > max_words`
+            # check below never fires for an empty `current`, which is
+            # exactly the segmentation-ceiling bypass this milestone fixes
+            # (see module docstring and
+            # docs/embedding-eligibility-token-limit-diagnostic.md Section
+            # 4.1). This must be checked unconditionally -- not only when
+            # `current` happens to be empty -- because an oversized block
+            # arriving after other already-accumulated content in the same
+            # run hits this exact branch too; flush any accumulated group
+            # first so its words aren't lost, then split the oversized block
+            # deterministically. Each resulting piece is already at or under
+            # max_words, so it closes immediately as its own group rather
+            # than risking a second, subtler oversized-group bug from trying
+            # to keep packing.
+            if current:
+                groups.append(current)
+                current = []
+                current_words = 0
+            for piece_text, start, end in _split_oversized_block_text(block.text, config.max_words):
+                groups.append([PackedBlockPiece(block, start, end)])
+            continue
+
+        piece = PackedBlockPiece(block, 0, len(block.text))
         if current and current_words + words > config.max_words:
             groups.append(current)
-            current = [block]
+            current = [piece]
             current_words = words
         else:
-            current.append(block)
+            current.append(piece)
             current_words += words
             if current_words >= config.target_max_words:
                 groups.append(current)
@@ -217,9 +357,9 @@ def _pack_run_into_passages(
     # the heading boundary that starts it) if it fell under the preferred
     # minimum -- avoids leaving an orphaned tiny fragment at a run's end.
     if len(groups) > 1:
-        last_words = sum(len(b.text.split()) for b in groups[-1])
+        last_words = sum(piece.word_count for piece in groups[-1])
         if last_words < config.min_preferred_words:
-            prev_words = sum(len(b.text.split()) for b in groups[-2])
+            prev_words = sum(piece.word_count for piece in groups[-2])
             if prev_words + last_words <= config.max_words:
                 groups[-2] = groups[-2] + groups[-1]
                 groups.pop()
@@ -288,7 +428,13 @@ def check_provenance(
 
     Fatal (always FAILED, never silently accepted):
     - an included block omitted from every passage;
-    - a block duplicated across passages (or within one passage).
+    - a block whose recorded spans do not exactly tile its own text with no
+      gaps and no overlaps -- this subsumes the pre-Milestone-6 "a block
+      duplicated across passages (or within one passage)" check (an
+      unsplit, wholly-duplicated block is the degenerate case of two
+      identical, therefore overlapping, full-block spans) while also
+      catching a legitimately *split* block whose pieces leave a gap or
+      overlap, which the old whole-block check could not represent.
 
     Warning-level (COMPLETED_WITH_WARNINGS):
     - source-order inversions within a passage;
@@ -299,19 +445,41 @@ def check_provenance(
     fatal: list[str] = []
     warnings: list[str] = []
 
-    included_ids = {b.id for b in all_blocks if not b.excluded_from_narrative and b.text.strip()}
+    included_blocks = [b for b in all_blocks if not b.excluded_from_narrative and b.text.strip()]
+    included_ids = {b.id for b in included_blocks}
+    text_by_id = {b.id: b.text for b in included_blocks}
+
     seen: list[uuid.UUID] = []
+    spans_by_id: dict[uuid.UUID, list[tuple[int, int]]] = {}
     for passage in segmented:
         seen.extend(passage.source_block_ids)
+        for block_id, start, end in passage.source_block_spans:
+            spans_by_id.setdefault(block_id, []).append((start, end))
 
     seen_set = set(seen)
     omitted = included_ids - seen_set
     if omitted:
         fatal.append(f"{len(omitted)} included source block(s) omitted from every passage")
 
-    duplicates = {block_id for block_id in seen if seen.count(block_id) > 1}
-    if duplicates:
-        fatal.append(f"{len(duplicates)} source block(s) duplicated across passages")
+    mistiled: set[uuid.UUID] = set()
+    for block_id, spans in spans_by_id.items():
+        expected_length = len(text_by_id.get(block_id, ""))
+        covered = 0
+        ok = True
+        for start, end in sorted(spans):
+            if start != covered:
+                ok = False
+                break
+            covered = end
+        if covered != expected_length:
+            ok = False
+        if not ok:
+            mistiled.add(block_id)
+    if mistiled:
+        fatal.append(
+            f"{len(mistiled)} source block(s) duplicated or incompletely covered across passages "
+            "(span coverage does not exactly tile the source block's text)"
+        )
 
     order_by_id = {b.id: (b.page_number, b.reading_order) for b in all_blocks}
     for passage in segmented:
@@ -519,13 +687,15 @@ def _run_segmentation(
         session.add(passage)
         session.flush()  # assign passage.id for the source-block rows below
 
-        for order, block_id in enumerate(sp.source_block_ids):
+        for order, (block_id, char_start, char_end) in enumerate(sp.source_block_spans):
             session.add(
                 PassageSourceBlock(
                     passage_id=passage.id,
                     text_block_id=block_id,
                     segmentation_run_id=run.id,
                     source_order=order,
+                    source_char_start=char_start,
+                    source_char_end=char_end,
                 )
             )
 

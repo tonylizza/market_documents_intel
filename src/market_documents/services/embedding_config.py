@@ -32,6 +32,8 @@ import importlib.metadata
 import json
 from dataclasses import asdict, dataclass
 
+from market_documents.services.retrieval_chunk_config import compute_retrieval_chunk_configuration_hash
+
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 TOKENIZER_NAME = MODEL_NAME
@@ -83,13 +85,17 @@ def compute_configuration_hash(config: EmbeddingConfig = EMBEDDING_CONFIG) -> st
 
     An identical fingerprint means: same model revision, same tokenizer
     revision, same pooling/normalization/prefix behavior, same library
-    versions. Any change triggers a fresh `EmbeddingRun` instead of a skip.
+    versions, same retrieval-chunking policy (Milestone 6 -- a chunking
+    change affects what gets embedded for an oversized passage, so it must
+    trigger a fresh `EmbeddingRun` exactly like any other embedding-affecting
+    change). Any change triggers a fresh `EmbeddingRun` instead of a skip.
     """
     payload = {
         "embedding_config_version": EMBEDDING_CONFIG_VERSION,
         "sentence_transformers_version": _sentence_transformers_version(),
         "transformers_version": _transformers_version(),
         "config": asdict(config),
+        "retrieval_chunking": compute_retrieval_chunk_configuration_hash(),
     }
     canonical = json.dumps(payload, sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

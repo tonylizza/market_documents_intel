@@ -1,7 +1,7 @@
 from market_documents.db.base import Base
 from market_documents.models.alignment import AlignmentRun, PassageAlignment
 from market_documents.models.company import Company
-from market_documents.models.embedding import EmbeddingRun, PassageEmbedding
+from market_documents.models.embedding import EmbeddingRun, PassageEmbedding, PassageRetrievalChunk
 from market_documents.models.enums import (
     AlignmentConfidence,
     AlignmentRunStatus,
@@ -65,6 +65,7 @@ __all__ = [
     "PassageType",
     "EmbeddingRun",
     "PassageEmbedding",
+    "PassageRetrievalChunk",
     "EmbeddingRunStatus",
     "AlignmentRun",
     "PassageAlignment",

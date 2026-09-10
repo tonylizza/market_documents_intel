@@ -106,28 +106,23 @@ def _passage(db_session, segmentation_run, report, *, index: int, raw_text: str,
     return passage
 
 
-def test_oversized_skipped_passage_appears_with_expected_fields(db_session):
+def test_oversized_chunked_passage_no_longer_appears_in_the_audit(db_session):
+    # Milestone 6: an oversized passage is chunked (retrievable), not
+    # silently skipped, so it must no longer surface as a residual gap here.
     report, narrative = _report_with_narrative(db_session, "OVR1", narrative_word_count=1000)
     segmentation_run = _segmentation_run(db_session, narrative)
     oversized_text = "oversized passage text"
     normal_text = "normal passage text"
-    p_oversized = _passage(db_session, segmentation_run, report, index=0, raw_text=oversized_text, word_count=400)
+    _passage(db_session, segmentation_run, report, index=0, raw_text=oversized_text, word_count=400)
     _passage(db_session, segmentation_run, report, index=1, raw_text=normal_text, word_count=50)
 
     model = FakeTokenizerModel({oversized_text: MAXIMUM_MODEL_TOKENS + 50, normal_text: 100})
     outcome = pe.embed_segmentation_run(db_session, segmentation_run, model=model)
-    assert outcome.run.skipped_passage_count == 1
+    assert outcome.run.skipped_passage_count == 0
+    assert outcome.run.oversized_chunked_passage_count == 1
 
     rows = build_oversized_passage_audit_rows(db_session, model)
-    assert len(rows) == 1
-    row = rows[0]
-    assert row.passage_id == str(p_oversized.id)
-    assert row.ticker == "OVR1"
-    assert row.token_count == MAXIMUM_MODEL_TOKENS + 50
-    assert row.word_count == 400
-    assert row.share_of_report_words == 400 / 1000
-    assert row.participates_in_alignment_gap is None  # no alignment run covers this side yet
-    assert row.cumulative_corpus_word_share > 0.0
+    assert rows == []
 
 
 def test_passage_skipped_for_other_reasons_is_excluded_from_oversized_audit(db_session):
@@ -148,13 +143,22 @@ def test_passage_skipped_for_other_reasons_is_excluded_from_oversized_audit(db_s
     assert rows == []  # token count (10) is under the limit -- not a size issue
 
 
-def test_oversized_passage_participates_in_alignment_gap_when_covered_by_alignment_run(db_session):
+def test_genuinely_unresolved_gap_still_participates_in_alignment_gap_when_covered_by_alignment_run(db_session):
+    # A passage that fails to embed for a non-size reason (encode exception)
+    # is still a genuine gap -- this audit's `participates_in_alignment_gap`
+    # behavior must still work for that residual population, even though an
+    # oversized-and-chunked passage (the common case now) no longer appears
+    # here at all (see test_oversized_chunked_passage_no_longer_appears...).
     report, narrative = _report_with_narrative(db_session, "OVR3")
     segmentation_run = _segmentation_run(db_session, narrative)
     oversized_text = "oversized passage for gap test"
     p_oversized = _passage(db_session, segmentation_run, report, index=0, raw_text=oversized_text, word_count=400)
 
-    model = FakeTokenizerModel({oversized_text: MAXIMUM_MODEL_TOKENS + 1})
+    class FailingChunkModel(FakeTokenizerModel):
+        def encode_batch(self, texts):
+            raise RuntimeError("boom")
+
+    model = FailingChunkModel({oversized_text: MAXIMUM_MODEL_TOKENS + 1})
     outcome = pe.embed_segmentation_run(db_session, segmentation_run, model=model)
     embedding_run = outcome.run
 
@@ -191,11 +195,19 @@ def test_oversized_passage_participates_in_alignment_gap_when_covered_by_alignme
 
 
 def test_write_oversized_passage_audit_csv_is_stable(db_session, tmp_path):
+    # Uses a genuine embedding failure (not mere oversize) so the row
+    # survives Milestone 6's chunking path and still exercises the CSV
+    # writer's stability guarantee.
     report, narrative = _report_with_narrative(db_session, "OVR4")
     segmentation_run = _segmentation_run(db_session, narrative)
     oversized_text = "oversized passage for csv stability"
     _passage(db_session, segmentation_run, report, index=0, raw_text=oversized_text, word_count=400)
-    model = FakeTokenizerModel({oversized_text: MAXIMUM_MODEL_TOKENS + 1})
+
+    class FailingChunkModel(FakeTokenizerModel):
+        def encode_batch(self, texts):
+            raise RuntimeError("boom")
+
+    model = FailingChunkModel({oversized_text: MAXIMUM_MODEL_TOKENS + 1})
     pe.embed_segmentation_run(db_session, segmentation_run, model=model)
 
     rows = build_oversized_passage_audit_rows(db_session, model)

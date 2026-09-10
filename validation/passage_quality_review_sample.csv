@@ -1,0 +1,767 @@
+case_id,company,report_pdf_path,passage_id,heading,page,passage_type,text,quality_rating,reviewer_id,notes
+M7-QUALITY-0001,ACT,data/raw/ACT/2022/annual_report.pdf,fde13765-6c0d-41c9-8e36-2b72bd5355ef,REMUNERATION COMMITTEE,97,HEADING_WITH_BODY,REMUNERATION COMMITTEE,,,
+M7-QUALITY-0002,ACT,data/raw/ACT/2023/annual_report.pdf,e31d05f9-e1f9-4177-9636-16b38e791b5c,,144,LIST,"6. In the event of a sub-division or consolidation of issued shares during the period contemplated in paragraph 1 above, the existing authority must be adjusted accordingly to represent the same allocation ratio.
+
+7. The maximum discount at which ordinary shares may be issued is 10% (ten percent) of the weighted average traded price of those shares measured over the 30 (thirty) business days prior to the date that the price of the issue is agreed between the Company and the party subscribing for the securities. The JSE must be consulted for a ruling if the Company’s securities have not traded in such a 30-business day period.
+
+8. After the Company has issued shares for cash which represent, on a cumulative basis within a financial year, 5% (five percent) or more of the number of shares in issue prior to that issue, the Company shall publish an announcement containing details of inter alia the number of shares issued, the average discount to the weighted average traded price of the shares over the 30 (thirty) business days prior to the date that the price of the issue was agreed in writing between the issuer and the party subscribing for the shares and in respect of options and convertible securities, the effects of the issue on the statement of financial position, NAV per share, net tangible asset value per share, the statement of profit or loss and other comprehensive income, earnings per share and headline earnings per share and, if applicable, diluted earnings and headline earnings per share, or in respect of an issue of shares, an explanation, including supporting documents (if any) regarding the intended use of the funds. This information shall be published when the Company has issued securities or any other announcements that may be required in such regard in terms of the Listings Requirements, which may be applicable from time to time.”",,,
+M7-QUALITY-0003,ACT,data/raw/ACT/2019/annual_report.pdf,3961d555-84e0-4fd9-9435-55563560474f,,127,MULTI_PARAGRAPH,"This means that the Company is authorised, inter alia, to grant loans to its subsidiaries and to guarantee and furnish security for the debt of its subsidiaries where any such financial assistance is directly or indirectly related to a party subscribing for options, shares or securities in the Company or its subsidiaries.
+
+A typical example of where the Company may rely on this authority is where a subsidiary raised funds by way of issuing preference shares and the third-party funder requires the Company to furnish security, by way of a guarantee or otherwise, for the obligations of its subsidiary to the third-party funder arising from the issue of the preference shares. The Company has no immediate plans to use this authority and is simply obtaining same in the interests of prudence and good corporate governance should the unforeseen need arise to use the authority.
+
+For this resolution to be passed, votes in favour of the resolution must represent at least 75% of all votes cast and/or exercised at the meeting.",,,
+M7-QUALITY-0004,ACT,data/raw/ACT/2022/annual_report.pdf,46ef4caf-8a21-4166-8ab0-4daae5d9ec5a,,71,PARAGRAPH,"AMP, which is embedded in the existing medical schemes’ apps, uses advanced gamification, bespoke user insights, and artificial intelligence and machine learning to take a radically different, holistic approach to wellness that is based on positively guiding and nudging its users. AMP also gives members access to complementary and value-added services through partnerships with, among others, AvoTM by Nedbank and PandaTM, a mental wellness platform. These partnerships give members a 360-degree view of the changes they need to make better lifestyle choices, while at the same time accessing the necessary support to make these changes. AMP has the potential to make a substantial impact on South Africans’ overall quality of life. The platform is designed around the belief that, when prompted to take steps towards better living, South Africans will accept the challenge of becoming healthier together.",,,
+M7-QUALITY-0005,ACT,data/raw/ACT/2019/annual_report.pdf,c2871e49-ad97-44cf-b2af-8802cea4eb3e,,36,TABLE_CONTEXT,"Key performance indicators
+
+2020 Target
+
+Non-health administration and health risk management-related revenue (%) 35 46 34 40 36 35
+
+AfroCentric’s non-health administration and health risk management-related services continue generating a significant portion of revenue. However, the strategy to diversify revenue sources is increasing the Group’s presence in the broader healthcare industry. This is reflected in the growth in pharmaceutical revenue which has increased by 57% to R2.04 billion (38% of total revenue) since 2016 and is now the fastest growing business in AfroCentric’s portfolio, following the acquisitions of Curasana, Pharmacy Direct and 26% of Activo Health in 2016, Scriptpharm Risk Management in 2018 and the remaining 74% of Activo Health in 2019.
+
+Acquiring Private Health Administrators, with FastPulse, and Sanlam Health, and the collaboration of these businesses with Wellness Odyssey into AfroCentric Integrated Corporate Solutions, signalled our expansion into the corporate health and wellness market where we offer innovative, integrated healthcare solutions. The newly launched AfroCentric Financial Services operation, developed in collaboration with Sanlam and other providers, gained traction by securing 950 clients. AfroCentric Integrated Corporate Solutions and AfroCentric Financial Services both represent our response to the evolving needs of our client schemes and their members for complementary services.",,,
+M7-QUALITY-0006,BEL,data/raw/BEL/2017/annual_report.pdf,288a3e1c-6175-4b69-a5ff-c01e0fbdd7ca,HENNIE VAN DER MERWE (70),18,HEADING_WITH_BODY,"HENNIE VAN DER MERWE (70)
+
+Independent non-executive director BCom (Economics) (Wits), CA (SA) Appointed to the board: 2016 Chairman of the audit committee; Chairman of the remuneration committee; Risk and sustainability committee member",,,
+M7-QUALITY-0007,BEL,data/raw/BEL/2017/annual_report.pdf,7d88004c-6606-4524-a639-4931f3e311f2,,82,LIST,"• general repurchases may not be made at a price greater than 10% (ten percent) above the weighted average of the market value for the shares for the 5 (five) business days immediately preceding the date on which the transaction is effected;
+
+• at any point in time, a company may only appoint one agent to effect any repurchases on the company’s behalf;
+
+• a resolution has been passed by the board confirming that the board has authorised the general repurchase, that the company passed the solvency and liquidity test and that since the test was done there have been no material changes to the financial position of the group, or in the case of a purchase by a subsidiary, a resolution of the board of such subsidiary confirming that such board has authorised the general repurchase, that such subsidiary passed the solvency and liquidity test and that since the test was done there have been no material changes to the financial position of the group;",,,
+M7-QUALITY-0008,BEL,data/raw/BEL/2016/annual_report.pdf,81a670dd-ccce-4a5c-a991-a07f3199c5b7,,47-48,MULTI_PARAGRAPH,"of internal control systems can change with circumstances and, for this reason, these are reviewed and updated regularly. The systems presently in place are suitably aligned with the monitoring requirements and nothing has come to the attention of the directors, or internal auditors, to indicate that any material breakdown in the functioning of Bell Equipment’s key internal controls and systems occurred during 2016, other than the unlawful activities uncovered in the group’s DRC operation during the reporting period, which were duly notified to the shareholders and are being actively managed by management with oversight and monitoring by the board.
+
+Internal audit Bell Equipment’s outsourced internal audit service provider is Ernst & Young Advisory Services. The group’s internal audit function continues to use a risk-based methodology. The annual internal audit rotation plan is developed giving due consideration to the risks identified as well as business requirements, and is approved by the audit committee. The GEC and the Bell audit services committee are kept fully up to date with the internal audit function’s activities through comprehensive reports that include the internal audit findings and recommendations, management comments and regular status updates. During the year in review, the Bell Equipment group internal audit function fulfilled its duties with the support and cooperation of the board of directors, management and staff. Ernst & Young led the forensic investigation into the unlawful activities in the DRC during the year.
+
+Risk and Sustainability Committee
+
+Composition Summary of roles and responsibilities
+
+Mr Danie Vlok chaired the committee until his retirement on 5 May 2016. Mr Hennie van der Merwe, an independent non-executive director, was duly appointed as chairman in his stead.",,,
+M7-QUALITY-0009,BEL,data/raw/BEL/2017/annual_report.pdf,ecdc7a9e-020c-4ba3-8638-7fcd641b4fd2,,42,PARAGRAPH,"Apart from fixed remuneration, an element of variable remuneration that is aligned to value creation in the form of short and longer-term incentive schemes is also catered for and linked to the achievement and performance of specified targets and objectives. Payment is made out of increased returns, with a new LTIS approved to ensure alignment with the group’s strategic focus areas and the enhancement of the company’s remuneration approach. The group takes cognisance of its external environment through an understanding of national remuneration trends and by regular benchmarking against comparable companies, independent salary surveys and compliance with all applicable laws and regulatory codes.",,,
+M7-QUALITY-0010,BEL,data/raw/BEL/2021/annual_report.pdf,1d14f89c-0e6d-45e6-8a8e-be55e0b401ea,,103,TABLE_CONTEXT,"The group’s credit risk exposure to WesBank has been disclosed below:
+
+At year-end the group’s credit risk exposure to WesBank under Bell-backed deals, for which the group carries all the credit risk, totalled 112 739 165 612
+
+In the event of default, the equipment financed would be recovered and it is estimated that on resale the equipment would presently realise the following towards the above liabilities 161 521 262 802
+
+Less: allowance for expected credit losses against cash collateral (5 824) (4 319)
+
+Less: refund liability recognised (note 14) (17 471) -
+
+Net credit risk relating to WesBank Bell-backed transactions - -",,,
+M7-QUALITY-0011,KP2,data/raw/KP2/2025/annual_report.pdf,180a6db9-dc9d-401c-848c-5d37f5c1a0b8,CORPORATE DIRECTORY,3,HEADING_WITH_BODY,"CORPORATE DIRECTORY
+
+COMPANY REGISTRATION NUMBER United Kingdom 10933682 NON-EXECUTIVE CHAIRMAN David Hathorn CHIEF EXECUTIVE OFFICER J. M. André (“André”) Baya JOINT COMPANY SECRETARY Henko Vos St James’s Corporate Services Limited
+
+NON-EXECUTIVE DIRECTORS Jonathan Trollip David Netherway Wouter Poulinx Amit Mehta
+
+PRINCIPAL & REGISTERED OFFICE (UK) AUSTRALIAN OFFICE 45 Gresham Street, London EC2V 7BG United Kingdom Telephone: +44 (0) 203 963 1776
+
+Level 3, 88 William Street, Perth WA 6000 Telephone: +61 (8) 9463 2463 SHARE REGISTRY (UK) SINTOUKOLA POTASH S.A Computershare Investor Services Plc Level 3, Apartment C The Pavilions, Bridgwater Road Bristol BS99 6ZZ 91 Germain Bikoumat centre-ville route de la radio
+
+United Kingdom Immeuble Abdallah Telephone: +44 (0) 370 702 0000
+
+BP 662 Pointe Noire République du Congo Telephone: +242 22 294 1924 SHARE REGISTRY (AUSTRALIA) NOMINATED ADVISER AND JOINT BROKER Computershare Investor Services Pty Ltd Level 11, 172 St George’s Terrace Perth WA 6000 Telephone: +61 (0) 3 9415 4000
+
+SP Angel Corporate Finance LLP Prince Frederick House, 35 - 39 Maddox Street, London W1S 2PP United Kingdom Telephone: +44 (0) 20 3470 0470 SHARE REGISTRY (JOHANNESBURG) JOINT BROKER Computershare Investor Services (Pty) Ltd Shore Capital Rosebank Towers, 15 Biermann Avenue Cassini House, 57 St James’s Street, London SWIA 1LD Rosebank 2196, South Africa Telephone: +27 (11) 370 5000
+
+United Kingdom Telephone: +44 (0) 20 7408 4050 JSE SPONSOR AUDITOR Questco Corporate Advisory Proprietary Limited Ground Floor, Block C, Investment Place 10th Road Hyde Park 2196, South Africa Telephone: +27 (63) 482 3802
+
+BDO LLP 55 Baker St, London W1U 7EU United Kingdom Telephone: +44 (0) 20 7486 5888",,,
+M7-QUALITY-0012,KP2,data/raw/KP2/2024/annual_report.pdf,e1710848-05e3-48f4-bd12-a6f851345707,,24,LIST,"DIRECTORS’ SECTION 172 STATEMENT The following disclosure describes how the Directors have had regard to the matters set out in section 172(1)(a) to (f) and forms the Directors’ statement required under section 414CZA of The Companies Act 2006. The matters set out in section 172(1) (a) to (f) are that a Director must act in the way they consider, in good faith, would be most likely to promote the success of the Company for the benefit of its members as a whole, and in doing so have regard (amongst other matters) to: (a) the likely consequences of any decision in the long term; (b) the interests of the Company’s employees; (c) the need to foster the Company’s business relationships with suppliers, customers and others;",,,
+M7-QUALITY-0013,KP2,data/raw/KP2/2022/annual_report.pdf,17aaf3fb-50f1-4573-b53d-7b4c3605acbc,,73-74,MULTI_PARAGRAPH,"Our involvement with component auditors
+
+For the work performed by component auditors, we determined the level of involvement needed in order to be able to conclude whether sufficient appropriate audit evidence has been obtained as a basis for our opinion on the Group financial statements as a whole. Our involvement with component auditors included the following:
+
+• Detailed Group reporting instructions were sent to the component auditors, which included the significant risk areas to be covered by the audits (including the area that were considered to be key audit matter), specific procedures to perform, materiality levels to be used and set out the information to be reported to the Group audit team.
+
+• The Group audit team was actively involved in the direction of the audits performed by the component auditor for Group reporting purposes, along with the consideration of findings and determination of conclusions drawn.
+
+• The Group audit team reviewed the component auditor’s work papers remotely and attended clearance meetings for the significant components.
+
+INDEPENDENT AUDITOR’S REPORT TO THE MEMBERS OF KORE POTASH PLC (CONT) Key audit matters Key audit matters are those matters that, in our professional judgement, were of most significance in our audit of the financial statements of the current period and include the most significant assessed risks of material misstatement (whether or not due to fraud) that we identified, including those which had the greatest effect on: the overall audit strategy, the allocation of resources in the audit, and directing the efforts of the engagement team. These matters were addressed in the context of our audit of the financial statements as a whole, and in forming our opinion thereon, and we do not provide a separate opinion on these matters.",,,
+M7-QUALITY-0014,KP2,data/raw/KP2/2021/annual_report.pdf,a2e5a29c-1cf9-48fa-9f46-a15cda9724b0,,47,PARAGRAPH,"During the year ended 31 December 2020, the Group incurred a loss of USD 3,144,172 (year ended 31 December 2019: USD 4,202,752) and experienced net cash outflows from operating and investing activities of USD 9,277,027 (year ended 31 December 2019: USD 11,257,647). Cash and cash equivalents totalled USD 5,555,000 at 31 December 2020 (at 31 December 2019: USD 7,578,727). The Directors have prepared a cash flow forecast for the period ending 31 December 2022, which indicates that the Group will not have sufficient liquidity to meet its working capital requirements to the end of the going concern period (31 March 2022), primarily being corporate costs and some work on the 1st Phase of the Definitive Feasibility Study (“DFS”) related to the DX Project. The Group anticipates a deficit of c.USD 1.3 million towards the end of Q1 2022. The Directors have considered various mitigating actions, which include raising additional capital in Q2 – Q3 2021 to enable the Group to continue to fund its working capital requirements through the going concern period. The Directors have identified a number of funding options available to the Group. The Directors note the Group has a history of successfully raising capital on the AIM and JSE, and in the past on the ASX. However, factors beyond the Company’s control, including pandemic diseases such as COVID-19, which affect the stock markets, may in turn have a negative impact on any fund raising. The Directors have reviewed the Group's overall position and outlook in respect of the matters identified above and are of the opinion that there are reasonable grounds to believe that funding will be secured and therefore that the operational and financial plans in place are achievable and accordingly the Group will be able to continue as a going concern and meet its obligations as and when they fall due. The Directors will continue to pursue further capital raising initiatives in order to have sufficient funds to continue the development of the DX Project and for general corporate purposes. The ability of the Group to continue as a going concern is dependent on achieving the matters set out above. These conditions indicate a material uncertainty which may cast significant doubt as to the Group’s ability to continue as a going concern and therefore it may be unable to realise its assets and discharge its liabilities in the normal course of business.",,,
+M7-QUALITY-0015,KP2,data/raw/KP2/2021/annual_report.pdf,d8ff4b6f-ee89-4b0e-877b-35f0c35235d9,,96,TABLE_CONTEXT,"NOTES TO THE FINANCIAL STATEMENTS FOR THE YEAR ENDED 31 DECEMBER 2020 (CONT) NOTE 3: INCOME TAX (CONT) Deferred tax assets have not been recognised in respect of the losses arising from the Australian entity or the parent entity due to the uncertainty around timing of generating sufficient taxable profits in future to utilise the losses. These losses may also not be utilised to offset taxable profits elsewhere in the group. Parent Consolidated Entity Dec 2020
+
+Consolidated Entity
+
+(i) The amount due from a subsidiary is interest-free and is repayable on demand. (ii) The increase in the year relates to the transfer of intercompany balances from Kore Potash Plc to the Congolese entity in order to further fund the development of the exploration asset. IFRS 9 requires the Group to recognise an allowance for ECLs for all debt instruments not held at fair value through profit or loss. The loans to the subsidiaries, Sintoukola Potash S.A. and Kore Potash Limited, are classified as repayable on demand. IFRS 9 requires consideration of the expected credit risk associated with the loan. As the subsidiary company does not have any liquid assets to sell to repay the loan, should it be recalled, the conclusion reached was that the loan should be categorised as stage 3. As part of the assessment of expected credit losses of the intercompany loan receivable, the Directors have assessed the cash flows associated with a number of different recovery scenarios. This included consideration of the exploration project risk, country risk and the value of the potential reserves. The 2019 classification of the Amounts due from subsidiaries has been changed from current to non-current. See note 1(t) for details.",,,
+M7-QUALITY-0016,SBP,data/raw/SBP/2025/annual_report.pdf,e78ebc90-7c11-42bb-a525-9bb7b1d9d5ab,Valuation summary: 2025 2024,20-21,HEADING_WITH_BODY,"Valuation summary: 2025 2024
+
+EBITDA valuation multiple 7,25x 7,25x 19,0% equity interest – R’000 – –
+
+6. Financial overview (continued)",,,
+M7-QUALITY-0017,SBP,data/raw/SBP/2023/annual_report.pdf,cf948519-cd64-4f58-8325-90024c1d7deb,,5,MULTI_PARAGRAPH,"Sabcap is pleased to present its Integrated Report to stakeholders.
+
+The Board of Directors acknowledges its responsibility to ensure the integrity of the Integrated Report. The Integrated Report addresses all material issues of which the Board is aware and presents fairly the performance of the organisation and its impact on stakeholders. The report is presented on behalf of the Board by the Chief Executive Officer (“CEO”). The report also includes the Group’s King IVTM report which it has adopted and with which it complies. The report has been approved and recommended to the Board by the Audit and Risk Committee.
+
+1. Report profile
+
+The report covers the activities of Sabcap and its subsidiaries.
+
+The Board has concluded that the report should not cover the activities of Sabcap’s investee companies except insofar as is relevant to an assessment of Sabcap’s investment interest in those entities as it does not manage or control those entities. However, the socio-economic, ethical and environmental policies and practices of investees are considered when reviewing existing investments and making new investments. It is through this process and representation on investee boards that the Company exercises influence on their policies and practices.
+
+The report complies with the requirements of IFRS to the extent references are made to audited figures and to the principles and requirements of King IVTM.
+
+In addition to relying on the representations and information provided by management, including the separate assurance statement by the CEO and Chief Financial Officer, the Board has drawn assurance from the external auditors, PricewaterhouseCoopers, in the course of their annual audit of the Company’s financial statements and their unqualified audit report. It has also relied on KPMG Services (Pty) Ltd, who has provided positive assurance to the Audit and Risk Committee and the Board on internal financial reporting controls.
+
+2. Corporate profile, structure and investment proposition",,,
+M7-QUALITY-0018,SDL,data/raw/SDL/2024/annual_report.pdf,c3b7e3d3-d76c-4753-9213-fa65960072dc,Distribution of Equity Shareholder,56,HEADING_WITH_BODY,"Distribution of Equity Shareholder
+
+Total shares issued: 89,750,000 Percentage held by 20 largest shareholders: 78.61% Shareholders with less than marketable parcel of shares: 416
+
+Size of Shareholding Number of holders* Number of Shares* % of Issued Capital*",,,
+M7-QUALITY-0019,SDL,data/raw/SDL/2025/annual_report.pdf,a778e34e-a7cd-492f-9ded-59383743e5f0,,13,LIST,"Community, Stakeholder Engagement and Social Responsibility The lawful residents of the farms Eerstegeluk and Nooitverwacht that comprise the Bengwenyama project area are the Bengwenyama-ya-Maswazi Traditional Community (or Community), represented in their official capacity by a structured Royal Family and Traditional Council. The Company and the Community are partners in the Bengwenyama project. Southern Palladium works closely with the Community, actively promoting inclusivity and project awareness. Ethical inclusion extends to fair representation via Royal Family, Traditional Council and other Community representatives. During the drilling programme, weekly exploration meetings were held virtually with the two Community representatives, together with the environmental and exploration management consulting firm contracted to the project. Quarterly meetings are held on site with extended representation from the greater Royal Family, Traditional Council and Community representatives. Southern Palladium remains sensitive to the needs of the Community and proactively incorporates feedback into decision making.",,,
+M7-QUALITY-0020,SDL,data/raw/SDL/2025/annual_report.pdf,0279a693-9d15-4d7c-aea8-5b83cb02c1c5,,9,MULTI_PARAGRAPH,"BOARD OF DIRECTORS The names and positions of the directors of the Company in office during the financial year and until the date of this report are set out below. Directors were in office for this entire period unless otherwise stated, are: Roger Baxter (Executive Chairman, Non-Executive Chairman from 1 January to 7 October 2024) Johan Odendaal (Managing Director) Daniel Van Heerden (Non-Executive Director) Lindi Nkosi-Thomas SC (Non-Executive Director) Mike Stirzaker (Non-executive Director) Robert Thomson (Non-Executive Director) PRINCIPAL ACTIVITIES During the financial year the principal activity of the Company was the advancement of its Bengwenyama Platinum Group Metal (PMG) project in South Africa. The Company successfully completed the Pre-Feasibility Study and has now progressed into the Definitive Feasibility Study phase. FINANCIAL PERFORMANCE The Group’s net loss from operations for the year was $4,779,488 (2024: $6,725,277) At 30 June 2025, the Group had net working capital of $9,273,507 (2024: $5,315,488). The Directors believe there are sufficient funds to meet the Group’s working capital requirements and as at the date of this report the Group believes it can meet all liabilities as and when they fall due. This report is prepared on the going concern basis which assumes the continuity of normal business activity and the realisation of assets and settlement of liabilities in the normal course of business. DIVIDENDS No dividends have been paid or declared since the start of the financial year. The directors do not recommend the payment of a dividend in respect of the year ended 30 June 2025. REVIEW OF OPERATIONS The Company’s primary focus during the financial year was the ongoing advancement of its development programme at the Bengwenyama PGM project, in which it holds a direct 70% stake. The project is strategically positioned in the heart of the world class Bushveld Complex – the largest source of PGMs globally – in a significant underground mining region with established expertise and infrastructure. The Company acquired its interest in the Project in 2022 through the acquisition of a 70% equity interest in Miracle Upon Miracle Investments (Pty) Ltd (MUM), a South African private company that holds 100% of the Project. MUM’s tenement area stretches over two farming areas:
+
+(a) the Farm Eerstegeluk 327KT (previously known as Eerstegeluk 322KT); and (b) the Farm Nooitverwacht 324KT, measuring 5,280 ha in extent and located in the Magisterial District of Sekhukhune, Limpopo Province, Republic of South Africa.",,,
+M7-QUALITY-0021,SDL,data/raw/SDL/2024/annual_report.pdf,505231f5-40b8-45e7-b129-c13f69c2154c,,2,PARAGRAPH,"1 The information is extracted from the report entitled “Bengwenyama UG2 Mineral Resource Update: Total (UG2 & MR) Mineral Resource now 40.25Moz Merensky Reef Indicated Resource +17% to 2.23Moz (7E)” created on 23 October 2024 and is available to view on the Company’s website. The company confirms that it is not aware of any new information or data that materially affects the information included in the original market announcement and, in the case of estimates of Mineral Resources or Ore Reserves, that all material assumptions and technical parameters underpinning the estimates in the relevant market announcement continue to apply and have not materially changed. The Company confirms that the form and context in which the Competent Person’s findings are presented have not been materially modified from the original market announcement.",,,
+M7-QUALITY-0022,SDL,data/raw/SDL/2025/annual_report.pdf,470add71-18de-48d0-a2fe-537e26936592,,26-27,TABLE_CONTEXT,"On behalf of the Directors
+
+Roger Baxter Executive Chairman Australia, 25 September 2025
+
+BDO Audit Pty Ltd ABN 33 134 022 870 is a member of a national association of independent entities which are all members of A.C.N. 050 110 275 Ltd ABN 77 050 110 275, an Australian company limited by guarantee. BDO Audit Pty Ltd and A.C.N. 050 110 275 Ltd are members of BDO International Ltd, a UK company limited by guarantee, and form part of the international BDO network of independent member firms. Liability limited by a scheme approved under Professional Standards Legislation
+
+Level 9, Mia Yellagonga Tower 2 5 Spring Street Perth, WA 6000 PO Box 700 West Perth WA 6872 Australia
+
+DECLARATION OF INDEPENDENCE BY GLYN O'BRIEN TO THE DIRECTORS OF SOUTHERN PALLADIUM LIMITED
+
+As lead auditor of Southern Palladium Limited for the year ended 30 June 2025, I declare that, to the best of my knowledge and belief, there have been:
+
+1. No contraventions of the auditor independence requirements of the Corporations Act 2001 in relation to the audit; and
+
+2. No contraventions of any applicable code of professional conduct in relation to the audit.
+
+This declaration is in respect of Southern Palladium Limited and entities it controlled during the period.",,,
+M7-QUALITY-0023,SUR,data/raw/SUR/2023/annual_report.pdf,efea5482-4c2b-4a9c-99b8-b40669036dc3,SOCIAL,32,HEADING_WITH_BODY,SOCIAL,,,
+M7-QUALITY-0024,SUR,data/raw/SUR/2024/annual_report.pdf,4d000fa5-7520-4156-9c07-f73ec04fcc1f,,155,MULTI_PARAGRAPH,"It also includes five company-owned restaurants: Hussar Grill in Camps Bay, Mouille Point, Rondebosch, and Morningside; and RocoMamas in Greenpoint.
+
+It is important to highlight that under the GHG Protocol, the reporting of both Scope 1 direct emissions and Scope 2 indirect emissions is compulsory. All Scope 3 emissions, (i.e., those from supply chain activities), are reported at the discretion of the reporting company.
+
+The baseline will be reviewed with the inclusion of the Doppio Collection.",,,
+M7-QUALITY-0025,SUR,data/raw/SUR/2025/annual_report.pdf,a007d083-51bf-4ae2-bb91-724401e0c04d,,167,PARAGRAPH,"Medium- and long-term projects have been identified to ensure the group’s technology continues to support its strategic delivery and competitiveness. Progress is monitored quarterly by the executive team and twice a year by the audit and risk committees. Key activities for the year included improvements to security protocols, continued roll out of our cloud migration strategy and improving customer-facing technology offerings.",,,
+M7-QUALITY-0026,SUR,data/raw/SUR/2023/annual_report.pdf,caac92bf-d7fc-467a-9ad9-4f9ac52824e9,,73,TABLE_CONTEXT,"On 27 July 2023, the group announced on SENS that it had concluded heads of agreement to acquire a 60% interest in the restaurant brands Doppio Zero, Piza e Vino and Modern Tailors with a portfolio of 37 franchised and companyowned restaurants, as well as Doppio’s bakery and central supply business (collectively, the Doppio Group). Nine of the 27 Doppio Zero restaurants, two of the nine Piza e Vino restaurants and the Modern Tailors restaurant are company owned.
+
+In its financial year ended February 2023, the Doppio Group generated total restaurant sales of R600 million.
+
+The prior year included a material once-off charge against earnings of R22.0 million following the resolution of a dispute with SARS in respect of tax deductions claimed for the group’s 2004-2009 share incentive scheme, as reported on SENS on 18 October 2021. Of this charge, R14.0 million was reflected as an income tax expense and R8.0 million as an interest expense.
+
+Group headline earnings increased by 75.9% to R213.1 million (2022: R121.1 million), with diluted headline earnings per share 81.0% higher at 260.01 cents (2022: 143.68 cents). Profit attributable to shareholders increased by 75.0% to R212.2 million (2022: R121.2 million), with diluted earnings per share 80.0% higher at 258.86 cents (2022: 143.80 cents).
+
+Impairment: property, plant & equipmentB 1 776 –
+
+Due diligence costsC 1 911 –
+
+Nikos contingent consideration FV adjustmentE (115) 2 453
+
+Interest on SARS tax disputeF – 8 038
+
+Legal costs on SARS tax disputeG – 1 500",,,
+M7-QUALITY-0027,ACT,data/raw/ACT/2018/annual_report.pdf,20237a3a-9f15-42b3-94ad-64a89e1ff999,Chairperson: Dr Nkateko Munisi,79,HEADING_WITH_BODY,Chairperson: Dr Nkateko Munisi,,,
+M7-QUALITY-0028,ACT,data/raw/ACT/2017/annual_report.pdf,a8c7a0fd-eabd-47d3-954b-8fa1e0b5b091,,140,LIST,"11. The form of proxy may be used at any adjournment or postponement of the Annual General Meeting, including any postponement due to a lack of quorum, unless withdrawn by the shareholder.
+
+12. An extract from the Act reflecting the provisions of section 58 of the Act is attached as an appendix to this form of proxy.
+
+13. Unlisted securities (If applicable) and shares held as treasury shares may not vote.",,,
+M7-QUALITY-0029,ACT,data/raw/ACT/2017/annual_report.pdf,0b2d4535-f47b-4a5e-bb40-0fe11fa49211,,79,MULTI_PARAGRAPH,"We have expanded Allegra’s wellness screenings into Namibia and India. The company will continue pursuing this expansion across borders and industries through building strategic partnerships.
+
+The impending NHI presents an opportunity for Allegra’s software solutions to create an EHR that links the public sector to primary health clinics. Patients will be able to easily access care on the move. The uncertainty surrounding NHI represents a risk and a challenge. However, Allegra is confident that we have the expertise and resources to be a key service provider to this critical initiative.
+
+As an innovative front-runner, we are the first to market, but carry the burden of paving the way for client adoption through extensive investment in market education. By developing
+
+intuitive applications and improving the quality of software, Allegra is making technology adoption easy for end-users. Training our call centre support employees is cost-intensive, but it is critical. Allegra has also implemented processes to facilitate pilot software and enable volume testing (load, stress and endurance testing) prior to deployment, in order to identify and address issues before the client is billed.
+
+OUTLOOK Allegra continues working towards bringing the philosophy of “total patient care” to life by developing and providing strategic information technology. In the 2017 financial year, Allegra adopted “mutualism” as one of its corporate values. The mutualistic partnership collaborates with clients to better address their needs and those of other stakeholders in the software industry. Going forward, we are incorporating four core agile values: • Value individuals and interactions over processes and tools • Provide working software instead of comprehensive documentation • Focus on customer collaboration as opposed to contract negotiation • Respond to change, rather than to follow a fixed plan
+
+Visit the Allegra website, http://www.allegra.co.za/",,,
+M7-QUALITY-0030,ACT,data/raw/ACT/2017/annual_report.pdf,76ff6ec4-9406-49b9-8e3a-d0837b53c705,,94,PARAGRAPH,"The Non-executive Directors bring with them the experience, knowledge and practices followed in other companies, giving AfroCentric the best practices in the industry. The Board induction is a process to onboard new Directors in line with the Companies Act and King III. The induction is carried out by the Company Secretary and exposes the new Directors to many facets of the Group, equipping Board members to be effective and fulfil their fiduciary duties. Director training and development is an ongoing exercise that requires their participation in various programmes designed to strengthen the shortfalls observed in the Board evaluation process. A development plan is being carried out by the Company Secretary wherein Directors are",,,
+M7-QUALITY-0031,ACT,data/raw/ACT/2018/annual_report.pdf,586c6ba5-ac15-4b84-9556-58913ff2882a,,55,TABLE_CONTEXT,"We gain insights and identify improvement opportunities from Voice of the Customer surveys, our Customer Experience Management tool and our employee engagements. The Root Cause Analysis also assists in identifying causes and addressing gaps in our customers’ experience.
+
+Voice of the Customer survey (%) 85 82.33 85.31 86.20 Growth of schemes (%) 2% volume growth
+
+Group CFO’s report 24
+
+The Group aims to instil a positive culture that empowers the broader community and motivates employees. Empowered communities and motivated employees drive the Group towards its strategic objectives.
+
+Our social impact 52
+
+Our focus will remain on retaining our clients and exceeding our service level agreements.
+
+To drive our growth targets, we will focus on growing our open schemes (Bonitas, Fedhealth and Hosmed), pursuing further consolidation, identifying and leveraging more public private partnerships, and targeting strategic acquisitions. Specific projects include building momentum on Medscheme Swaziland and expanding Pharmacy Direct through the additional volumes to be delivered on the new Department of Health tender awarded.
+
+We will build momentum in our fraud, waste and abuse reduction activities and in enhancing the Group’s IT capabilities through the Fusion and digitalisation projects. We will also integrate newly acquired businesses into the Group.",,,
+M7-QUALITY-0032,BEL,data/raw/BEL/2020/annual_report.pdf,504bcf66-3a76-456e-b1fc-4d8a59c8ddc9,Crèche children who benefitted from the garden 29,62,HEADING_WITH_BODY,Crèche children who benefitted from the garden 29,,,
+M7-QUALITY-0033,BEL,data/raw/BEL/2022/annual_report.pdf,2912ba9b-d8b9-4627-a412-08539c54173a,,24,LIST,"• Monthly supply chain risk management meetings now take place, this covers OE & Aftermarket, supply chain and supplier risks are evaluated and rated, actions to mitigate are agreed and progress is reviewed.
+
+• Disruptions are however anticipated, and precautions have been taken to increase buffers to insulate against the potential increase in supplier and shipping lead times where necessary.
+
+• Where identified, safety stock levels were reviewed and adjusted to alleviate any possible supply chain failure.
+
+4. Prolonged conflict between Russia and Ukraine The global economy continues to be weakened by the war through significant disruptions in trade and food and fuel price shocks, all of which are contributing to high inflation and subsequent high interest rate environments.
+
+• The risks were identified early and the in-country assets mnimised.
+
+• All new equipment and parts sales have been suspended, this is mainly due to import sanctions imposed, logistical challenges and financial transaction restrictions.
+
+• Investigating potential buyers to take over the entity as a going concern.",,,
+M7-QUALITY-0034,BEL,data/raw/BEL/2016/annual_report.pdf,b0253194-2be4-4ca8-bce0-d16aaf3579c0,,42,MULTI_PARAGRAPH,"Return on net assets The group’s objective of delivering sustainable financial returns to shareholders through the business cycle was not met in 2016. Return on total assets decreased from 5,6% to 3,4% year-on-year. The effect of the reduced operating profit was partially offset by the reduction in total assets in 2016, mainly inventory.
+
+Working capital The working capital cycle for the group is high due to long lead times into the factory in South Africa and a number of owned distribution operations. Optimisation of inventory levels remains a focus area for the group and systems are in place to monitor levels and respond on a timely basis when necessary. Inventory days improved in 2016 from 230 days at the end of 2015 to 193 days at the end of 2016.
+
+Receivables at 46 days have improved since 47 days at the end of 2015. There are however a few large customer balances in the African operations and especially in the DRC, which are being recovered slowly due to customer liquidity challenges.
+
+Borrowings There was a net cash outflow from bank overdrafts and borrowings on call of R63 million for the year. This was after settling R300 million relating to IDC trade finance during the year. The decrease in inventory assisted with maintaining low borrowings levels. Borrowings remain at acceptable levels at the date of this report and there is adequate headroom on banking facilities. At year-end, the group had general banking facilities totalling R901 million of which R446 million was drawn down. Gearing (net debt, including cash reserves, to equity ratio) was maintained at satisfactory levels during 2016 and ended the year at 15% which is within the group’s internal target limit of 20%.",,,
+M7-QUALITY-0035,BEL,data/raw/BEL/2021/annual_report.pdf,68275f46-01e0-45a7-856d-ae9c306704ae,,77,PARAGRAPH,"Bell Equipment officially launched the Bell tracked carrier, a niche product designed to meet market requirements in the North American market. Offered in 7 ton and 11 ton versions, these machines offer a premium solution for soft, undulated underfoot conditions. The tracked carrier offers features synonymous with the Bell brand including superior ride comfort, product safety features and economical operations. The innovative six roller under carriage with compound walking beams have been designed to equally distribute weight, and keep constant roller contact with the ground increasing ride comfort and increase track life. Bell will continue to explore new markets for this innovative product.",,,
+M7-QUALITY-0036,BEL,data/raw/BEL/2018/annual_report.pdf,310b96bb-3d49-45fb-aafb-f180cd94dbbd,,7-8,TABLE_CONTEXT,"In southern Africa Bell adds Kobelco
+
+excavators to its range and enters
+
+the tipper truck market with Kamaz trucks. Expansion of
+
+ELC and German
+
+and Central European sales and distribution
+
+departments
+
+completed.
+
+Large E-series ADT
+
+released to the
+
+market.
+
+Series IV haulage tractors introduced.
+
+Bell concludes
+
+a two-year investment into new,
+
+upgraded CSCs
+
+in Middelburg,
+
+Nelspruit and Rustenburg in South
+
+Africa as well as
+
+Kitwe, Zambia.
+
+B60D set to revolutionise bulk
+
+earthworks. Bell celebrates 60 years in business along with the 50th
+
+anniversary of its tri-wheeler product
+
+and 30 years of ADT design and
+
+manufacture.
+
+Bell Equipment
+
+launches the new E-series ADT
+
+and is granted distributorship rights
+
+for the Terex Finlay
+
+range of mobile crushing, screening
+
+and recycling
+
+equipment.
+
+Bell Equipment reenters the Americas
+
+and commences
+
+the appointment of distributors and
+
+dealers in the
+
+region.
+
+Bell Equipment
+
+establishes beachhead in Russian market.
+
+Series III haulage
+
+tractors make
+
+their entry.
+
+Bell Equipment
+
+takes over the Bomag dealership
+
+with the German-
+
+based OEM.
+
+The GLC is commissioned
+
+in Jet Park, Johannesburg.
+
+Gary Bell becomes
+
+chairman of the
+
+board and is succeeded as chief
+
+executive by Leon Goosen. The ALC opens its
+
+doors. Phase 3
+
+expansion of Eisenach-Kindel
+
+plant gets underway to facilitate European
+
+bin manufacture.
+
+BELL EQUIPMENT LIMITED | Integrated Annual Report 2018 6",,,
+M7-QUALITY-0037,KP2,data/raw/KP2/2021/annual_report.pdf,b54d5e0a-b21b-4a14-8ee7-b12310571691,allocated as compe-,65,HEADING_WITH_BODY,allocated as compe-,,,
+M7-QUALITY-0038,KP2,data/raw/KP2/2024/annual_report.pdf,0ef54932-a5bc-4050-bb30-9f1b35ff06f7,,57,LIST,"• Going Concern was reviewed by assessing the Cash forecast for the group and considering the impact of market conditions. The committee concluded the cash forecast was appropriate though the company has insufficient funding beyond June 2024. The committee considers the mitigating actions to be appropriate and the disclosure of material uncertainty in Note 1(b) to the financial statements to be appropriately reflected and the external audit verified this assessment. In considering the appropriateness of the audit the Committee reviews the scope for each engagement and highlights any areas of concern to be specifically addressed. The Committee meet with the external auditors at the conclusion of the engagement to discuss the outcomes of the audit with an open question and answer session for the Committee to assess the effectiveness of the audit and any area identified for improvement. When appointing or reappointing the external audit firm the company takes into consideration the appropriateness of the firm in comparison to the companies’ size and operations, the number of partners available for rotation, the firms understanding of the exchanges and compliance regulations for these exchanges and other service the firm provides to the Group. The current external auditors BDO LLP have been in place for five years. They were appointed in 2019 through a tender process. The Committee is also responsible for approving, reviewing and monitoring the Company’s risk management policy. The objectives of this risk management policy are to: • Provide a structured risk management framework that will provide Senior Management and the Board with comfort that the risks confronting the organisation are identified and managed effectively; • Create an integrated risk management process owned and managed by the Group’s personnel that is both continuous and effective; • Ensure that the management of risk is integrated into the development of strategic and business plans, and the achievement of the Group’s vision and values; and • Ensure that the Board is regularly updated with reports by the committee. Management is responsible for efficient and effective risk management across the activities of the Group. This includes ensuring the implementation of policies and procedures that address risk identification and control, training and reporting. The CEO is responsible for ensuring the process for managing risks is integrated within business planning and management activities. The Board reviews the effectiveness of the implementation of the risk management system and internal control system annually.",,,
+M7-QUALITY-0039,KP2,data/raw/KP2/2022/annual_report.pdf,b9e4a2bf-298f-4d1c-9dab-338a4b3945b2,,84-85,MULTI_PARAGRAPH,"• Interest rate benchmark reform - IBOR 'Phase 2' (Amendments to IFRS 9, IAS 39, IFRS 7, IFRS 4 and IFRS 16); and • COVID-19-Related Rent Concessions beyond 30 June 2021 (Amendments to IFRS 16) Neither of these standards are deemed to have an impact on the Group for the year ending 31 December 2021. New standards, interpretations and amendments issued by the IASB not yet effective There are a number of standards, amendments to standards, and interpretations which have been issued by that are effective in future accounting periods that the group has decided not to adopt early as they are not expected to have a material impact on the Group. The following amendments are effective for the period beginning 1 January 2022: • Onerous Contracts – Cost of Fulfilling a Contract (Amendments to IAS 37); • Property, Plant and Equipment: Proceeds before Intended Use (Amendments to IAS 16); • Annual Improvements to IFRS Standards 2018-2020 (Amendments to IFRS 1, IFRS 9, IFRS 16 and IAS 41); and • References to Conceptual Framework (Amendments to IFRS 3). The following amendments are effective for the period beginning 1 January 2023: • Disclosure of Accounting Policies (Amendments to IAS 1 and IFRS Practice Statement 2); • Definition of Accounting Estimates (Amendments to IAS 8); and • Deferred Tax Related to Assets and Liabilities arising from a Single Transaction (Amendments to IAS 12).
+
+NOTES TO THE FINANCIAL STATEMENTS FOR THE YEAR ENDED 31 DECEMBER 2021 (CONT)",,,
+M7-QUALITY-0040,KP2,data/raw/KP2/2020/annual_report.pdf,54f17a36-3566-420a-a835-7e0fbf5a7264,,59,PARAGRAPH,"CORPORATE GOVERNANCE REPORT (CONT) Remuneration Report (Cont) Remuneration Policy The remuneration policy of Kore Potash has been designed to align director and executive objectives with shareholder and business objectives by providing a fixed remuneration component and offering specific long-term incentives based on key performance areas affecting the Group’s financial results. The Remuneration and Nomination makes recommendations to the Board in relation to the composition of the Board, the appointment of the CEO and succession planning, and remuneration for directors and senior executives. The Board endeavours with its remuneration policy to attract and retain high calibre executives and directors to run and manage the Group within the constraints of the financial position of the Group. The remuneration policy, setting the terms and conditions for the executive directors and other senior executives, was developed by the Board. All executives receive a base salary and superannuation, where applicable. The Board reviews executive packages annually by reference to the Group’s performance, executive performance and comparable information from industry sectors and other listed companies in similar industries. The Board may exercise discretion in relation to approving incentives, bonuses and options. The policy is designed to attract and retain high calibre executives and reward them for performance that results in long-term growth in shareholder wealth. Executives may also be entitled to participate in the employee share and option arrangements. The Board policy is to remunerate non-executive directors at market rates for comparable companies for time, commitment and responsibilities. The Board determines payments to the non-executive directors and reviews their remuneration annually, based on market practice, duties and accountability and the Company’s financial capacity constraints. Independent external advice is sought when required. During the financial year, independent external advice was sought on appropriate remuneration of directors to better reflect market practice for comparable companies listed on AIM, and this resulted during the financial year in the implementation of revised remuneration arrangements for all non-executive directors. The maximum aggregate amount of fees that can be paid to non-executive directors is subject to approval by shareholders at the Annual General Meeting. Fees for non-executive directors are not linked to the performance of the Group, although to assist with the Company’s cash position some non-executive directors have agreed to receive a portion of their fees by way of Company shares rather than cash.",,,
+M7-QUALITY-0041,KP2,data/raw/KP2/2020/annual_report.pdf,27d30afa-6803-48f7-878e-4d8f5947d3fe,,72-74,TABLE_CONTEXT,"Jonathan Trollip
+
+(iii) Upon Leonard Math ceasing to be a director post the AGM held on 28 June 2019, 437,500 rights were cancelled. The remaining 312,500
+
+rights were converted to shares.
+
+Other than otherwise indicated above, no other KMP held any options, rights or equity warrants over ordinary shares in the Company during the year ended 31 December 2019.
+
+CORPORATE GOVERNANCE REPORT (CONT) Remuneration Report (Cont) Options, rights and equity warrants over equity instruments granted as compensation
+
+CORPORATE GOVERNANCE REPORT (CONT) Remuneration Report (Cont) Other transactions with KMP during the financial year ended 31 December 2019 No KMP has entered into a material contract (apart from employment) with the Company and the Group. No amount of remuneration is outstanding at 31 December 2019. On 27 June 2018, the shareholders approved the grant of 17,200,000 unlisted options to Brad Sampson, valued at a total of USD 1,171,320 and 4,000,000 unlisted options to David Hathorn, valued at a total of USD 145,600 at the Company’s AGM. On 28 June 2019, Brad Sampson’s 17,200,000 unlisted options were cancelled. These were replaced with 26,900,000 unlisted options on 17 July 2019. During the year, the below non-executive directors exercised performance rights when they vested.",,,
+M7-QUALITY-0042,SBP,data/raw/SBP/2024/annual_report.pdf,b1d28249-aac7-409f-9efc-3f6c8cef9485,"2.4 Size, spread and stage",45,HEADING_WITH_BODY,"2.4 Size, spread and stage
+
+Sabcap:
+
+a) aims to invest in good businesses with first-class management without being restricted by any required absolute size or level of percentage holdings;
+
+b) may hold equity instruments that are small in percentage terms but where the Group is able to exercise influence through Board representation or shareholder agreements;
+
+c) may hold majority or joint controlling interests but without direct management responsibility;
+
+d) will not be constrained by any required balance between listed and unlisted holdings;
+
+e) will not be constrained by any required sector spread;
+
+f) will be unlikely to make new investments that exceed 15% of its portfolio or 25% of shareholders’ equity.",,,
+M7-QUALITY-0043,SBP,data/raw/SBP/2024/annual_report.pdf,7a3bcda1-add6-419a-af1e-5e8bc2d9be11,,43,MULTI_PARAGRAPH,"15. Directors’ share encumbrances
+
+None of the shares in Sabcap held by the directors or any of their related parties, including SFT, are encumbered.
+
+16. Directorate and governance
+
+Mr CS Seabrooke, Mr K De Matteis and Dr L Mthimunye will retire at the forthcoming annual general meeting but, being eligible, offer themselves for re-election.
+
+17. Commentary and conclusion
+
+Performance will be enhanced through encouraging and facilitating the growth of the Group’s investee companies in partnership with like-minded investors.
+
+Shareholders are referred to section 7 for the outlook for the financial year.
+
+For and on behalf of the Board
+
+Christopher Seabrooke Chief Executive
+
+Sandhurst
+
+31 March 2025",,,
+M7-QUALITY-0044,SDL,data/raw/SDL/2024/annual_report.pdf,53d9c073-9cf9-4879-ad58-ac11ac0cff3c,NOTES TO THE CONSOLIDATED FINANCIAL STATEMENTS,34,HEADING_WITH_BODY,NOTES TO THE CONSOLIDATED FINANCIAL STATEMENTS,,,
+M7-QUALITY-0045,SDL,data/raw/SDL/2025/annual_report.pdf,91a51990-0456-4fa0-b9f3-de69bf4aec58,,13,LIST,"• Project level NPV8 (after tax, 100% basis) for the OPFS is estimated at US$857m (A$1.3bn) and an internal rate of return of 26.4%. • A staged production proposal, assuming an initial Stage 1 production rate of 1.2Mtpa expanding after 4 years to 2.4Mtpa. • Peak funding requirement of US$279m – representing a 38% reduction (US$173m) to the peak funding total set out in the PFS – with Stage 2 expansion capital to be funded through cashflow. • Importantly, Stage 1 is expected to be a strongly cash generative project in its own right, meaning that it should be able to attract traditional market-related debt project financing • OPFS was based on the same weighted basket PGM price that was used in the original PFS to better enable comparision of the two studies. The current spot basket prices is ~14% higher. Every 15% move in the PGM price basket equates to an approximate US$200 million move in the real post tax NPV. All in sustainable costs for both Stage 1 and Stage 2 remain attractive and lie within the lowest quartile for PGM projects globally. The option to utilise existing mineral processing infrastructure in the area — which could result in further significant reductions to peak funding requirements — is being evaluated. The Definitive Feasibility is underway with first drilling to obtain a 140kg sample from the UG2 reef for detailed metallurgical study work started in August 2025. The UG2 samples will be used to determine metallurgical variability across the first stage of the planned development. The results from this sample will also better allow the Company to progress discussions with South African PGM smelters. Deeper underground geotechnical drilling results will be incorporated into field studies to optimise decline and stoping parameters. The DFS drill programme will comprise around 10,000m drill metres in total and will include infill drilling to further enhance definition of the Maiden JORC Probable Reserve of 6.29Moz. Community Engagement Introduction Southern Palladium continues to recognise the importance of social, environmental and governance aspects in our business. This sentiment is reflected in our core values, and is incorporated into our development and planning. Sustainable development and operational practices are proactively encouraged and implemented throughout all our Company and project tiers.",,,
+M7-QUALITY-0046,SDL,data/raw/SDL/2024/annual_report.pdf,7aece100-e8f8-41da-ad7b-9c0608ed98d6,,21,MULTI_PARAGRAPH,"• rewarding capability and experience • reflecting competitive reward for contribution to growth in shareholder wealth • providing a clear structure for earning rewards In accordance with best practice corporate governance, the structure of non-executive director and executive director remuneration is separate. Non-executive directors’ remuneration Fees and payments to non-executive directors reflect the demands and responsibilities of their role. Non-executive directors' fees and payments are reviewed annually by the Nomination and Remuneration Committee. The Nomination and Remuneration Committee may, from time to time, receive advice from independent remuneration consultants to ensure nonexecutive directors' fees and payments are appropriate and in line with the market. The chairman's fees are determined independently to the fees of other non-executive directors based on comparative roles in the external market. The chairman is not present at any discussions relating to the determination of his own remuneration. For the financial year commencing 1 July 2021 and in respect of each financial year thereafter and until otherwise determined by a resolution of Shareholders, the maximum aggregate remuneration payable by the Company to all non-executive Directors for their services as Directors including their services on a Board committee or sub-committee and including superannuation is limited to $750,000 per annum (in total).
+
+Each non-executive Director has entered into a deed of appointment with the Company.",,,
+M7-QUALITY-0047,SDL,data/raw/SDL/2024/annual_report.pdf,c787e1dd-6080-4836-b158-7c27f93a2746,,18,PARAGRAPH,"Other Public Company Directorships in the past 3 years: Nil Equity interests held as at the date of this report: Indirect interest through a trust in12,656,992 fully paid ordinary shares and 100,000 Series B Unlisted Options Exercise Price $0.875 Expire 27 May 2026 (escrowed to 8 June 2024).",,,
+M7-QUALITY-0048,SDL,data/raw/SDL/2024/annual_report.pdf,086d0f31-9dd9-4090-a54a-890083a35e2f,,27,TABLE_CONTEXT,"BDO Audit Pty Ltd ABN 33 134 022 870 is a member of a national association of independent entities which are all members of BDO Australia Ltd ABN 77 050 110 275, an Australian company limited by guarantee. BDO Audit Pty Ltd and BDO Australia Ltd are members of BDO International Ltd, a UK company limited by guarantee, and form part of the international BDO network of independent member firms. Liability limited by a scheme approved under Professional Standards Legislation.
+
+Level 9, Mia Yellagonga Tower 2 5 Spring Street Perth WA 6000 PO Box 700 West Perth WA 6872 Australia
+
+DECLARATION OF INDEPENDENCE BY GLYN O'BRIEN TO THE DIRECTORS OF SOUTHERN PALLADIUM LIMITED
+
+As lead auditor of Southern Palladium Limited for the year ended 30 June 2024, I declare that, to the best of my knowledge and belief, there have been:
+
+1. No contraventions of the auditor independence requirements of the Corporations Act 2001 in relation to the audit; and
+
+2. No contraventions of any applicable code of professional conduct in relation to the audit.
+
+This declaration is in respect of Southern Palladium Limited and the entities it controlled during the period.",,,
+M7-QUALITY-0049,SUR,data/raw/SUR/2025/annual_report.pdf,b07655cf-305e-4388-bc42-91c14a8d034f,The Board,165,HEADING_WITH_BODY,The Board,,,
+M7-QUALITY-0050,SUR,data/raw/SUR/2023/annual_report.pdf,89e3ed39-27db-4c5e-9ac8-caabca916960,,98,MULTI_PARAGRAPH,"The group’s minimum wage for corporate employees increased for the 2024 financial year to R15 000 (2023: R9 450) per month, aligned to the principle of a living wage. This impacted 27 employees.
+
+STI bonuses based on group financial performance were paid at stretch-target level for the 2023 financial year based on a strong performance, reflecting real growth, and in the context of tough economic challenges. The STI payments were settled in September 2023 (refer to part 3 of this report for details of the STI bonuses paid to the CEO, CFO and COO).
+
+Along with the STI for the 2023 financial year, the second tranche of BM FSPs was allocated in September 2023, the value of which was determined with reference to the earned STI for the 2023 financial year.
+
+The STI and LTI principles applicable to the 2024 financial year are largely unchanged from those applicable to the 2023 financial year, with the exception of the performance targets. The LTI instruments in question are anticipated to be awarded in November 2023. Further particulars, including details on the performance targets set by the committee, are detailed in part 2 of this report.
+
+Subsequent to the 2023 financial year:
+
+The group awarded increases in TGP to all employees with effect from 1 July 2022, with certain exceptions. 64% of employees (including the executive directors and leadership team) were awarded an increase of 6.5% in TGP; 21% of employees were awarded between 7% and 10%; and the balance received above 10% increases. The process was guided by the finalised outcomes of a comprehensive job grading review and overhaul conducted during the 2022 financial year and a process of matching each role (based on job grade) to external market benchmark data. An effort was made (subject to affordability) to adjust employees’ TGP to approach the targeted median of the benchmarked pay range which resulted in certain of the outliers noted above.",,,
+M7-QUALITY-0051,SUR,data/raw/SUR/2023/annual_report.pdf,8a5be883-cdd5-4c95-89b8-f5347c80f283,,108,PARAGRAPH,"The inclusion of group business performance vesting criteria is accordingly introduced largely to avoid a gratuitous or unjustified windfall gain for participants, as opposed to being a key determinant of the value of the awards that ultimately vest. In this regard, the committee has determined that growing profits in line with the nominal growth in the economy is a reasonable threshold target and that growth in profits at 3.5% above the nominal growth in the economy is a reasonable stretch-target to allow for maximum vesting. The committee has determined that a measure of return on equity or return on assets, particularly in a low-capital-intensive service-based organisation such as the group, should not be required as a performance measure as capital structure and capital allocations (shareholder sentiment on both historic and future capital allocations) have a material impact on the value of the SAR already. However, in response to engagements with stakeholders, the committee has deemed it appropriate to include a specific capital allocation metric for the 2024 awards.",,,
+M7-QUALITY-0052,SUR,data/raw/SUR/2025/annual_report.pdf,e4a6785c-78af-4f3c-b07b-9f5ccd349957,,151,TABLE_CONTEXT,"Award value Annual TGP x participation percentage STI x participation percentage
+
+Participation percentages
+
+The following on-target percentages apply: The following on-target percentages apply:
+
+As a % of TGP
+
+As a %
+
+of the F2026 STI
+
+Which equates to a % of TGP
+
+Paterson Grade D Upper and below 8.3 Paterson Grade D Upper and below 50.0 8.3
+
+Vesting date 3 years from Award date At least 3 years from date on which shares are allocated1
+
+Exercise period n/a n/a
+
+Award price 10-day volume-weighted average price at grant date Actual share price on settlement date
+
+Service condition Remain employed for duration of vesting period
+
+Holding period CEO, CFO and COO: 2 years from date of vesting
+
+Other participants: None
+
+n/a
+
+Malus and clawback Malus and clawback apply as per policy
+
+Vesting formula Number of shares x [(group business performance weighting x group business performance score) + (personal performance weighting x personal performance score)]
+
+Number of bonus awards
+
+Performance period 1 July 2025 to 30 June 2028 (relative to base year of 1 July 2024 to 30 June 2025)
+
+1 July 2025 to 30 June 2026 (based on STI performance outcomes)
+
+1 The BM FSPs are allocated only once the F2026 STI is finalised, which is anticipated to be in September 2026.
+
+2 Remuneration policy continued",,,
+M7-QUALITY-0053,ACT,data/raw/ACT/2017/annual_report.pdf,4689cb1c-64db-45b1-8ea0-a4c2fad0dc2c,129 INTEGRATED REPORT 2017,133,HEADING_WITH_BODY,"129 INTEGRATED REPORT 2017
+
+3.1.2.3 Any other employment level in the Company deemed of strategic importance by the Board and Remuneration Committee 3.1.3 Shares are only to be awarded to employees that are working towards the Group’s overall goals and allocation and participation in the scheme will only be permitted to those employees who have no shareholding in any of the Company’s subsidiaries. 3.1.4 The Remuneration Committee may, in its discretion, call upon any company as part of the Group to make recommendations as to which of its respective employees it wishes to incentivise, retain the services of or attract the services of, by making a Share Award to such employee. Non-executive directors are not eligible for participation. 3.1.5 To identify eligible participants from the employment category levels mentioned above, the Board and Remuneration Committee will consider a range of criteria aligned to achieve a combination of the following outcomes to attract, motivate, engage and retain a group of participants that will fall within the ambit of the following sub-categories (which is solely subject to the Board and Remuneration Committee’s discretion): 3.1.5.1 talented employees; 3.1.5.2 performing employees; 3.1.5.3 professionals with critical, core and scarce skills; 3.1.5.4 professionals identified as succession candidates for leadership roles; and 3.1.5.5 designated groups in the context of employment equity standards.
+
+3.2 AWARDS 3.2.1 Shares will be awarded in the form of Share Awards (which may include bonus shares solely within the Board and Remuneration Committee’s discretion). 3.2.2 Share Awards are subject to continued employment over the retention period.",,,
+M7-QUALITY-0054,ACT,data/raw/ACT/2018/annual_report.pdf,a3565b24-59c7-4cc6-91fc-508855119392,,105,LIST,"1. the general authority shall be valid until the Company’s next Annual General Meeting, provided that it shall not extend beyond 15 (fifteen) months from the date of the passing of this ordinary resolution (whichever period is shorter); 2. the allotment and issue of the shares must be made to public shareholders as defined in the Listings Requirements and not to related parties; 3. the shares which are the subject of the issue for cash must be of a class already in issue, or where this is not the case, must be limited to such shares or rights that are convertible into a class already in issue; 4. the number of shares issued for cash in aggregate under this authority shall not exceed 82 628 808 shares, being 15% (fifteen percent) of the Company’s listed equity securities as at the date of this notice of Annual General Meeting, excluding treasury shares; 5. any shares issued under this authority during the period contemplated in paragraph 1 above, must be deducted from the number in paragraph 4 above; 6. in the event of a sub-division or consolidation of issued shares during the period contemplated in paragraph 1 above, the existing authority must be adjusted accordingly to represent the same allocation ratio; 7. the maximum discount at which ordinary shares may be issued is 10% (ten percent) of the weighted average traded price of those shares measured over the 30 (thirty) business days prior to the date that the price of the issue is agreed between the Company and the party subscribing for the securities. The JSE must be consulted for a ruling if the Company’s securities have not traded in such 30-business day period; and 8.",,,
+M7-QUALITY-0055,ACT,data/raw/ACT/2018/annual_report.pdf,f9b5d3c7-d2bd-457e-b9be-b416704635cf,,59,MULTI_PARAGRAPH,"Financial Wellbeing The debt management programme facilitated by our service provider, Interface, offers employees free financial wellbeing services on issues such as budgeting, wills and estates.
+
+Emotional Wellbeing This is our 365 24/7 Employee Assistance Programme (EAP) facilitated by Ask Nelson. It provides
+
+counselling services to our employees and their immediate family members.
+
+Organisational Wellbeing This is absence management through our ICAS first day of absence system and disability management
+
+through Sanlam Group Life.",,,
+M7-QUALITY-0056,ACT,data/raw/ACT/2021/annual_report.pdf,8618ea2a-ef45-468b-a6e6-f7ea676757fc,,57,PARAGRAPH,"We have now completed the phase of our strategy largely focused on putting in place the necessary building blocks to achieve our aims. While we remain opportunistic in seeking out acquisitions that will further our endeavours, during 2021, we focused on assimilating the elements of our value chain to leverage the full benefits of being the most diversified healthcare group in Southern Africa. We are currently in the process of refining our KPIs in relation to this next phase of our strategy to report on relevant indicators per strategic lever. Progress for the year in terms of these levers includes:",,,
+M7-QUALITY-0057,ACT,data/raw/ACT/2022/annual_report.pdf,6f893297-4246-480d-afc7-9a501ea90eb0,,55,TABLE_CONTEXT,"» Concluded negotiations with Sanlam Health Solutions to acquire a Gap Cover business that is supplementary to current medical scheme offerings » Designed and implemented the Sanlam Corporate Wellness offering for the Sanlam Group staff » Enhanced our innovation capability through the identification of a core group of individuals to drive the design of innovative solutions
+
+Success criteria to be defined in terms of membership growth, types of products and long-term impact during the new financial year.
+
+4 (Scorecard component: Strategic – forwardlooking)
+
+» Enhanced real-time availability monitoring » Continued to leverage the use of a single service measure as an operational tool to drive functional output at the highest levels
+
+Reduction in permanent staff per 1 000 lives while improving service level
+
+4 (Scorecard component: Strategic)
+
+» Enhanced automation rate has increased straight-through processing, with a 20% increase in self-service channels » Continued enhancement of processes, call centre management and customer/member contact via digital platforms
+
+% reduction in calls per 1 000 lives
+
+10% reduction 10% reduction
+
+5.49% reduction (2021: 4%)
+
+4 (Scorecard component: Strategic)
+
+» Experienced negative trend in adherence to chronic medicines, which impacted subsidiaries and script growth » Continued investment in efficiencies through partial automation within our Pharmacy Direct facility, supporting overall performance » Experienced changing demand for preventative products, such as vitamins, which returned to pre-COVID levels » Launched the Pharmacy Direct Online Store » Established an Independent Retail Pharmacy Network to create an organised, well-coordinated and managed pharmacy network
+
+% increase in scripts under management",,,
+M7-QUALITY-0058,BEL,data/raw/BEL/2017/annual_report.pdf,3157a769-d1ae-4d3f-92c8-ba36f28e4811,Our Timeline and Key Milestones,4,HEADING_WITH_BODY,"Our Timeline and Key Milestones
+
+Founder Irvine Bell establishes the group. A self-loading sugar cane trailer is amongst his early inventions.
+
+Launch of the D-series ADT sets a new standard of excellence.
+
+World’s largest ADT, the Bell B50D, is unveiled.
+
+Bell celebrates 60 years in business along with the 50th anniversary of its tri-wheeler product and 30 years of ADT design and manufacture.",,,
+M7-QUALITY-0059,BEL,data/raw/BEL/2018/annual_report.pdf,6bcc60af-1f11-436b-941a-1af70f39cb4f,,43,LIST,"• reviewing the integrated annual report to shareholders with regard to the relevant sustainability considerations as set out in the stakeholder relations report; and
+
+• considering whether and to what extent external assurance is required on integrated reporting to shareholders with regard to the relevant sustainability considerations.
+
+* Ashley Bell’s designation changed from a non-executive director to an executive director on 1 February 2019.",,,
+M7-QUALITY-0060,BEL,data/raw/BEL/2017/annual_report.pdf,40978dee-b77c-4cef-80d4-3f0d9c247b78,,79-80,MULTI_PARAGRAPH,"2.2 to re-elect D Lawrance as an independent non-executive director who retires by rotation in terms of the MOI at this AGM and, being eligible, makes himself available for re-election. Brief particulars of the qualifications and experience of the abovementioned director are available on page 16 of the integrated annual report of which this notice forms part; and
+
+2.3 to re-elect H van der Merwe as an independent non-executive director who retires by rotation in terms of the MOI at this AGM and, being eligible, makes himself available for re-election. Brief particulars of the qualifications and experience of the abovementioned director are available on page 16 of the integrated annual report of which this notice forms part.
+
+3. ORDINARY RESOLUTION 3: APPOINTMENT OF THE MEMBERS OF THE AUDIT COMMITTEE Pursuant to the requirements of Section 94 of the Companies Act to elect the following independent non-executive directors of the company as members of the audit committee until the conclusion of the AGM to be held in 2019 each by seperate resolution:
+
+3.1 D Lawrance (chairman of the audit committee)
+
+3.2 R Naidu
+
+3.3 M Ramathe
+
+3.4 J Barton (in his position as the lead independent non-executive director with effect from 1 June 2018)
+
+Brief particulars of the qualifications and experience of the abovementioned directors are available on pages 16 and 17 of the integrated annual report of which this notice forms part.
+
+4. ORDINARY RESOLUTION 4: APPOINTMENT OF AUDITORS To appoint Deloitte & Touche, upon the recommendation of the current audit committee, as the independent auditors of the company; and to note Mrs C Howard-Browne as the individual designated auditor for the financial year ended 31 December 2018.",,,
+M7-QUALITY-0061,BEL,data/raw/BEL/2021/annual_report.pdf,87b2f5c7-1481-4b9c-81a4-8dacfab1de67,,113,PARAGRAPH,"Reason and effect The reason for and effect of this special resolution number 1 is to obtain the necessary approvals from shareholders to allow the company to provide financial assistance to the company’s present or future subsidiaries and/or any other company or entity that is or becomes related or inter-related to the company or any of its subsidiaries and/or to any member of such subsidiary or related or inter-related company or entity for the purpose of, or in connection with, the subscription of any option, or any securities, issued or to be issued by the company or a related or inter-related company or entity as contemplated in Section 44 of the Companies Act.",,,
+M7-QUALITY-0062,BEL,data/raw/BEL/2022/annual_report.pdf,cf3f359e-2001-4e64-8f27-52897236fa87,,109,TABLE_CONTEXT,"Fair value gains recognised in other comprehensive income 12 669 14 584
+
+Valuation techniques and fair value hierarchy There was no change in the valuation techniques used for forward foreign exchange contracts (Level 2) and listed (Level 1) and unlisted investments (Level 3).
+
+For all fair value measurements disclosed above, there were no transfers between levels of the fair value hierarchy during the year.
+
+13. CONTRACT LIABILITIES
+
+Contract liabilities consist of the following:",,,
+M7-QUALITY-0063,KP2,data/raw/KP2/2024/annual_report.pdf,3dd48696-5c82-471b-b914-1dfff6eba522,USD,63,HEADING_WITH_BODY,"USD
+
+Fees/Basic",,,
+M7-QUALITY-0064,KP2,data/raw/KP2/2022/annual_report.pdf,ef6532c9-a4f0-4441-a2c4-2bcf0405ec17,,77,LIST,"• adequate accounting records have not been kept by the Parent Company, or returns adequate for our audit have not been received from branches not visited by us; or • the Parent Company financial statements are not in agreement with the accounting records and returns; or • certain disclosures of Directors’ remuneration specified by law are not made; or • we have not received all the information and explanations we require for our audit. Responsibilities of Directors As explained more fully in the Statement of Directors’ responsibilities, the Directors are responsible for the preparation of the financial statements and for being satisfied that they give a true and fair view, and for such internal control as the Directors determine is necessary to enable the preparation of financial statements that are free from material misstatement, whether due to fraud or error. In preparing the financial statements, the Directors are responsible for assessing the Group’s and the Parent Company’s ability to continue as a going concern, disclosing, as applicable, matters related to going concern and using the going concern basis of accounting unless the Directors either intend to liquidate the Group or the Parent Company or to cease operations, or have no realistic alternative but to do so. Auditor’s responsibilities for the audit of the financial statements Our objectives are to obtain reasonable assurance about whether the financial statements as a whole are free from material misstatement, whether due to fraud or error, and to issue an auditor’s report that includes our opinion. Reasonable assurance is a high level of assurance, but is not a guarantee that an audit conducted in accordance with ISAs (UK) will always detect a material misstatement when it exists. Misstatements can arise from fraud or error and are considered material if, individually or in the aggregate, they could reasonably be expected to influence the economic decisions of users taken on the basis of these financial statements. Extent to which the audit was capable of detecting irregularities, including fraud Irregularities, including fraud, are instances of non-compliance with laws and regulations. We design procedures in line with our responsibilities, outlined above, to detect material misstatements in respect of irregularities, including fraud. The extent to which our procedures are capable of detecting irregularities, including fraud is detailed below:",,,
+M7-QUALITY-0065,KP2,data/raw/KP2/2024/annual_report.pdf,b408768b-7228-4285-8158-feb976e011bf,,45,MULTI_PARAGRAPH,"As mentioned in Provision 9. above, the responsibilities of the Non-Executive Chairman and the CEO are clearly defined in writing Each NED, including the Senior Independent NED, has a Letter of Appointment in place to ensure they clearly understand the requirements of their role. Following the resignation of Mr B Sampson on 31 October 2023, the Non- Executive Chairman has assumed the role of CEO in the interim. Details of executive directors’ service contracts and the Chairman’s and NEDs’ appointment letters are provided within the Directors Report, copies of all of which are also available for inspection by request at the Company’s registered office during normal business hours and at the AGM. The number of meetings of the Board and its committees and the individual attendance by directors is set out within the Directors Report. 15. When making new appointments, the board should take into account other demands on directors’ time. Prior to appointment, significant commitments should be disclosed with an indication of the time involved. Additional external appointments should not be undertaken without prior approval of the board, with the reasons for permitting significant appointments explained in the annual report. Full-time executive directors should not take on more than one non-executive directorship in a FTSE 100 company or other significant appointment.
+
+Directors are required to disclose prior appointments and other significant commitments and are required to inform the Board of any changes or additional commitments in a timely manner. Details of the external appointments can be found on pages 32 to 34. Before accepting new appointments, directors are required to obtain approval from the Chairman and the Chairman requires approval from the whole Board. It is essential that no appointment causes a conflict of interest or impacts on the Director’s commitment and time spent with the Group in their existing appointment. 16 All directors should have access to the advice of the company secretary, who is responsible for advising the board on all governance matters. Both the appointment and removal of the company secretary should be a matter for the whole board.",,,
+M7-QUALITY-0066,KP2,data/raw/KP2/2023/annual_report.pdf,6c826dbf-7b30-488e-91bc-beda1a83eab0,,81,PARAGRAPH,"However, factors beyond the Group’s control, including pandemic diseases such as COVID-19, the Russian/Ukraine conflict impact on macro-economics, inflation, interest rates and the banking crisis and uncertainty in the overall public markets, which affect the stock markets, may in turn have a negative impact on any fund raising. The Directors have reviewed the Group's overall position and outlook in respect of the matters identified above and are of the opinion that there are reasonable grounds to believe that funding will be secured and therefore that the operational and financial plans in place are achievable and accordingly the Group will be able to continue as a going concern and meet its obligations as and when they fall due. The Directors will continue to pursue further capital raising initiatives in order to have sufficient funds to continue the work to finalise the Kola Project EPC and Financing Proposal for the complete construction of Kola. The ability of the Group to continue as a going concern is dependent on the matters set out above. As at of the date of approving the financial statement none of these matters are complete. These conditions indicate that a material uncertainty exists which may cast significant doubt as to the Group’s ability to continue as a going concern and therefore it may be unable to realise its assets and discharge its liabilities in the normal course of business. The financial report does not include adjustments relating to the recoverability and classification of recorded asset amounts or to the amounts and classification of liabilities that might be necessary should the Group not continue as a going concern. The directors reviewed a cash flow forecast for the period ending 31 December 2024, which indicates that the Group will have insufficient liquidity to meet its working capital requirements to the end of the going concern period (March 2024).",,,
+M7-QUALITY-0067,KP2,data/raw/KP2/2024/annual_report.pdf,21a6fe2b-8961-4de9-b5fc-4dc75c6240a0,,104,TABLE_CONTEXT,"The ultimate recoupment of costs carried forward for exploration expenditure phases is dependent on the successful development and commercial exploitation, or alternatively, the sale of the respective areas of interest.",,,
+M7-QUALITY-0068,SBP,data/raw/SBP/2024/annual_report.pdf,e7a95962-9727-421f-a2b5-4f9e850190ca,4.1 Investment strategy,6-7,HEADING_WITH_BODY,"4.1 Investment strategy
+
+The Group’s approved Investment Policy remained unchanged during the year and is attached marked Annexure 2 on pages 44 to 46.
+
+4. Strategies, business model and performance indicators (continued)",,,
+M7-QUALITY-0069,SBP,data/raw/SBP/2023/annual_report.pdf,cbcb73a1-fcfc-4523-8ccc-f8f907e1585e,,39,MULTI_PARAGRAPH,"Since the formation of Sabvest in 1988, it was agreed that the CEO may hold directorships and investments independently as well as directorships as a representative of the Group. These enhance the Group’s influence materially, have improved the Group’s access to attractive new investments over the years, have facilitated the partnership principle in investees, have resulted in income and gains to the Group, and material growth in NAV per share. The CEO may retain the fees from those Board appointments separately from any fees that may be paid to Sabcap by its investees.
+
+Non-executive directors receive annual fees for their roles as directors, as Board Committee members and for sitting on the boards of investees on behalf of the Group. The Board does not regard separate attendance fees as appropriate or necessary unless the time allocation to meetings expected of directors is materially more than normal in a particular year.
+
+The Company secretarial function has been outsourced and is charged to the Group on a time basis.",,,
+M7-QUALITY-0070,SDL,data/raw/SDL/2024/annual_report.pdf,9445f7f8-17ab-4e75-b338-80b4dad8a92d,a) Principles used to determine the nature and amount of remuneration,21,HEADING_WITH_BODY,"a) Principles used to determine the nature and amount of remuneration
+
+The objective of the consolidated entity's executive reward framework is to ensure reward for performance is competitive and appropriate for the results delivered. The framework aligns executive reward with the achievement of strategic objectives and the creation of value for shareholders, and it is considered to conform to the market best practice for the delivery of reward. The Board of Directors ('the Board') ensures that executive reward satisfies the following key criteria for good reward governance practices:
+
+• competitiveness and reasonableness • acceptability to shareholders • performance linkage / alignment of executive compensation • transparency The Nomination and Remuneration Committee is responsible for determining and reviewing remuneration arrangements for its directors and executives. The performance of the consolidated entity depends on the quality of its directors and executives. The remuneration philosophy is to attract, motivate and retain high performance and high quality personnel. The Nomination and Remuneration Committee has structured an executive remuneration framework that is market competitive and complementary to the reward strategy of the consolidated entity. The Company engaged a remuneration consultant in the prior year but not in the current year. Additionally, the reward framework should seek to enhance executives' interests by:",,,
+M7-QUALITY-0071,SDL,data/raw/SDL/2025/annual_report.pdf,e475fdb2-4977-496f-ad98-bea5a02cb03b,,3,MULTI_PARAGRAPH,"On behalf of the Board, we thank our management team for their dedication and professionalism throughout this important year. We also express our gratitude to our consultants and the Bengwenyama community for their continued collaboration and support.
+
+Finally, we thank our shareholders for their ongoing confidence in the Company’s vision. The progress made in 2025 lays a strong foundation for the next stage of growth as Southern Palladium moves closer to becoming a future producer in the world’s premier PGM province.",,,
+M7-QUALITY-0072,SDL,data/raw/SDL/2024/annual_report.pdf,67c0317f-b129-4ca5-9ac8-26d36679d5f2,,2,PARAGRAPH,"Dear Shareholders 2024 has again been a significant year for Southern Palladium with an exploration programme now completed and a Preliminary Feasibility Study nearing completion at the Company’s (70%) Bengwenyama project, which is situated on the Eastern Limb of the Bushveld Complex in South Africa. This complex hosts approximately 72% of the world’s platinum group metals (“PGMs”), and the project is nestled in prime PGM mining real estate amongst major platinum and chrome producers. Pleasingly, the completed drilling results confirm the consistency of the grade and the continuity of the UG2 reef, enabling the Company to confirm an updated Mineral Resource Estimate for the UG2. The total combined UG2 and Merensky Reef Mineral Resource ounces (Measured, Indicated and Inferred) for the Bengwenyama Project now stands at 40.25 Moz.1 This confirms the Bengwenyama Project as a significant player among projects on the Eastern Limb of the Bushveld Complex. Importantly the Company has also materially advanced its Preliminary Feasibility Study for safely and responsibly developing a shallow PGM underground mine, paired with a conventional processing facility, integrated into a well-established downstream refining chain. Our work thus far confirms the Company’s original analysis that the UG2 currently has the best development potential, and that we should keep open the potential for mining the Merensky Reef in future. The PFS is on track for completion in Q4 2024. During the year the Company completed and submitted its Environmental Impact Assessment in support of its Mining Right Application, an essential step in the project’s development. Our longstanding relationship with the Bengwenyama Community, established over 18 years ago, continues to be a cornerstone of this project's success. As partners in this major project, we deeply value their involvement and support. Ongoing strong demand for PGMs for industrial applications, investment and jewellery, combined with the rise in prominence of hybrid vehicles, the stronger for longer thesis for internal combustion engines (ICE) and the slowing in growth in battery electric vehicles point to improving market fundamentals and an emergence from the bottom of the PGM price cycle. PGMs are undoubtably a Green metal of the future and positive developments in the evolution of the green hydrogen value chain, combined with higher for longer demand in ICE’s and the growth in hybrids, point to ongoing strong demand. The emergence of platinum as an attractive investment class has also contributed to demand.",,,
+M7-QUALITY-0073,SUR,data/raw/SUR/2024/annual_report.pdf,0a7f6dbc-72a4-41b5-833c-c16efb0dd025,LIFE BELOW WATER 15,157,HEADING_WITH_BODY,LIFE BELOW WATER 15,,,
+M7-QUALITY-0074,SUR,data/raw/SUR/2025/annual_report.pdf,2d164b6d-9651-43ff-87f2-ba1ed815c245,,172,MULTI_PARAGRAPH,"The board is assisted in carrying out its mandate by the various committees. Feedback from board committees is a standard agenda item at each ordinary board meeting.
+
+Committees are entitled to obtain independent professional advice at the cost of the group on any issue within the ambit of its scope, subject to following a board-approved process.
+
+The standing committees of the board are:
+
+ Risk
+
+ Audit
+
+ Nominations and remuneration
+
+ Social, ethics and environmental sustainability
+
+9 The governing body should ensure that the evaluation of its own performance and that of its committees, its chair and its individual members, supports continued improvement in its performance and effectiveness
+
+A performance appraisal is conducted every two years, in line with King IVTM. The board evaluations are conducted on an anonymous basis and in a questionnaire format.
+
+The evaluation is a formal process and the results are submitted to the company secretary. Results are tabled and discussed at the following board meeting.
+
+Evaluations for each committee are also conducted and this feedback is reported to the board.
+
+10 The governing body should ensure that the appointment of, and delegation to, management contribute to role clarity and the effective exercise of authority and responsibilities
+
+The board considered and approved a Delegation and Financial Limits of Authority Policy, as recommended by King IVTM.
+
+The board charter, together with the group’s delegation and financial limits of authority policy, sets out the direction and parameters of power of the board and management.
+
+The CEO is not a member of the audit committee, but is invited to attend these meetings or sections of the meetings.",,,
+M7-QUALITY-0075,SUR,data/raw/SUR/2024/annual_report.pdf,9e59e3f2-432c-41ba-9594-aee9d9f07cdd,,169,PARAGRAPH,"Medium- and long-term projects have been identified to ensure the group’s technology continues to support its strategic delivery and competitiveness. Progress is monitored quarterly by the executive team and twice a year by the audit and risk committees. Key activities for the year included improvements to security protocols, continued roll out of our cloud migration strategy and improving customer-facing technology offerings.",,,
+M7-QUALITY-0076,SUR,data/raw/SUR/2024/annual_report.pdf,0530ec5e-e1f8-4504-9853-737ee68fc68a,,126,TABLE_CONTEXT,"As a % of TGP
+
+As a %
+
+of the F2025 STI
+
+Which equates to a
+
+% of TGP
+
+Paterson Grade D Upper and below 8.3 Paterson Grade D Upper and below 50.0 8.3
+
+Vesting date 3 years from Award date 3 years from date on which shares are allocated1
+
+Exercise period 2 years from Vesting date n/a
+
+Award price 10-day volume-weighted average price at grant date
+
+n/a
+
+Service condition Remain employed for duration of vesting period
+
+Holding period
+
+CEO, CFO and COO: 2 years from date of exercise
+
+Other participants: None
+
+n/a
+
+Malus and clawback
+
+Malus and clawback apply as per policy Malus and clawback apply as per policy
+
+Vesting formula
+
+Number of SARs x [(group business performance weighting x group business performance score) + (personal performance weighting x personal performance score) + (new business ROI weighting x new business ROI performance score)]
+
+Number of bonus awards
+
+Performance period
+
+1 July 2024 to 30 June 2027 (relative to base year of 1 July 2023 to 30 June 2024)
+
+1 July 2024 to 30 June 2025 (based on STI performance outcomes)
+
+1 The BM FSPs are allocated only once the F2025 STI is finalised, which is anticipated to be in September 2025.
+
+Remuneration policy",,,
+M7-QUALITY-0077,ACT,data/raw/ACT/2016/annual_report.pdf,154c05a0-6da6-4c39-a729-3eba90bddb21,REGULATORY COMPLIANCE TRANSFORMATION,50-51,HEADING_WITH_BODY,"REGULATORY COMPLIANCE TRANSFORMATION
+
+Transformation is a strategic objective of the Group, in line with its commitment to the country’s transformation agenda. Compliance with B-BBEE codes and legislation is fundamental to the Group’s sustainability and to remaining competitive in the healthcare sector
+
+Our Level 2 B-BBEE status positions the Group well for securing contracts and tenders
+
+IT implementation and disruption will impede on the growth of the business and lead to loss in shareholder value
+
+Regulatory non-compliance will lead to loss of our accreditation, impeding the ability to do business. This will negatively impact on revenue and profitability
+
+The ability to secure tenders could be compromised if the Group does not maintain and improve its transformation credentials
+
+Strong B-BBEE credentials will ensure favourable ratings for tenders for public and private sector business, demonstrating leadership as a South African Group
+
+t Employees t The Group’s clients (schemes)
+
+Transformation
+
+Strategy",,,
+M7-QUALITY-0078,ACT,data/raw/ACT/2017/annual_report.pdf,99941ae5-ac12-4a24-90e8-2b101b615a55,,77,LIST,"• Digital subscriptions Allegra has streamlined its acquisition process by developing an online contracting system, as well as integrating this with an easy-to-use online onboarding solution. This digital sales process is being optimised to further reduce costs and improve user adoption of Allegra technology. This has been developed in order to achieve two of Allegra’s strategic objectives, namely to offer lower cost-to-value ratio to our clients and to achieve high asset utilisation by selling the same product to many clients as quickly as possible. The successful implementation of this new digital system is a significant highlight for the 2017 financial year.",,,
+M7-QUALITY-0079,ACT,data/raw/ACT/2022/annual_report.pdf,bb1b6586-9088-4767-81d2-ed906c9ac105,,132,MULTI_PARAGRAPH,"All beneficial owners of AfroCentric shares who have dematerialised their shares through a Central Securities Depository Participant (CSDP) or broker, other than those with own-name registration, and all beneficial owners of shares who hold certificated shares through a nominee, must provide their CSDP, broker or nominee with their voting instructions, in accordance with the agreement between the beneficial owner and the CSDP, broker or nominee as the case may be. Should such beneficial owners wish to attend the meeting in person, they must request their CSDP, broker or nominee to issue them with the appropriate letter of authority. If shareholders who have not dematerialised their shares or who have dematerialised their shares with own-name registration and who are entitled to attend and vote at the AGM do not deliver proxy forms to the transfer secretaries timeously, such shareholders will nevertheless, at any time prior to the commencement of the voting on the resolutions at the AGM be entitled to lodge the form of proxy in respect of the AGM, in accordance with the instructions therein with the Chairman of the AGM.
+
+Each shareholder is entitled to appoint one or more proxies (who need not be shareholders of AfroCentric) to attend, speak and vote in his/her stead. On a show of hands, every shareholder who is present in person or by proxy shall have one vote, and, on a poll, every shareholder present in person or by proxy shall have one vote for each share held by him/her.
+
+AfroCentric does not accept responsibility and will not be held liable for any failure on the part of a CSDP or broker to notify such AfroCentric shareholder of the AGM.
+
+By order of the Board
+
+Billy Mokale Group Company Secretary
+
+Roodepoort 12 October 2022",,,
+M7-QUALITY-0080,ACT,data/raw/ACT/2024/annual_report.pdf,cdf7c265-0ab7-40a4-993d-8d0d4586b234,,96,PARAGRAPH,"A notable increase in emissions from transportation activities (Category 3) reflects a change in operational dynamics. This increase can be explained by the significant increase in employees from FY2023 to FY2024, where the total number of employees increased from approximately 2 287 to 4 715. This increase can also be attributed to a rise in employees working from the office again after being able to work from home due to the COVID-19 pandemic.",,,
+M7-QUALITY-0081,ACT,data/raw/ACT/2022/annual_report.pdf,9843f8c2-fa7b-416c-b3e7-c319ca662ee3,,55,TABLE_CONTEXT,"» Reduced claims costs for our schemes through managed care programmes » Developed and rolled out a wide range of healthcare and corporate wellness offerings tailor-made and white labelled for Sanlam clients » Vaccinated approximately 200 000 citizens, comprising medical scheme members, the uninsured public and our staff at our various centres around the country » Provided access to the VirtualCare platform for primary care healthcare providers for seamless integration with AfroCentric » Leveraged Medscheme’s digital capability to scale its integrated mental health solution by partnering with a mental health app that improves access to self-care solutions, group sessions and virtual care
+
+Managed care savings
+
+R4.5 billion R4 billion
+
+R4.2 billion (2021: R2.7 billion)
+
+Achieved Partially achieved Not achieved",,,
+M7-QUALITY-0082,BEL,data/raw/BEL/2022/annual_report.pdf,580299e4-748f-449e-9b71-4b3910055832,North America & Canada,10,HEADING_WITH_BODY,"North America & Canada
+
+• Independent dealer network supported from the South African factory
+
+• Full range of Bell manufactured products supplied from South Africa
+
+• Dealer parts stocking supported from logistics
+
+hubs in USA and Africa",,,
+M7-QUALITY-0083,BEL,data/raw/BEL/2021/annual_report.pdf,e8596141-43b1-4c62-ab55-323c889bcec6,,27,LIST,"• Immediate risks management related to items with significant Bell IP is constantly under review. These include the following categories of components: wiring harnesses, rubber to metal, electronic controllers, composites, gear cutting and specialised machining. This is running in parallel with the review and update of the critical supplier business impact analysis to identify possible alternatives or critical supplier requirements.
+
+• Monthly supply chain risk management meetings now take place. OE and aftermarket, supply chain and supplier risks are evaluated and rated, actions to mitigate are agreed and progress is reviewed.
+
+• Disruptions are however anticipated, and precautions have been taken to increase buffers to insulate against the potential increase in supplier and shipping lead times where necessary.
+
+• Where identified, safety stock levels are reviewed and adjusted to alleviate possible supply chain failure.",,,
+M7-QUALITY-0084,BEL,data/raw/BEL/2018/annual_report.pdf,2a9c22f2-8806-4b87-ad43-6bc2e81bebed,,36,MULTI_PARAGRAPH,"PROPERTY, PLANT AND EQUIPMENT The completion of construction of the manufacturing plant on the recently purchased German assembly site, on which the group has assembled ADTs for the last decade or so, and the commencement of manufacturing in Germany is an exciting development which the group looks forward to in 2019. Approximately R200 million was invested in this capex in 2018 and a further R35 million has been committed to complete the construction in the first half of 2019.
+
+WORKING CAPITAL Inventory is up R858 million or 28% and days increased from 203 days at the end of 2017 to 236 days at the end of 2018. There were a number of drivers of the increased inventory. Firstly, the addition of the Kobelco and Kamaz products to the distribution range meant that the group has added machines and parts inventory of these brands to the group’s inventory holding. In addition, the construction sector in South Africa was harder hit than expected and this meant that sales targets into this sector were not met and that the group ended 2018 with higher inventory levels in South Africa than planned. These levels will be worked down in 2019. The new parts logistics centre in the US, the ALC, started operations in 2018 and parts inventory is now being carried at that facility. Strategic stockholdings of certain key, long lead time components were also added at both the Richards Bay and German facilities in order to improve manufacturing and assembly response times and flexibility.",,,
+M7-QUALITY-0085,BEL,data/raw/BEL/2022/annual_report.pdf,f267ca2f-f3fc-4e62-87c2-077ecf784465,,121,PARAGRAPH,"Reason and effect The reason for and effect of this special resolution number 1 is to obtain the necessary approvals from shareholders to allow the company to provide financial assistance to the company’s present or future subsidiaries and/or any other company or entity that is or becomes related or inter-related to the company or any of its subsidiaries and/or to any member of such subsidiary or related or inter-related company or entity for the purpose of, or in connection with, the subscription of any option, or any securities, issued or to be issued by the company or a related or inter-related company or entity as contemplated in Section 44 of the Companies Act. 8. SPECIAL RESOLUTION 2: GENERAL AUTHORITY FOR THE PROVISION OF FINANCIAL ASSISTANCE IN TERMS OF SECTION 45 OF THE COMPANIES ACT Resolved that to the extent required by Section 45 of the Companies Act and as a general authority, the board may, subject to compliance with the provisions of the MOI, the Companies Act and the JSE Listings Requirements, each as presently constituted and as amended from time to time, authorise the company to provide on such terms as the board shall consider fair and reasonable to the company in the circumstances and without the necessity if the board considers it appropriate to charge interest at any time and from time to time any direct or indirect financial assistance to any one or more related or inter-related companies (as these terms are defined in the Companies Act) or corporations of the company (but not to a director and/or a prescribed officer of the company or a director of any related and/or inter-related companies or any person related to any such director or prescribed officer) for a period commencing on the date of passing of this resolution and ending at the next AGM.",,,
+M7-QUALITY-0086,BEL,data/raw/BEL/2022/annual_report.pdf,e981bbaf-2cd3-4c7d-a33a-f0abc7be4dc6,,110,TABLE_CONTEXT,"The carrying amount of the 25% cash collateral in respect of these Bell-backed deals at year-end was 6 801 25 187
+
+The group’s credit risk exposure to WesBank has been disclosed below:
+
+At year-end the group’s credit risk exposure to WesBank under Bell-backed deals, for which the group carries all the credit risk, totalled * 26 724 112 739
+
+In the event of default, the equipment financed would be recovered and it is estimated that on re-sale the equipment would presently realise the following towards the above liabilities 50 291 161 521
+
+Less: allowance for expected credit losses against cash collateral - (5 824)
+
+Less: refund liability recognised (note 14) - (17 471)
+
+Net credit risk relating to WesBank Bell-backed transactions - -
+
+* The group’s credit risk exposure decreased due to the collection of prior year balances in the current year and less outstanding Bell-backed deals by year-end.
+
+16. RESTRICTED ACCESS TO CASH AND BANK BALANCES The group’s cash and bank balances includes an amount which forms part of the group’s operation in Russia and which is not accessible by the group outside Russia due to sanctions.
+
+Cash and bank balances in Russia 40 177",,,
+M7-QUALITY-0087,KP2,data/raw/KP2/2021/annual_report.pdf,7b69a1d0-3bcb-4399-b736-85ab9d090a73,USD,60,HEADING_WITH_BODY,USD,,,
+M7-QUALITY-0088,KP2,data/raw/KP2/2020/annual_report.pdf,6df39bbd-98bf-41f3-a2d9-98907e302ed7,,9,LIST,"• The ability of the Group to continue as a going concern is dependent on achieving the matters set out above. These conditions indicate a material uncertainty which may cast significant doubt as to the Group’s ability to continue as a going concern and therefore it may be unable to realise its assets and discharge its liabilities in the normal course of business. CORPORATE ACTIVITIES • On 17 July 2019, a total of USD 13,457,784 was successfully raised from existing and new investors through the placing and direct subscription of 646,914,254 ordinary shares in the Company at a placing price of GBP 0.016 per new ordinary share. The par value of the 646,914,254 ordinary shares was USD 646,914. In addition to this, on 5 December 2019 the Group acquired two drill rigs with ancillary equipment in exchange for the issue of 22,000,000 ordinary shares at a deemed price of £0.01225 to Equity Drilling Limited. The par value of 22,000,000 shares was USD 22,000. The total value of shares issued in lieu of cash paid was USD 359,920. • As part of a cash saving initiative, certain non-executive directors were issued with shares in lieu of cash paid in two instalments - on 27 June 2019, 4,224,723 shares were awarded in lieu of cash and on 31 December 2019, 3,811,398 shares were awarded in lieu of cash to David Hathorn, David Netherway and Jonathan Trollip. These two issues had a total value of USD 64,204. • Andrey Maruta replaced John Crews as Chief Financial Officer in the year. Mr Maruta was appointed on 23 September 2019, whilst Mr Crews’ last day as Chief Financial Officer was 21 November 2019. Andrey, has over 16 years mining industry experience, including as CFO at Petropavlovsk Plc. Prior to that he worked in the audit function at accountancy firm Moore Stephens International in both the UK and the Russian Federation. • David Netherway was appointed as Chair of the Audit and Risk Committee and took the role of Senior Independent Director at the AGM held on 28 June 2019. In doing so he replaced Jonathan Trollip in both roles. However, Mr Trollip remains as a non-executive director. • Leonard Math did not seek re-election at the AGM held on 29 June 2019 and therefore ceased to be a non-executive director post the AGM.",,,
+M7-QUALITY-0089,KP2,data/raw/KP2/2022/annual_report.pdf,ca923820-e39b-4df4-9a97-7836b729e49c,,12,MULTI_PARAGRAPH,"Authorisation obtained from RoC authorities • The Minister of Tourism and Environment of the RoC issued certificates on 31 March 2020 granting 25-year approvals to the ESIAs for both the Dougou and the Kola Mining Licences. • On 1 October 2020, authorisation was obtained from the Ministry of Environment for SPSA to import and store the chemicals needed for the drilling campaign on the DX project; a further confirmation letter was received on 30 November 2020. • Ministry of Tourism and Environment authorised the environmental management plan for the DFS drilling on Kore Potash’s DX Project on 14 October 2020; a further formal confirmation letter was received on 27 November 2020.
+
+Workstreams with RoC authorities • Declaration of Public Utility (DUP) – this is the formal process that needs to be followed to achieve the declaration of public utility to authorise public land use by the Group for the Kola project. The existing DUP for the Kola project issued under `Order No. 6595/MAFDPRP-CAB on 13 August 2018 requires a revision based on the proposed optimisation changes to the process plant layout. The Group has started a process of reapplying for the DUP. An initial land survey of the affected land by the Department of Cadastral Survey was completed on 23 September 2021 and the surveyed co-ordinates issued to the Company for review. Once the optimisation is completed, the design will be checked against the surveyed co-ordinates issued to the Company and any areas of concern highlighted. The Group will, at that point, submit a formal request to have the DUP renewed. It is not envisaged that this process will delay the commencement of the project. • Dougou Mining Licence Correction: A revised Decree No 2021-389 dated 2 August 2021 was received, and it corrected the error in the co-ordinates previously issued with the Dougou Mining licence. This means there is no longer any dispute between the Group and the authorities regarding the co-ordinates of the Dougou mining permit.",,,
+M7-QUALITY-0090,KP2,data/raw/KP2/2024/annual_report.pdf,52fa6677-e5d5-4d9b-bb53-71fbe8cdc092,,91,PARAGRAPH,"(d) Functional and Presentation Currency Items included in the financial statements of each of the Group’s entities are measured using the currency of the primary economic environment in which the entity operates. The functional currency of the ultimate parent entity (Kore Potash plc) is US dollars. The functional currency of the subsidiaries are: • Kore Potash Limited – US Dollars (USD) • Sintoukola Potash S.A. - CFA Franc BEAC (XAF) • Dougou Potash Mining S.A. - CFA Franc BEAC (XAF) • Kola Potash Mining S.A. - CFA Franc BEAC (XAF) The presentational currency of the Group is US dollars. (e) Foreign Currency Transactions and Balances Transactions in foreign currencies are initially recorded in the functional currency at the exchange rates ruling at the date of the transaction. Monetary assets and liabilities denominated in foreign currencies are retranslated at the rate of exchange ruling at the reporting date. All differences in the consolidated financial report are taken to the Statement of Profit or Loss. Non-monetary items that are measured in terms of historical cost in a foreign currency are translated using the exchange rate as at the date of the initial transaction. Non-monetary items measured at fair value in a foreign currency are translated using the exchange rate at the date the fair value was determined. As at the reporting date, the assets and liabilities of the foreign subsidiaries are translated into the reporting currency of the Company at the rate of exchange ruling at the reporting date and the profit or loss in the Statement of Profit or Loss and Other Comprehensive Income are translated at the weighted average exchange rates for the period. The exchange differences on the retranslation are taken directly to Other Comprehensive Income. On disposal of a foreign entity, the deferred cumulative amount recognised in equity is recognised in the profit or loss in the Statement of Profit or Loss and Other Comprehensive Income. The functional currency for Sintoukola Potash S.A. is expected to change to US dollars upon the commencement of mining, as potash is priced in US dollars. (f) Basis of Consolidation Subsidiaries are entities controlled by the Group. The financial statements of the subsidiaries are prepared for the same reporting period as the parent company, using consistent accounting policies. Control, under IFRS10, is achieved when the Company: • has power over the investee;",,,
+M7-QUALITY-0091,KP2,data/raw/KP2/2024/annual_report.pdf,7e4da3a6-76fb-4f08-8cc4-661b48d7fc99,,104,TABLE_CONTEXT,"On 8 June 2017, a mining convention was signed by the Group and the Government of the RoC. The convention governs the conditions of construction, operation and mine closure of the Kola and Dougou (including DX) mining projects. The terms and conditions of the mining convention include key investment promotion provisions, including the following: • Corporate tax concessions applicable for the first ten years of each mining permit as production capacity is extended, which includes zero corporation tax for the first five years from profitability, and a corporation tax rate of 7.5% for the next five years; • An ongoing corporation tax rate of 15% for the rest of the life of mine; • Exemptions from withholding taxes including interest, dividends and capital gains during the term of the mining convention; • VAT and import duty exemptions (including all subcontractors) during construction; • Royalties of 3% payable to the RoC, which is based on an equivalent to EBITDA; • Guarantee from the RoC that it will facilitate and support the implementation of the project, as defined in the convention (for example, in granting the necessary consents to permit export of the final product through the use of a dedicated jetty); and • The RoC to be granted a 10% carried equity interest (subject to signing shareholders agreement) in the project companies, which are currently wholly-owned by Kore Potash Limited’s subsidiary, SPSA. The mining convention has a term which covers the life of the Kola and Dougou mining permits including any extension (25 years plus 15-year extension, renewable indefinitely upon proven mineable ore resources). The Group was awarded the Sintoukola 2 Exploration Permit dated 9 February 2018 by the government of the RoC. The Sintoukola 2 exploration permit expired in February 2021 and the company relinquished this tenement there is no value allocated to this tenement or costs incurred in relation to this tenement. On 7 December 2018, the Mining Convention covering the proposed staged development of the Kola and Dougou Mining Licences was gazetted into law following ratification by the Parliament of the RoC. The result of this law being gazetted was that the RoC government were now entitled to a 10% equity interest in Dougou and Kola. There is currently no shareholder agreement in place for this change in equity interest agreement. Further information regarding the non-controlling interest is available in Note 11(f).",,,
+M7-QUALITY-0092,SBP,data/raw/SBP/2023/annual_report.pdf,7549c87c-ac81-4de6-be2d-844211d77c7d,Annual Report,1,HEADING_WITH_BODY,Annual Report,,,
+M7-QUALITY-0093,SBP,data/raw/SBP/2025/annual_report.pdf,f68cbeb3-d61b-4957-a84c-8927117f0ac7,,46,MULTI_PARAGRAPH,"5. Shareholder approvals
+
+5.1 All transactions concluded in accordance with this Investment Policy, which will include but are not limited to the acquisition and disposal of investments or financial instruments, the advance to and repayment of loans by investees and third parties, the provision of guarantees on behalf of investees and the underwriting of transactions undertaken by its investees, will be regarded as being in the ordinary course of business.
+
+5.2 Shareholder approval will consequently not be required for non-related party transactions of any size (including for the avoidance of doubt the enforcement of provisions in agreements relating to such transactions) to the extent such transactions are entered into in the ordinary course of business of Sabcap, as envisaged in paragraphs 2.1 and 5.1 above.
+
+5.3 Shareholder approval will be required for related-party transactions in accordance with the thresholds and requirements for such approvals contained in Section 9 of the JSE Listings Requirements, irrespective of whether such transactions are in the ordinary course of business or not.",,,
+M7-QUALITY-0094,SDL,data/raw/SDL/2025/annual_report.pdf,dc927f5e-f7f7-4652-9426-8d3587341fb3,j) Dividends,35,HEADING_WITH_BODY,"j) Dividends
+
+Dividends are recognised when declared during the financial year and no longer at the discretion of the Company.",,,
+M7-QUALITY-0095,SDL,data/raw/SDL/2024/annual_report.pdf,c74c88c6-3e34-4ce3-8245-33fe0b9d31cb,,10,MULTI_PARAGRAPH,"BOARD OF DIRECTORS The names and positions of the directors of the Company in office during the financial year and until the date of this report are set out below. Directors were in office for this entire period unless otherwise stated, are: Roger Baxter (Non-Executive Chairman, appointed 1 January 2024) Johan Odendaal (Managing Director) Daniel Van Heerden (Non-Executive Director) Geoffrey Hiller (Non-Executive Director, resigned 10 June 2024) Lindi Nkosi-Thomas SC (Non-Executive Director, appointed 10 June 2024) Mike Stirzaker (Non-executive Director, Non-Executive Interim Chairman from 5 May to 31 December 2023) Robert Thomson (Non-Executive Director) PRINCIPAL ACTIVITIES During the financial year the principal activity of the Company was the advancement of its Bengwenyama Platinum Group Metal project in South Africa. FINANCIAL PERFORMANCE The Group’s net loss from operations for the year was $6,725,277 (2023: $7,176,148) At 30 June 2024, the Group had net working capital of $5,315,488 (2023: $11,467,073). The Directors believe there are sufficient funds to meet the Group’s working capital requirements and as at the date of this report the Group believes it can meet all liabilities as and when they fall due. This report is prepared on the going concern basis which assumes the continuity of normal business activity and the realisation of assets and settlement of liabilities in the normal course of business. DIVIDENDS No dividends have been paid or declared since the start of the financial year. The directors do not recommend the payment of a dividend in respect of the year ended 30 June 2024. REVIEW OF OPERATIONS The Company’s primary focus during the financial year was the ongoing advancement of its development programme at the Bengwenyama PGM (platinum group metals) project, in which it holds a direct 70% stake. The project is strategically positioned in the heart of the world class Bushveld Complex – the largest source of PGMs globally – in a significant underground mining region with established expertise and infrastructure. The Company acquired its interest in the Project via the acquisition of a 70% equity interest in Miracle Upon Miracle Investments (Pty) Ltd (MUM), a South African private company holding a 100% stake in the Project. MUM’s tenement area stretches over two farming areas:
+
+(a) the Farm Eerstegeluk 327KT (previously known as Eerstegeluk 322KT); and
+
+(b) the Farm Nooitverwacht 324KT, measuring 5,280 ha in extent and located in the Magisterial District of Sekhukhune, Limpopo Province, Republic of South Africa.",,,
+M7-QUALITY-0096,SDL,data/raw/SDL/2024/annual_report.pdf,d296dc44-f359-48b6-92ce-70c789df2476,,18,PARAGRAPH,"ENVIRONMENTAL REGULATION The Group has an environmental rehabilitation policy that is applied to each tenement upon grant. The policy has been adhered to and no breaches have occurred during the year. Exploration activities are undertaken in accordance with approved plans and governing laws and regulations. INFORMATION ON DIRECTORS Roger Baxter Independent Non-executive Chairman (Appointed 1 January 2024) Member of Audit Committee Roger was the CEO of the Minerals Council South Africa (MCSA) stepping down in June 2023. He led the brand rejuvenation and modernisation of the MCSA into a much more effective, strategically driven, agile, assertive and capable organisation. He is recognised for his roles in guiding the mining sector to achieve the best safety and health performance on record, addressing key legacy issues, in helping the industry navigate the COVID-19 crisis, in the fight against corruption, in negotiating economic and mineral policy with government and in driving significant structural and institutional reforms in the economy. He was awarded the “2020 Mining Thought Leader of the Year” by Mining Review Africa, was listed in the “top 100 most influential people in Africa’s mining sector” for over a decade and was awarded the Brigadier Stokes Platinum medal for meritorious leadership contribution to the mining sector by the SAIMM. He was the founding Chairman of the World Platinum Investment Council, the past President of MIASA, the past Chairman of the ACG of the ICMM and a past director of BUSA. Roger holds a Bachelor of Commerce (Honours) from the University of Natal in South Africa. Other Public Company Directorships in the past 3 years: Nil Equity interests held as at the date of this report: Nil Johan Odendaal Managing Director Mr Odendaal is a Mineral Economist and holds a B.Sc. degree in Geology, a B.Sc. Hons degree in Mineral Economics and a M.Sc. degree in Mining Engineering. Johan is director and co-founder of mining consulting firm Minxcon (Pty) Ltd (2005) and has 36 years’ experience in the mining and financial industry. This includes 19 years as an independent mining consultant and 12 years as a financial analyst involved in mine-financial analysis and valuations and corporate advisory. He headed Mining Research at a leading South African broking firm and spent several years at Merrill Lynch as Vice President. Mr Odendaal is the Chief Executive Officer of Miracle Upon Miracle Investments (Pty) Ltd (Holder of the PGM prospecting right).",,,
+M7-QUALITY-0097,SUR,data/raw/SUR/2025/annual_report.pdf,66197f97-74f0-4507-90d3-32bf9881f7e0,KwaZulu-Natal 15%,52,HEADING_WITH_BODY,KwaZulu-Natal 15%,,,
+M7-QUALITY-0098,SUR,data/raw/SUR/2025/annual_report.pdf,880219c7-3893-404f-b295-f44d9766990c,,18,MULTI_PARAGRAPH,"Read more about our team members in the Employee, Customer and Franchisee experience sections
+
+Reflecting on this five-year cycle, I am humbled by our stakeholders’ dedication and effort. Our franchisees continue to invest, our employees demonstrate loyalty, our leadership team exhibits a growth mindset while living our purpose, and our customers remain engaged and supportive of our brands.
+
+Kantar research confirms that 74% of brand equity is built at the restaurant table and The Rise of Brand Communities: How Digital Marketing Is Fostering Loyalty Beyond Products by John Valentine notes that consumers do not just buy, they belong. Our casual dining experience offers us a longer dining connection time with customers, which builds relationships and strengthens loyalty.
+
+The strongest brands create communities, not just customers, building unshakable loyalty by making people feel like insiders instead of buyers. That is where we continue to shine. Spur, our foundation brand, accounted for 66% of South African franchise revenue this year and remains the bedrock of the group. Together with our diverse portfolio of casual dining, speciality dining and Virtual Kitchen brands, it enables us to offer a wide range of dining experiences across key product categories.
+
+One of the highlights of my year was being a guest of one of our shareholders at the Berkshire Hathaway AGM in Omaha. It was a momentous year as Warren Buffett handed the reins to Berkshire’s new CEO, Gregory Abel. Buffett’s philosophy of disciplined investment and long-term value creation strongly resonates with our team. I was reminded that our leadership takes what he calls the “cathedral” path, where decisions are guided by purpose rather than pressure, with the aim of building something meaningful, steady and built to last.
+
+Refer to Leadership insight from Warren Buffett",,,
+M7-QUALITY-0099,SUR,data/raw/SUR/2023/annual_report.pdf,5810be55-df37-443f-8516-5c0ef69b0a75,,103,PARAGRAPH,"In certain instances where employees regularly and routinely are required to travel for business purposes, employees may be provided with the use of a company car. Company cars are typically only granted to employees where the significant majority of the use of the car is for business purposes. The value of this benefit is in addition to TGP. Directors are not supplied with company cars. The type of vehicle is granted at the discretion of the company.",,,
+M7-QUALITY-0100,SUR,data/raw/SUR/2024/annual_report.pdf,e0ac9f02-06b0-4fd8-a7bb-0ed932d41de3,,125,TABLE_CONTEXT,"LTIs dilution limit An aggregate limit of 5% of the issued share capital will be used for the existing LTIs.
+
+Individual limit No participant may currently acquire more than 0.5% of the issued share capital under the 2020 LTIs.
+
+At the AGM on 23 December 2020, the SAR 2020 and RSP 2020 (collectively the 2020 LTIs) were approved by shareholders. The 2020 LTIs contemplate three instruments, namely, share appreciation rights (SARs), conditional shares and forfeitable shares. The instruments can be awarded in various ways, namely, as appreciation awards, performance awards, retention awards, or bonus awards (matching or deferral).
+
+The table below summarises the LTI instruments available to the company as per the 2020 LTIs: LTI
+
+Remuneration policy",,,

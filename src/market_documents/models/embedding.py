@@ -61,10 +61,23 @@ class EmbeddingRun(UUIDPkMixin, TimestampMixin, Base):
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     embedded_passage_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Reserved for genuine failures (a per-passage encode exception or wrong
+    # output dimension) -- a passage that exceeds the token limit is no
+    # longer counted here (Milestone 6): it is chunked and embedded via
+    # `PassageRetrievalChunk` instead of silently invisible, so it is not
+    # "skipped" in the sense this counter historically meant.
     skipped_passage_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Milestone 6: a passage whose full text exceeds MAXIMUM_MODEL_TOKENS
+    # and was split into retrieval subchunks instead of skipped/embedded
+    # canonically -- see services/retrieval_chunking.py.
+    oversized_chunked_passage_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retrieval_chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     segmentation_run: Mapped["PassageSegmentationRun"] = relationship()  # noqa: F821
     passage_embeddings: Mapped[list["PassageEmbedding"]] = relationship(
+        back_populates="embedding_run", cascade="all, delete-orphan"
+    )
+    passage_retrieval_chunks: Mapped[list["PassageRetrievalChunk"]] = relationship(
         back_populates="embedding_run", cascade="all, delete-orphan"
     )
 
@@ -94,4 +107,51 @@ class PassageEmbedding(UUIDPkMixin, Base):
     )
 
     embedding_run: Mapped["EmbeddingRun"] = relationship(back_populates="passage_embeddings")
+    passage: Mapped["Passage"] = relationship()  # noqa: F821
+
+
+class PassageRetrievalChunk(UUIDPkMixin, Base):
+    """One retrieval-only dense vector for a *portion* of a Passage whose
+    full text exceeds the embedding model's token limit (Milestone 6, see
+    `docs/oversized-passage-retrieval-subchunks-experiment.md`).
+
+    The canonical `Passage` (its `raw_text`, used for every lexical/
+    structural/classification computation) never changes shape -- a chunk
+    exists purely so its parent passage can still be nominated as a
+    semantic candidate. A passage that fits under the model's token limit
+    is embedded canonically via `PassageEmbedding` instead and never gets a
+    row here; a passage never has both. `chunk_index` gives deterministic
+    ordering; `(char_start, char_end)` are offsets into `Passage.raw_text`
+    (not the source TextBlock, unlike `PassageSourceBlock`'s spans).
+    """
+
+    __tablename__ = "passage_retrieval_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "embedding_run_id", "passage_id", "chunk_index", name="uq_passage_retrieval_chunks_run_passage_chunk"
+        ),
+        Index("ix_passage_retrieval_chunks_passage_id", "passage_id"),
+        Index("ix_passage_retrieval_chunks_embedding_run_id", "embedding_run_id"),
+    )
+
+    embedding_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("embedding_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    passage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("passages.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    char_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSION), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    embedding_run: Mapped["EmbeddingRun"] = relationship(back_populates="passage_retrieval_chunks")
     passage: Mapped["Passage"] = relationship()  # noqa: F821

@@ -15,9 +15,20 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
-ALGORITHM_VERSION = "1.1.0"
+ALGORITHM_VERSION = "1.2.0"
 
-CANDIDATE_CONFIG_VERSION = 1
+# v1 = initial candidate generation (top_k, min_semantic_similarity).
+# v2 = `search_mode=EXACT` now forces a non-ANN plan (`SET LOCAL
+# enable_indexscan/enable_bitmapscan = off`) in `get_semantic_candidates`.
+# Before v2, nothing prevented PostgreSQL's planner from silently choosing
+# the pre-existing HNSW index for the EXACT-mode query shape, which could
+# return far fewer than `top_k` candidates from a large eligible population
+# and silently drop the true nearest neighbor -- a candidate-generation
+# correctness bug, not a threshold/weight change. See
+# `docs/exact-candidate-retrieval-correctness.md`. Bumping this version
+# forces every existing AlignmentRun to be treated as stale so a rerun is
+# required to pick up the corrected candidate population.
+CANDIDATE_CONFIG_VERSION = 2
 SCORING_CONFIG_VERSION = 2
 CLASSIFICATION_THRESHOLDS_VERSION = 1
 CONFIDENCE_THRESHOLDS_VERSION = 2

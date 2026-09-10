@@ -3,13 +3,22 @@
 Mirrors `embedding_audit.py`'s per-report reporting, but at passage
 granularity. A passage counts as "oversized-skipped" here if it belongs to
 a segmentation run's current successful `EmbeddingRun`, is eligible (not
-`excluded_from_alignment`), has no corresponding `PassageEmbedding` row, and
-its token count -- recomputed with the pinned embedding model's own
-tokenizer, not the segmentation-time lexical tokenizer behind
-`Passage.token_count` -- exceeds `MAXIMUM_MODEL_TOKENS`. Passages skipped
-for other reasons (an isolated per-passage embedding failure, or a wrong
-output dimension) are excluded from this audit; those are integrity issues,
-not size issues.
+`excluded_from_alignment`), has no corresponding `PassageEmbedding` row, its
+token count -- recomputed with the pinned embedding model's own tokenizer,
+not the segmentation-time lexical tokenizer behind `Passage.token_count` --
+exceeds `MAXIMUM_MODEL_TOKENS`, and it has no `PassageRetrievalChunk` rows
+either. Passages skipped for other reasons (an isolated per-passage
+embedding failure, or a wrong output dimension) are excluded from this
+audit; those are integrity issues, not size issues.
+
+Milestone 6: an oversized passage is no longer silently invisible to
+candidate generation -- `passage_embedding.py` now splits it into
+`PassageRetrievalChunk` rows instead of skipping it outright (see
+`docs/oversized-passage-retrieval-subchunks-experiment.md`). This audit's
+population is therefore expected to shrink toward the residual, genuinely
+unresolved gap (if any) after a corpus rerun under the new embedding
+behavior, rather than measuring the same population Milestone 5's
+diagnostic did.
 
 `participates_in_alignment_gap` is `True` when the passage's report side is
 covered by a current successful `AlignmentRun` and the passage never
@@ -35,7 +44,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from market_documents.models.alignment import AlignmentRun, PassageAlignment
-from market_documents.models.embedding import PassageEmbedding
+from market_documents.models.embedding import PassageEmbedding, PassageRetrievalChunk
 from market_documents.models.enums import AlignmentRunStatus, AlignmentType
 from market_documents.models.extraction import NarrativeDocument
 from market_documents.models.passage import Passage
@@ -134,9 +143,16 @@ def build_oversized_passage_audit_rows(session: Session, model: EmbeddingModel) 
                 select(PassageEmbedding.passage_id).where(PassageEmbedding.embedding_run_id == embedding_run.id)
             ).all()
         )
+        chunked_passage_ids = set(
+            session.scalars(
+                select(PassageRetrievalChunk.passage_id).where(
+                    PassageRetrievalChunk.embedding_run_id == embedding_run.id
+                )
+            ).all()
+        )
 
         for passage in eligible_passages:
-            if passage.id in embedded_passage_ids:
+            if passage.id in embedded_passage_ids or passage.id in chunked_passage_ids:
                 continue
             token_count = model.count_tokens(passage.raw_text)
             if token_count <= MAXIMUM_MODEL_TOKENS:

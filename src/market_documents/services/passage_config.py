@@ -19,7 +19,26 @@ from dataclasses import asdict, dataclass
 
 from market_documents.services.similarity_tokenization import TOKENIZER_VERSION
 
-ALGORITHM_VERSION = "1.0.0"
+# v1.0.0 = initial word-count packer.
+# v1.1.0 = oversized-single-block ceiling bypass fixed: a block larger than
+# `max_words` on its own (previously always accepted unconditionally into
+# its own passage, since the ceiling check only ever fired when a group
+# already had content) is now split deterministically at sentence
+# boundaries (word-boundary fallback for one oversized sentence) before
+# packing. See `_split_oversized_block_text` and
+# docs/embedding-eligibility-token-limit-diagnostic.md Section 4.1.
+# v1.1.1 = the v1.1.0 fix only actually fired when the oversized block was
+# the first thing packed into an empty `current` group. An oversized block
+# arriving after other already-accumulated content in the same run (the
+# common case -- e.g. following a short heading/intro block) fell through
+# to the untouched `current and current_words + words > max_words` branch
+# and was accepted unsplit, exactly reproducing the original bug. Found via
+# the Milestone 6 controlled corpus rebuild (KP2 still had 560 passages
+# over max_words, max 723 words, after v1.1.0 was deployed and only 16 of
+# ~560+ affected blocks were actually split). Fixed by checking `words >
+# max_words` unconditionally and flushing any accumulated `current` group
+# first. See docs/oversized-passage-retrieval-subchunks-experiment.md.
+ALGORITHM_VERSION = "1.1.1"
 
 BOUNDARY_RULES_VERSION = 1
 EXCLUSION_RULES_VERSION = 1

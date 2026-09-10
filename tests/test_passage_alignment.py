@@ -3,7 +3,12 @@ import uuid as uuid_module
 from datetime import UTC, datetime
 
 from market_documents.models.company import Company
-from market_documents.models.embedding import EMBEDDING_DIMENSION, EmbeddingRun, PassageEmbedding
+from market_documents.models.embedding import (
+    EMBEDDING_DIMENSION,
+    EmbeddingRun,
+    PassageEmbedding,
+    PassageRetrievalChunk,
+)
 from market_documents.models.enums import (
     AlignmentConfidence,
     AlignmentMatchSource,
@@ -139,6 +144,20 @@ def _embed(db_session, embedding_run: EmbeddingRun, passage: Passage, vector: li
     return embedding
 
 
+def _retrieval_chunk(
+    db_session, embedding_run: EmbeddingRun, passage: Passage, *, chunk_index: int, vector: list[float]
+) -> PassageRetrievalChunk:
+    chunk = PassageRetrievalChunk(
+        embedding_run_id=embedding_run.id, passage_id=passage.id, chunk_index=chunk_index,
+        chunk_text=passage.raw_text, char_start=0, char_end=len(passage.raw_text),
+        token_count=passage.token_count, content_hash=compute_content_hash(f"chunk-{passage.id}-{chunk_index}"),
+        embedding=vector,
+    )
+    db_session.add(chunk)
+    db_session.flush()
+    return chunk
+
+
 def _pair(db_session, company, earlier: Report, later: Report, *, gap_months=12, is_transition=False) -> ReportPair:
     pair = ReportPair(
         company_id=company.id, earlier_report_id=earlier.id, later_report_id=later.id,
@@ -261,6 +280,33 @@ def test_identical_passage_is_unchanged_high_confidence(db_session):
     assert row.later_passage_id == l.id
     assert outcome.run.unchanged_count == 1
     assert outcome.run.matched_count == 1
+
+
+def test_oversized_earlier_passage_is_scored_via_retrieval_chunk_and_full_canonical_text(db_session):
+    # Milestone 6 end-to-end: the earlier passage has no PassageEmbedding
+    # (oversized -> chunked), only a PassageRetrievalChunk. It must still be
+    # nominated as a candidate, and scored/classified against its own full
+    # canonical raw_text -- not the chunk text -- with the accepted row
+    # recording semantic_similarity_basis="retrieval_chunk_max".
+    setup = _setup_pair(db_session, ticker="OVRCHUNK")
+    earlier_text = "the group faces significant going concern risk pending refinancing of its facility"
+    later_text = "the group continues to face significant going concern risk pending refinancing of its facility"
+    e = _passage(db_session, setup.earlier_seg, setup.earlier_report, index=0, text=earlier_text)
+    l = _passage(db_session, setup.later_seg, setup.later_report, index=0, text=later_text)
+    _retrieval_chunk(db_session, setup.earlier_emb, e, chunk_index=0, vector=BASE_VEC)
+    _embed(db_session, setup.later_emb, l, BASE_VEC)
+
+    outcome = pa.align_pair(db_session, setup.pair)
+    assert outcome.run.status == AlignmentRunStatus.COMPLETED
+    rows = db_session.query(pa.PassageAlignment).filter_by(alignment_run_id=outcome.run.id).all()
+    matched = [r for r in rows if r.earlier_passage_id == e.id and r.later_passage_id == l.id]
+    assert len(matched) == 1
+    row = matched[0]
+    assert row.semantic_similarity_basis == "retrieval_chunk_max"
+    assert row.semantic_similarity == 1.0
+    # Lexical features must reflect the full canonical texts (different
+    # word counts), not the (identical, single-chunk) chunk text.
+    assert row.length_ratio is not None and row.length_ratio < 1.0
 
 
 def test_no_viable_candidate_yields_new_and_removed(db_session):

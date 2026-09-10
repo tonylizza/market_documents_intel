@@ -179,6 +179,13 @@ class ScoredCandidate:
     position_difference: float
     combined_score: float
     content_score: float
+    # Milestone 6: which quantity `semantic_similarity` is -- see
+    # `alignment_candidates.CandidateMatch.candidate_source`. Threaded
+    # through unchanged from the candidate: scoring itself (lexical/heading/
+    # position/combined/content) is identical regardless of source, per the
+    # module's mandatory "final scoring always uses full canonical text"
+    # rule -- only the semantic component's own provenance is tracked.
+    semantic_similarity_basis: str = "canonical_embedding"
 
 
 def score_candidates(
@@ -218,6 +225,7 @@ def score_candidates(
                 position_difference=position_difference,
                 combined_score=combined_score,
                 content_score=content_score,
+                semantic_similarity_basis=candidate.candidate_source,
             )
         )
     scored.sort(key=lambda s: (-s.combined_score, s.earlier_passage.passage_index))
@@ -767,6 +775,7 @@ def _run_alignment(
                 alignment_status=status,
                 alignment_type=AlignmentType.ONE_TO_ONE,
                 semantic_similarity=candidate.semantic_similarity,
+                semantic_similarity_basis=candidate.semantic_similarity_basis,
                 lexical_cosine_similarity=candidate.lexical_features.lexical_cosine_similarity,
                 jaccard_similarity=candidate.lexical_features.jaccard_similarity,
                 edit_similarity=candidate.lexical_features.edit_similarity,
@@ -818,6 +827,10 @@ def _run_alignment(
                 alignment_status=AlignmentStatus.UNCHANGED,
                 alignment_type=AlignmentType.ONE_TO_ONE,
                 semantic_similarity=semantic_similarity,
+                # Reconciliation only ever reads canonical PassageEmbedding
+                # vectors (`reconciled_earlier_embeddings`/
+                # `later_embeddings_by_passage_id`), never retrieval chunks.
+                semantic_similarity_basis="canonical_embedding" if semantic_similarity is not None else None,
                 lexical_cosine_similarity=lexical_features.lexical_cosine_similarity,
                 jaccard_similarity=lexical_features.jaccard_similarity,
                 edit_similarity=lexical_features.edit_similarity,

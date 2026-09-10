@@ -137,17 +137,28 @@ class Passage(UUIDPkMixin, TimestampMixin, Base):
 
 
 class PassageSourceBlock(UUIDPkMixin, Base):
-    """Ordered association between a Passage and one of its source TextBlocks.
+    """Ordered association between a Passage and a character span of one of
+    its source TextBlocks.
 
-    `segmentation_run_id` is denormalized from the parent Passage so "a
-    TextBlock belongs to at most one Passage per segmentation run" can be a
-    plain database uniqueness constraint rather than a join-based check.
+    `segmentation_run_id` is denormalized from the parent Passage. Prior to
+    the oversized-single-block segmentation fix (Milestone 6), one TextBlock
+    always belonged to exactly one Passage per segmentation run, enforced by
+    a uniqueness constraint on `(segmentation_run_id, text_block_id)` alone.
+    That fix can now split one oversized block's text across more than one
+    Passage, so the constraint is keyed on the span's start offset instead
+    -- `(source_char_start, source_char_end)` must exactly tile
+    `[0, len(text_block.text))` across all of a block's rows within a run
+    (verified by `passage_segmentation.check_provenance`, not the database),
+    with no gaps and no overlaps. For an unsplit block (the overwhelming
+    majority), there is exactly one row with the full-block span `(0, len)`
+    -- byte-identical to the pre-Milestone-6 one-row-per-block behavior.
     """
 
     __tablename__ = "passage_source_blocks"
     __table_args__ = (
         UniqueConstraint(
-            "segmentation_run_id", "text_block_id", name="uq_passage_source_blocks_run_text_block"
+            "segmentation_run_id", "text_block_id", "source_char_start",
+            name="uq_passage_source_blocks_run_text_block_span",
         ),
         UniqueConstraint("passage_id", "source_order", name="uq_passage_source_blocks_passage_order"),
         Index("ix_passage_source_blocks_passage_id", "passage_id"),
@@ -164,6 +175,12 @@ class PassageSourceBlock(UUIDPkMixin, Base):
         UUID(as_uuid=True), ForeignKey("passage_segmentation_runs.id", ondelete="CASCADE"), nullable=False
     )
     source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Character offsets into the source TextBlock's own text (the same
+    # `cleaned_text or raw_text` preference `passage_segmentation.py` uses),
+    # not into the assembled Passage.raw_text. `(0, len(text))` for an
+    # unsplit block.
+    source_char_start: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_char_end: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     passage: Mapped["Passage"] = relationship(back_populates="source_blocks")
     text_block: Mapped["TextBlock"] = relationship()  # noqa: F821

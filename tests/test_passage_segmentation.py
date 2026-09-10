@@ -234,9 +234,14 @@ def test_no_duplicated_or_omitted_source_blocks_across_a_realistic_document():
     ]
     passages = ps.segment_blocks(blocks, SMALL_CONFIG)
     included_ids = {b.id for b in blocks if not b.excluded_from_narrative}
-    seen_ids: list[uuid.UUID] = [bid for p in passages for bid in p.source_block_ids]
-    assert set(seen_ids) == included_ids
-    assert len(seen_ids) == len(set(seen_ids))
+    seen_ids: set[uuid.UUID] = {bid for p in passages for bid in p.source_block_ids}
+    assert seen_ids == included_ids
+    # The trailing 50-word block exceeds max_words (40) and is legitimately
+    # split into more than one passage -- so its id appears more than once
+    # by design (Milestone 6 span-based provenance). Completeness is
+    # verified at the span level instead of raw id-uniqueness.
+    diagnostics = ps.check_provenance(blocks, passages, sum(p.word_count for p in passages))
+    assert diagnostics.fatal_errors == []
 
 
 # ---------------------------------------------------------------------------
@@ -264,12 +269,145 @@ def test_check_provenance_detects_omitted_block():
     assert any("omitted" in e for e in diagnostics.fatal_errors)
 
 
+def test_oversized_single_block_is_split_instead_of_bypassing_ceiling():
+    # Reproduces the exact pre-fix bug: one source block (72 words) larger
+    # than max_words (40), arriving into an empty `current` group. Before
+    # the fix, `if current and ...` never fired for an empty group, so this
+    # single block became one 72-word passage in violation of max_words.
+    blocks = [_block(1, 0, _words(72))]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    assert len(passages) > 1
+    for p in passages:
+        assert p.word_count <= SMALL_CONFIG.max_words
+
+
+def test_oversized_single_block_split_preserves_all_text_no_loss_no_duplication():
+    text = _words(72)
+    blocks = [_block(1, 0, text)]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    reconstructed_words = " ".join(p.raw_text for p in passages).split()
+    assert reconstructed_words == text.split()
+
+
+def test_oversized_single_block_split_is_deterministic():
+    blocks = [_block(1, 0, _words(72))]
+    first = ps.segment_blocks(blocks, SMALL_CONFIG)
+    second = ps.segment_blocks(blocks, SMALL_CONFIG)
+    assert [p.raw_text for p in first] == [p.raw_text for p in second]
+    assert [p.source_block_spans for p in first] == [p.source_block_spans for p in second]
+
+
+def test_oversized_single_block_split_preserves_provenance_spans():
+    blocks = [_block(1, 0, _words(72))]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    diagnostics = ps.check_provenance(blocks, passages, sum(p.word_count for p in passages))
+    assert diagnostics.fatal_errors == []
+    # Every piece belongs to the one source block, spans are contiguous and
+    # tile the block's full text exactly.
+    spans = sorted(
+        (start, end) for p in passages for (block_id, start, end) in p.source_block_spans if block_id == blocks[0].id
+    )
+    assert spans[0][0] == 0
+    assert spans[-1][1] == len(blocks[0].text)
+    covered = 0
+    for start, end in spans:
+        assert start == covered
+        covered = end
+
+
+def test_oversized_single_block_with_multiple_sentences_splits_at_sentence_boundaries():
+    # Distinct sentences so a correct split lands on '.' boundaries, not mid-sentence.
+    sentence = _words(15) + "."
+    text = " ".join([sentence] * 5)  # 5 sentences, well over max_words=40
+    blocks = [_block(1, 0, text)]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    assert len(passages) > 1
+    for p in passages:
+        assert p.raw_text.strip().endswith(".")
+        assert p.word_count <= SMALL_CONFIG.max_words
+
+
+def test_oversized_block_preceded_by_other_content_in_the_same_run_is_still_split():
+    # Reproduces the real-corpus gap found in the Milestone 6 controlled
+    # rebuild: the packer fix's `if not current and words > max_words` guard
+    # only caught an oversized block when it was literally the first thing
+    # encountered in a run. A small heading/intro block accumulating into
+    # `current` before the oversized block arrives left `current` non-empty,
+    # so the oversized-block branch never fired and the block fell through
+    # to the untouched `if current and current_words + words > max_words`
+    # path, which closes the prior group and starts a brand-new one-piece
+    # group from the *unsplit* oversized block -- reproducing the exact
+    # pre-fix ceiling bypass. On the real KP2 corpus this left ~560 of 767
+    # oversized passages unsplit even after Part B was implemented.
+    blocks = [
+        _block(1, 0, "Overview", BlockType.HEADING_CANDIDATE),
+        _block(1, 1, _words(15)),
+        _block(1, 2, _words(72)),
+    ]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    for p in passages:
+        assert p.word_count <= SMALL_CONFIG.max_words
+    # The heading, the 15-word intro piece, and the split oversized-block
+    # pieces must all still be present -- no content silently dropped by
+    # the current-group flush.
+    reconstructed_words = " ".join(p.raw_text for p in passages).split()
+    expected_words = (blocks[0].text + " " + blocks[1].text + " " + blocks[2].text).split()
+    assert reconstructed_words == expected_words
+    diagnostics = ps.check_provenance(blocks, passages, sum(p.word_count for p in passages))
+    assert diagnostics.fatal_errors == []
+
+
+def test_ordinary_blocks_are_unaffected_by_the_oversized_block_fix():
+    blocks = [
+        _block(1, 0, "Overview", BlockType.HEADING_CANDIDATE),
+        _block(1, 1, _words(15)),
+        _block(1, 2, _words(15)),
+    ]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    assert len(passages) == 1
+    assert passages[0].source_block_spans == (
+        (blocks[0].id, 0, len(blocks[0].text)),
+        (blocks[1].id, 0, len(blocks[1].text)),
+        (blocks[2].id, 0, len(blocks[2].text)),
+    )
+
+
 def test_check_provenance_detects_duplicated_block():
     blocks = [_block(1, 0, _words(15))]
     passages = ps.segment_blocks(blocks, SMALL_CONFIG)
     duplicated = passages + passages
     diagnostics = ps.check_provenance(blocks, duplicated, sum(p.word_count for p in duplicated))
     assert any("duplicated" in e for e in diagnostics.fatal_errors)
+
+
+def test_check_provenance_detects_gap_in_split_block_spans():
+    from dataclasses import replace as dc_replace
+
+    blocks = [_block(1, 0, _words(72))]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    assert len(passages) >= 2
+    # Introduce a gap: shrink the first passage's recorded span end by 5
+    # characters without touching the second passage's start.
+    block_id, start, end = passages[0].source_block_spans[0]
+    gapped = dc_replace(passages[0], source_block_spans=((block_id, start, end - 5),))
+    tampered = [gapped] + list(passages[1:])
+    diagnostics = ps.check_provenance(blocks, tampered, sum(p.word_count for p in tampered))
+    assert any("duplicated or incompletely covered" in e for e in diagnostics.fatal_errors)
+
+
+def test_check_provenance_detects_overlap_in_split_block_spans():
+    from dataclasses import replace as dc_replace
+
+    blocks = [_block(1, 0, _words(72))]
+    passages = ps.segment_blocks(blocks, SMALL_CONFIG)
+    assert len(passages) >= 2
+    # Introduce an overlap: extend the first passage's recorded span past
+    # the second passage's start.
+    block_id, start, end = passages[0].source_block_spans[0]
+    overlapping = dc_replace(passages[0], source_block_spans=((block_id, start, end + 5),))
+    tampered = [overlapping] + list(passages[1:])
+    diagnostics = ps.check_provenance(blocks, tampered, sum(p.word_count for p in tampered))
+    assert any("duplicated or incompletely covered" in e for e in diagnostics.fatal_errors)
 
 
 def test_check_provenance_warns_on_material_word_count_mismatch():
