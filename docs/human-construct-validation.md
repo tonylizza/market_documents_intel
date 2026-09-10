@@ -1,8 +1,10 @@
 # Milestone 7 — Human-Labeled Construct Validation
 
-**Status: PENDING HUMAN LABELING**
+**Status: PILOT-LABELED (NON-INDEPENDENT) — TRUE INDEPENDENT HUMAN LABELING STILL PENDING**
 
-This report covers the validation *design* and the artifacts generated so far. Sections 5 onward (results, verdict) will be filled in once a human reviewer has labeled `validation/human_validation_cases_blinded.csv` (and, if a second reviewer is available, the overlap subset).
+**Read this before trusting anything in Sections 12+:** the labels behind the results below were produced by Claude (this same AI system, across seven parallel review passes), not by an independent human reviewer. Every labeled row carries `reviewer_id = "claude-pilot-not-independent"` for exactly this reason. The milestone brief (Sections 30-31) is explicit that gold-truth labels must come from an independent human, precisely because using an LLM to grade a pipeline that itself leans on embeddings and lexical scoring is not an independent check — agreement (or disagreement) between the two could reflect shared blind spots rather than real correctness. This pilot exists only because a real reviewer was not available and the alternative was no signal at all; it is a diagnostic, not a substitute. A verdict of `VALIDATED — PROCEED` should **not** be drawn from this pilot alone — see Section 14 (Final Verdict) below for what actually changes once a real reviewer's labels arrive.
+
+Original artifacts (`validation/human_validation_cases_blinded.csv`, `validation/passage_quality_review_sample.csv`) are unchanged and still the correct starting point for real human labeling. The pilot's labels live in a separate set of `*_piloted.csv` files so the two are never confused.
 
 Per the milestone brief: the core passage extraction / segmentation / embedding / candidate-generation / alignment pipeline is **frozen** as of `docs/oversized-passage-retrieval-subchunks-experiment.md` Section 20 (ACCEPT AND FREEZE). Nothing in this milestone modifies that pipeline. This report and its associated code only read the corpus and assemble/score a human-review sample.
 
@@ -137,8 +139,125 @@ Human labeling cannot be completed autonomously in this session — per Section 
 5. Run `market-documents validation analyze validation/human_validation_cases_blinded.csv --output validation/metrics.json` once labeling is complete.
 6. Return the labeled CSV(s) so this report's Sections 5 (Results), disagreement analysis (Section 25), and final verdict (Section 34) can be completed.
 
-Document-level validation (Sections 22–24: ~10–15 human-rated report pairs vs. report-level system metrics) and the corresponding rank-correlation analysis are a separate, smaller labeling task not yet built — flagged here as outstanding, to be added once passage-level labeling is under way, since it requires its own qualitative-rating packet (one rating per report pair, not per passage).
+Document-level validation (Sections 22–24: ~10–15 human-rated report pairs vs. report-level system metrics) and the corresponding rank-correlation analysis are a separate, smaller labeling task not yet built — flagged here as outstanding, to be added once passage-level labeling is under way, since it requires its own qualitative-rating packet (one rating per report pair, not per passage). It was not attempted in the pilot pass either.
 
 ---
 
-*This report will be updated with Sections 5 (Results by construct), disagreement analysis (Section 25), and the final verdict (Section 34: VALIDATED — PROCEED / VALIDATED WITH LIMITATIONS / REOPEN PIPELINE — SPECIFIC CRITICAL DEFECT / NOT VALIDATED) once human labels exist.*
+## 12. Pilot results (non-independent — read the status banner above before using these)
+
+All 300 cases and the 100-passage quality subset were labeled by Claude across seven parallel review passes (one per bucket), following `docs/human-validation-labeling-guide.md` exactly, working only from the blinded columns (no system fields visible). Labels were merged with `scripts/merge_pilot_labels.py` into `validation/human_validation_cases_piloted.csv` / `_blinded_piloted.csv` / `passage_quality_review_sample_piloted.csv`, verified programmatically (all 300/100 case_ids present exactly once, correct schema). Metrics computed via `market-documents validation analyze validation/human_validation_cases_piloted.csv`, raw output at `validation/pilot_metrics.json`.
+
+### Against the predeclared criteria (Section 10)
+
+| Construct | Target | Pilot result | vs. target |
+| --- | --- | ---: | :---: |
+| HIGH-confidence correspondence precision | ≥95% | 94.4% (34/36) | just below |
+| Overall correspondence precision | ≥90% | 83.0% (166/200) | below |
+| NEW validity (genuinely unmatched) | ≥85% | 48.0% (24/50) | well below |
+| REMOVED validity (genuinely unmatched) | ≥85% | 54.0% (27/50) | well below |
+| Binary changed-vs-unchanged agreement | ≥85% | 79.4% (accuracy) | below |
+| 3-level severity exact agreement | ≥70% | 57.4% | below |
+| 3-level severity within-one-category | ≥90% | 94.3% | **meets** |
+| Report-level rank validity | \|ρ\|≥0.5 | not measured (Section 22-24 task not built) | n/a |
+
+Only one of seven measurable criteria clears its bar. The severity metric passing "within-one-category" while missing "exact agreement" is expected — Section 18 anticipated this distinction is inherently more subjective — but the magnitude of the NEW/REMOVED and overall-correspondence shortfalls is large enough that pilot-labeling noise alone is an unlikely full explanation.
+
+### By confidence (correspondence precision)
+
+| Confidence | n | Precision |
+| --- | ---: | ---: |
+| HIGH | 36 | 94.4% |
+| MEDIUM | 13 | 84.6% |
+| LOW | 14 | 64.3% |
+| NEEDS_REVIEW | 137 | 81.8% |
+
+Confidence is *directionally* calibrated (HIGH > MEDIUM > NEEDS_REVIEW > LOW is close to monotonic, HIGH clearly the best), but NEEDS_REVIEW makes up the overwhelming majority of the matched sample (137/200 — see Section 4's note on UNCHANGED's confidence skew) and its precision (81.8%) isn't dramatically worse than NEEDS_REVIEW's supposed-to-be-better MEDIUM tier (84.6%), suggesting confidence separates HIGH from everything else more than it separates the three lower tiers from each other.
+
+### By company (correspondence precision)
+
+ACT 80.8%, BEL 90.0%, KP2 79.4%, SBP 85.7%, SDL 82.6%, SUR 78.3% — no single company is dramatically worse than the rest (all in a 78–90% band); this does not look like a one-template problem.
+
+### NEW/REMOVED breakdown
+
+| | NEW (n=50) | REMOVED (n=50) |
+| --- | ---: | ---: |
+| NO_CORRESPONDENCE (system call confirmed) | 48% | 54% |
+| CORRESPONDENCE_EXISTS (likely missed match) | 38% | 38% |
+| STRUCTURAL_SPLIT_MERGE | 4% | 4% |
+| UNCERTAIN | 10% | 4% |
+
+38% "likely missed match" on both sides is the single largest finding in this pilot. The pilot passes' notes name specific, checkable candidates for every one of these (19 NEW + 19 REMOVED cases) — see the `notes` column of `validation/human_validation_cases_piloted.csv` filtered to `human_unmatched_label == "CORRESPONDENCE_EXISTS"`. A recurring pattern across the named cases: recurring/boilerplate disclosures (financial-risk notes, AGM resolution language, director bios, accounting-policy intros) that reappear near-verbatim in the adjacent report but apparently fell outside the pipeline's matching threshold or lost out to a stronger competing candidate.
+
+### Change classification
+
+3-level confusion matrix (rows = human, columns = system; n=141 human-confirmed-corresponding matched cases):
+
+| Human ↓ / System → | UNCHANGED | LIGHTLY_MODIFIED | SUBSTANTIALLY_MODIFIED |
+| --- | ---: | ---: | ---: |
+| EFFECTIVELY_UNCHANGED | 51 | 10 | 8 |
+| MINOR | 11 | 18 | 4 |
+| SUBSTANTIAL | 0 | 27 | 12 |
+
+Exact agreement 57.4%, within-one-category 94.3%, weighted kappa 0.53 (moderate). Binary changed-vs-unchanged: accuracy 79.4%, precision 77.2%, recall 84.7%, F1 80.8%. The system's LIGHTLY_MODIFIED column is the main source of disagreement — it absorbs 10 human-EFFECTIVELY_UNCHANGED cases and 27 human-SUBSTANTIAL cases, i.e., LIGHTLY_MODIFIED functions less like a distinct middle category and more like a catch-all the other two categories both leak into.
+
+### Continuous metrics vs. human-rated change (Section 21)
+
+All five metrics correlate in the expected direction (more human-rated change → lower similarity): edit similarity has the strongest correlation (Spearman ρ=-0.73), followed by lexical cosine (ρ=-0.66) and Jaccard (ρ=-0.64); semantic similarity is the weakest (ρ=-0.54) and has the smallest separation between categories (0.96 EFFECTIVELY_UNCHANGED vs. 0.89 SUBSTANTIAL — a narrow band compared to edit similarity's 0.90 vs. 0.36). This is consistent with embeddings capturing topical similarity more than fine-grained wording change, which is expected behavior for a semantic model rather than a defect.
+
+### Passage quality (100-passage subset)
+
+COHERENT_SUBSTANTIVE 51%, COHERENT_STRUCTURAL 14% (65% acceptable), MIXED_POOR_BOUNDARY 19%, TABLE_ARTIFACT 12%, EXTRACTION_ARTIFACT 4% (35% showing some quality problem). This is a materially higher artifact rate than the small-sample impression in `docs/oversized-passage-retrieval-subchunks-experiment.md` (which checked far fewer cases) — consistent with, and a plausible root cause behind, the correspondence and classification shortfalls above: a passage that is a table fragment, a cut-off list, or two concatenated topics is inherently harder to match or classify correctly regardless of how good the embedding/lexical scoring logic is.
+
+## 13. Disagreement investigation (Section 25)
+
+Automated keyword pass over the `notes` column across all 300 labeled cases (`grep`-style pattern match, not a rigorous classification — a cross-check, not a primary result):
+
+| Likely cause (from reviewer notes) | Cases mentioning it |
+| --- | ---: |
+| Table/layout content leaking into narrative text | 52 |
+| Recurring boilerplate / near-verbatim rollover | 25 |
+| Extraction artifact (garbled/fragmentary text) | 22 |
+| Structural split/merge (passage boundary crosses disclosure boundary) | 21 |
+| Same heading, different specific topic underneath | 16 |
+| Large (non-adjacent-year) report gap | 5 |
+
+Additionally: 25/300 cases were labeled `STRUCTURAL_AMBIGUOUS` for change magnitude, and 29 matched-bucket cases (UNCHANGED/LIGHTLY_MODIFIED/SUBSTANTIALLY_MODIFIED/AMBIGUOUS) were labeled `human_correspondence = NO` despite the system asserting a match.
+
+Reading across all seven pilot passes' own summaries, three concrete, recurring causes account for most of the disagreement:
+
+1. **Passage-boundary quality** (table leakage, cut-off lists, concatenated unrelated sections — Section 12's 35% quality-subset artifact rate) is the most frequently cited issue and plausibly underlies a large share of both the correspondence misses and the STRUCTURAL_AMBIGUOUS change-magnitude calls: a passage that is itself a poor unit is hard to match or classify well no matter how good the downstream scoring is. This traces to **passage segmentation**, not the frozen alignment/candidate-generation logic being evaluated most directly.
+2. **NEW/REMOVED candidate-generation coverage**: 38% of both NEW and REMOVED cases had a plausible same-disclosure candidate in the opposite report (often recurring boilerplate — financial-risk notes, AGM language, accounting-policy intros, director bios) that the system did not match. This is squarely inside the alignment/matching logic under test, not a segmentation artifact — 25/38 (NEW) and comparable REMOVED cases were flagged with a *lexical* candidate as the likely miss, which is notable since lexical similarity is comparatively cheap to detect; whether this reflects an acceptance-threshold or ranking issue in the frozen candidate-generation/scoring logic is a specific, checkable question, not a general "the pipeline is bad" finding.
+3. **LIGHTLY_MODIFIED as a catch-all category**: the confusion matrix shows LIGHTLY_MODIFIED absorbing cases from both neighboring categories rather than cleanly separating them (Section 12). Some of this is the expected subjectivity the brief calls out (Section 18) between MINOR and SUBSTANTIAL; the sheer size of the leak (37/78 non-diagonal LIGHTLY_MODIFIED cells) suggests more than ordinary subjectivity, though disentangling "genuine classification-threshold issue" from "structural-boundary noise already captured under cause 1" would need the specific cases re-examined by an independent reviewer.
+
+One structural observation, not a defect: 5 cases in the pilot spanned unusually large report gaps (one pairing was 2016→2024, an 8-year span for one company), flagged independently by two different pilot passes. `ReportPair.gap_months` and the existing `irregular_gap_pair` review category (`services/review_sample.py`) already track this condition, so it is a known, monitored corpus characteristic, not a new discovery — but it's worth confirming this reflects genuinely missing intermediate-year reports for that company rather than a pairing defect, since an 8-year gap changes what "correspondence" should even mean for boilerplate/legal content.
+
+## 14. Final verdict
+
+**This pilot cannot issue Section 34's official verdict — that requires the independent human labeling this pilot explicitly is not.** What it can responsibly say:
+
+**If these numbers hold up under independent review, this would not be `VALIDATED — PROCEED`.** Five of seven measurable predeclared criteria fell short, two of them by a wide margin (NEW/REMOVED validity ~48-54% against an 85% target — in the range Section 27 names as a *critical*-severity example, "NEW/REMOVED mostly false"). That is not the "modest imperfection" pattern Section 28 says should be waved through to the next milestone.
+
+At the same time, this is **not** a clean case for `REOPEN PIPELINE — SPECIFIC CRITICAL DEFECT` either, because the disagreement investigation above (Section 13) points at least partly upstream, to **passage-segmentation boundary quality**, rather than exclusively at the frozen alignment logic itself — and Section 27 is explicit that only critical failures should reopen the *core* pipeline. The NEW/REMOVED miss rate specifically, though, does implicate the alignment/candidate-generation logic more directly (cause 2 above) and is the strongest single candidate for a genuine, nameable defect if independent review confirms it.
+
+**My honest recommendation, given I can't issue the real verdict:** treat this milestone as **NOT YET VALIDATED**, and prioritize a real independent reviewer's time on the highest-value subset rather than all 300 rows — specifically:
+- the 38 NEW/REMOVED cases this pilot flagged `CORRESPONDENCE_EXISTS` (concrete, checkable, and the biggest predeclared-criteria miss),
+- the 100-passage quality subset (fast to review, and resolves whether the 35% artifact rate is real or a pilot-labeling quirk),
+- a random 30-40 case cross-check of the matched buckets to sanity-check the 83% overall correspondence figure.
+
+That's a few hours, not the full afternoon a from-scratch 300-case review would take, and it would tell you within a reasonable estimate whether this pilot's negative read is right — which is the actual decision-relevant question before committing to either "proceed to Lazy Prices analysis" or "reopen the pipeline."
+
+## 15. Root-cause diagnostic (code/data investigation, not more labeling)
+
+Following up on Section 13's disagreement analysis, three specific NEW-bucket pilot flags were traced directly against the live database (`scripts/diagnose_new_removed_misses.py`, read-only, no pipeline or data changes) to determine exactly where a plausible match was lost. This is evidence, not opinion — every number below was recomputed live from the current corpus.
+
+**Finding 1 — a confirmed top-k recall miss (M7-NEW-0011, ACT).** The NEW passage ("Response and mitigating actions to preserve value... NHI... NDoH...") has a genuine same-topic candidate in the earlier report ("OUTLOOK... impending conclusion of the health market inquiry and the next stage of NHI..."). Recomputing its true cosine similarity against the *current* embedding run gives **0.741** — comfortably above `min_semantic_similarity` (0.50, the floor that would exclude it from consideration entirely) but **below all five of the passages that actually filled the top-5** (0.752-0.789). The candidate was excluded purely by `top_k=5` being too narrow for this later passage, not by any acceptance threshold or scoring logic. This is a clean, mechanical explanation for at least one class of the pilot's "lexical candidate exists but system missed it" pattern: **candidate generation is semantic-retrieval-only** (`alignment_candidates.get_semantic_candidates`) — lexical similarity has no role in *which* candidates are even considered, only in scoring/gating ones that already cleared the embedding-based top-k cut. A genuinely-corresponding passage that an embedding model ranks 6th instead of 5th-or-better is invisible to the rest of the pipeline no matter how strong its lexical overlap is.
+
+**Finding 2 — a confirmed one-to-one / duplicate-boilerplate collision (SDL corpus).** The earlier passage "Environmental Responsibility and Stewardship... Southern Palladium entrenches principles of environment..." is the correctly-retrieved #1 semantic candidate (similarity 0.93) for *two different* later passages in the same report pair. The system awarded it to the stronger match (`combined_score` 0.928, classified LIGHTLY_MODIFIED) and left the weaker relationship (`content_score` 0.617 — still above the 0.45 acceptance gate) unmatched. This is the system doing exactly what its one-to-one assignment is designed to do, not obviously a bug — but it confirms, concretely, that recurring/duplicated section content (the same boilerplate paragraph type appearing more than once) can produce an "orphan" side that surfaces as NEW/REMOVED even when a real, scoreable correspondence exists elsewhere. This is exactly the situation `alignment_config.py`'s own docstring already names and defers: *"attempt constrained one-to-two/two-to-one acceptance is deferred."* Not a new discovery — a live, quantified instance of a known, already-documented limitation.
+
+**Finding 3 — the pilot pass itself contains labeling errors.** Investigating the case initially thought to correspond to Finding 2 (M7-NEW-0027) surfaced a direct contradiction: the pilot's note describes the flagged passage as an "Environmental/health & safety paragraph... near word-for-word identical" to its candidates, but the case's actual `later_text` (verified straight from the CSV) is about establishing an exploration project's office base ("The Khomanani Centre on the Eerstegeluk farm...") — a different topic entirely. The system's NEW call for that specific passage is very likely *correct*; the "Environmental Responsibility" passage it superficially resembles by embedding was, per Finding 2, legitimately claimed by a stronger match elsewhere in the same report pair. **This means the pilot's notes/labels are not fully reliable at the level of individual cases** — likely a batch-processing mix-up during one of the seven parallel review passes, not a systematic pattern found elsewhere, but real all the same. The pilot's 38-case "likely missed correspondence" figure (Section 12) should be read as directionally informative, not as a precise count — an independent reviewer re-checking those 38 specific cases (not all 300) is the fastest way to get a trustworthy number.
+
+**What this changes about Section 14's recommendation:** the two confirmed findings above are real, specific, and actionable without needing more human judgment — they're architecture facts, not opinions. Finding 1 (top-k too narrow) is a candidate-generation *recall* question that could plausibly be evaluated further by re-running `get_semantic_candidates` at a larger `top_k` (e.g. 10-15) across the full NEW/REMOVED population and checking how many additional near-hits it would surface — a measurement task, still consistent with the milestone's "measure, don't fix" rule, and worth doing before deciding whether this is a "material but bounded" issue (Section 27) or something closer to critical. Finding 2 confirms a known, already-scoped limitation rather than a new defect. Finding 3 is a data-quality caveat on the pilot itself, reinforcing that a real reviewer re-checking the flagged subset (not the full 300) remains the right next step, exactly as Section 14 recommended.
+
+---
+
+*Sections 12-15 report the non-independent AI pilot pass and a follow-up code/data diagnostic only. The milestone's official Section 34 verdict remains open until an independent human reviewer labels at minimum the priority subset named in Section 14, ideally the full `validation/human_validation_cases_blinded.csv`.*

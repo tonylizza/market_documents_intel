@@ -1,0 +1,194 @@
+{
+  "n_rows": 300,
+  "correspondence_precision_overall": {
+    "overall": {
+      "n": 200,
+      "yes": 166,
+      "precision": 0.83
+    }
+  },
+  "correspondence_precision_by_confidence": {
+    "overall": {
+      "n": 200,
+      "yes": 166,
+      "precision": 0.83
+    },
+    "by_group": {
+      "HIGH": {
+        "n": 36,
+        "yes": 34,
+        "precision": 0.9444444444444444
+      },
+      "LOW": {
+        "n": 14,
+        "yes": 9,
+        "precision": 0.6428571428571429
+      },
+      "MEDIUM": {
+        "n": 13,
+        "yes": 11,
+        "precision": 0.8461538461538461
+      },
+      "NEEDS_REVIEW": {
+        "n": 137,
+        "yes": 112,
+        "precision": 0.8175182481751825
+      }
+    }
+  },
+  "correspondence_precision_by_company": {
+    "overall": {
+      "n": 200,
+      "yes": 166,
+      "precision": 0.83
+    },
+    "by_group": {
+      "ACT": {
+        "n": 52,
+        "yes": 42,
+        "precision": 0.8076923076923077
+      },
+      "BEL": {
+        "n": 40,
+        "yes": 36,
+        "precision": 0.9
+      },
+      "KP2": {
+        "n": 34,
+        "yes": 27,
+        "precision": 0.7941176470588235
+      },
+      "SBP": {
+        "n": 28,
+        "yes": 24,
+        "precision": 0.8571428571428571
+      },
+      "SDL": {
+        "n": 23,
+        "yes": 19,
+        "precision": 0.8260869565217391
+      },
+      "SUR": {
+        "n": 23,
+        "yes": 18,
+        "precision": 0.782608695652174
+      }
+    }
+  },
+  "unmatched_validity": {
+    "NEW": {
+      "n": 50,
+      "counts": {
+        "NO_CORRESPONDENCE": 24,
+        "CORRESPONDENCE_EXISTS": 19,
+        "STRUCTURAL_SPLIT_MERGE": 2,
+        "UNCERTAIN": 5
+      },
+      "precision_no_correspondence": 0.48,
+      "missed_correspondence_rate": 0.38,
+      "structural_split_merge_rate": 0.04,
+      "uncertain_rate": 0.1
+    },
+    "REMOVED": {
+      "n": 50,
+      "counts": {
+        "NO_CORRESPONDENCE": 27,
+        "CORRESPONDENCE_EXISTS": 19,
+        "STRUCTURAL_SPLIT_MERGE": 2,
+        "UNCERTAIN": 2
+      },
+      "precision_no_correspondence": 0.54,
+      "missed_correspondence_rate": 0.38,
+      "structural_split_merge_rate": 0.04,
+      "uncertain_rate": 0.04
+    }
+  },
+  "change_confusion_matrix": {
+    "n": 141,
+    "matrix": {
+      "EFFECTIVELY_UNCHANGED": {
+        "UNCHANGED": 51,
+        "LIGHTLY_MODIFIED": 10,
+        "SUBSTANTIALLY_MODIFIED": 8
+      },
+      "MINOR": {
+        "UNCHANGED": 11,
+        "LIGHTLY_MODIFIED": 18,
+        "SUBSTANTIALLY_MODIFIED": 4
+      },
+      "SUBSTANTIAL": {
+        "UNCHANGED": 0,
+        "LIGHTLY_MODIFIED": 27,
+        "SUBSTANTIALLY_MODIFIED": 12
+      }
+    },
+    "exact_agreement": 0.574468085106383,
+    "within_one_category": 0.9432624113475178,
+    "weighted_kappa": 0.5276381909547739
+  },
+  "binary_change_metrics": {
+    "n": 141,
+    "confusion": {
+      "tp": 61,
+      "fp": 18,
+      "tn": 51,
+      "fn": 11
+    },
+    "accuracy": 0.7943262411347518,
+    "precision": 0.7721518987341772,
+    "recall": 0.8472222222222222,
+    "f1": 0.8079470198675496
+  },
+  "ordered_change_agreement": {
+    "n": 141,
+    "spearman": 0.5688564881494139,
+    "mean_absolute_category_difference": 0.48226950354609927
+  },
+  "similarity_vs_human_change": {
+    "system_semantic_similarity": {
+      "n": 141,
+      "spearman": -0.5448561847925828,
+      "by_category_mean": {
+        "EFFECTIVELY_UNCHANGED": 0.9613745426038556,
+        "MINOR": 0.9462182307509526,
+        "SUBSTANTIAL": 0.892763159443189
+      }
+    },
+    "system_lexical_cosine_similarity": {
+      "n": 141,
+      "spearman": -0.6626045239931404,
+      "by_category_mean": {
+        "EFFECTIVELY_UNCHANGED": 0.934074766561373,
+        "MINOR": 0.8962356551775955,
+        "SUBSTANTIAL": 0.673132535361771
+      }
+    },
+    "system_jaccard_similarity": {
+      "n": 133,
+      "spearman": -0.6440398749906617,
+      "by_category_mean": {
+        "EFFECTIVELY_UNCHANGED": 0.8168971318613385,
+        "MINOR": 0.6751822729577172,
+        "SUBSTANTIAL": 0.3068243935526627
+      }
+    },
+    "system_edit_similarity": {
+      "n": 141,
+      "spearman": -0.7331065425411415,
+      "by_category_mean": {
+        "EFFECTIVELY_UNCHANGED": 0.8960958129908821,
+        "MINOR": 0.7461079045955745,
+        "SUBSTANTIAL": 0.35719737467646023
+      }
+    },
+    "system_combined_score": {
+      "n": 141,
+      "spearman": -0.5787245144895266,
+      "by_category_mean": {
+        "EFFECTIVELY_UNCHANGED": 0.9090689065513217,
+        "MINOR": 0.864189934884496,
+        "SUBSTANTIAL": 0.7185160765691377
+      }
+    }
+  }
+}
