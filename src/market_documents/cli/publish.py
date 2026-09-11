@@ -147,13 +147,22 @@ def app_init_roles(
 def build(
     publication_version: str = typer.Option(..., "--publication-version"),
     target_database_url: str = typer.Option(None, "--target-database-url", envvar="APP_DATABASE_URL"),
+    include_qa_chunks: bool = typer.Option(
+        True,
+        "--include-qa-chunks/--skip-qa-chunks",
+        help="Skip building QA retrieval chunks (Milestone 7B.2) -- for target databases without room "
+        "for the extra footprint. The Q&A feature will have no coverage until a later publication "
+        "includes them.",
+    ),
 ) -> None:
     """Build a new publication from the current accepted research dataset."""
     url = _target_url(target_database_url)
     settings = get_settings()
     assert_distinct_databases(settings.database_url, url, settings.allow_same_database_dev_mode)
 
-    builder = PublicationBuilder(publication_version=publication_version, settings=settings)
+    builder = PublicationBuilder(
+        publication_version=publication_version, settings=settings, include_qa_chunks=include_qa_chunks
+    )
     with get_session() as research_session:
         with app_session_scope(url) as app_session:
             publication = builder.build(research_session, app_session)

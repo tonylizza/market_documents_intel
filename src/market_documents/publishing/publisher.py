@@ -210,9 +210,15 @@ class PublicationBuilder:
     `ResearchSnapshot`, entirely in memory, then writes them in one
     transactional pass. Never mutates `application_state`."""
 
-    def __init__(self, publication_version: str, settings: Settings | None = None):
+    def __init__(
+        self,
+        publication_version: str,
+        settings: Settings | None = None,
+        include_qa_chunks: bool = True,
+    ):
         self.publication_version = publication_version
         self.settings = settings or get_settings()
+        self.include_qa_chunks = include_qa_chunks
 
     def build(self, research_session: Session, app_session: Session) -> Publication:
         snapshot = resolve_research_snapshot(research_session)
@@ -1024,10 +1030,10 @@ class PublicationBuilder:
         # source passage excluded upstream (artifact, or no accepted
         # embedding) simply isn't a QaPassageRow member and can't be quoted
         # in a chunk.
-        embedding_model = get_embedding_model()
         qa_chunk_count = 0
         qa_chunk_passage_mapping_count = 0
-        for report_source_id, passage_datasets in snapshot.passages_by_report.items():
+        embedding_model = get_embedding_model() if self.include_qa_chunks else None
+        for report_source_id, passage_datasets in snapshot.passages_by_report.items() if self.include_qa_chunks else ():
             app_report = app_reports.get(report_source_id)
             if app_report is None:
                 continue
