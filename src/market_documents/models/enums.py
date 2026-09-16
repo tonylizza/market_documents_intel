@@ -523,3 +523,52 @@ class StructuredValueChangeEventType(str, enum.Enum):
     PARTIAL_YEAR = "PARTIAL_YEAR"
     SCHEMA_CHANGED = "SCHEMA_CHANGED"
     VALUE_NOT_COMPARABLE = "VALUE_NOT_COMPARABLE"
+
+
+# --------------------------------------------------------------------------
+# Track 7C.6: scoped production cutover / routing.
+#
+# Decides, per (ticker, schedule, unit_key) or (ticker, table_family_key),
+# whether a longitudinal comparison request is served by the new
+# semantic-unit/structured-table pipeline (7C.1-7C.4) or by the legacy
+# passage-alignment pipeline -- and, for in-scope requests, whether the new
+# pipeline actually resolved. Reads only already-persisted 7C.1-7C.5 output;
+# never re-runs extraction, alignment, or comparison. See
+# docs/7c6-production-cutover.md.
+# --------------------------------------------------------------------------
+
+
+class ComparisonBackend(str, enum.Enum):
+    """Which comparison pipeline produced (or would produce) a
+    longitudinal-comparison result for one (ticker, schedule, unit-or-
+    table-family) scope. Assigned deterministically by
+    `services.comparison_routing.ComparisonPathRouter` from
+    `services.cutover_config`'s explicit scope registry and the
+    `SEMANTIC_COMPARISON_CUTOVER_ENABLED` flag -- never inferred from
+    whether rows happen to exist in the database."""
+
+    SEMANTIC_UNIT = "SEMANTIC_UNIT"
+    STRUCTURED_TABLE = "STRUCTURED_TABLE"
+    LEGACY_PASSAGE = "LEGACY_PASSAGE"
+
+
+class ComparisonResponseStatus(str, enum.Enum):
+    """Resolution state of one normalized comparison response
+    (`services.cutover_comparison`).
+
+    RESOLVED: the routed backend produced a trustworthy, primary result.
+    UNRESOLVED_UPSTREAM: in new-pipeline scope, but an upstream run or row
+    required to answer is missing or incomplete -- never silently
+    substituted with a legacy result presented as authoritative. AMBIGUOUS:
+    in scope, but the underlying `SemanticUnitAlignment` itself is
+    AMBIGUOUS. REVIEW_REQUIRED: in scope, an alignment/decision exists but
+    is NOT_ELIGIBLE or otherwise not a completed substantive comparison.
+    NOT_AVAILABLE: out of the cutover's supported scope entirely -- the
+    legacy pipeline remains authoritative for this request, per
+    docs/7c6-production-cutover.md's scope table."""
+
+    RESOLVED = "RESOLVED"
+    UNRESOLVED_UPSTREAM = "UNRESOLVED_UPSTREAM"
+    AMBIGUOUS = "AMBIGUOUS"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    NOT_AVAILABLE = "NOT_AVAILABLE"

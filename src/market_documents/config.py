@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # here without a network round-trip.
     hf_cache_dir: Path = Path(".cache/huggingface")
     embedding_batch_size: int = 32
+    # Track 7C.6 rollback switch: false (default) keeps every comparison
+    # request on the legacy passage-alignment pipeline, unconditionally --
+    # the pre-7C.6 behavior. true additionally activates scoped routing to
+    # the new semantic-unit/structured-table pipeline for exactly the
+    # (ticker, schedule, unit/table-family) entries in
+    # `services.cutover_config.NEW_PIPELINE_NARRATIVE_SCOPE`/
+    # `NEW_PIPELINE_STRUCTURED_SCOPE`. Disabling this requires no
+    # deployment -- set SEMANTIC_COMPARISON_CUTOVER_ENABLED=false and
+    # restart. See docs/7c6-production-cutover.md.
+    semantic_comparison_cutover_enabled: bool = False
 
 
 def get_settings() -> Settings:

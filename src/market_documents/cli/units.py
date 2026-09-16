@@ -36,6 +36,19 @@ from market_documents.services.structured_table_reconstruction import (
     run_table_reconstruction,
 )
 from market_documents.services.shadow_evaluation import render_markdown_report, run_shadow_evaluation
+from market_documents.services.comparison_routing import ComparisonPathRouter
+from market_documents.services.cutover_comparison import (
+    LegacyComparisonResponse,
+    NarrativeComparisonResponse,
+    StructuredComparisonResponse,
+    get_narrative_comparison,
+    get_structured_comparison,
+)
+from market_documents.services.cutover_config import (
+    NEW_PIPELINE_NARRATIVE_SCOPE,
+    NEW_PIPELINE_STRUCTURED_SCOPE,
+)
+from market_documents.services.cutover_preflight import UNSUPPORTED, run_cutover_preflight
 
 app = typer.Typer(help="Track 7C.1: schedule localization + headed narrative semantic units.")
 
@@ -322,3 +335,73 @@ def evaluate_shadow_cmd(
         typer.echo(f"wrote {output}")
     else:
         typer.echo(markdown)
+
+
+@app.command("cutover-check")
+def cutover_check_cmd(
+    ticker: str = typer.Option(None, "--ticker", help="Only check scope entries for this ticker; defaults to every configured entry."),
+) -> None:
+    """Track 7C.6: read-only preflight over the exact configured cutover
+    scope (see `services.cutover_config`). Reports READY / MISSING_DATA /
+    UNRESOLVED / UNSUPPORTED per scope entry -- never auto-fixes anything.
+    Run this before setting SEMANTIC_COMPARISON_CUTOVER_ENABLED=true.
+    """
+    if ticker and ticker.upper() not in {t for t, *_ in NEW_PIPELINE_NARRATIVE_SCOPE} | {t for t, _ in NEW_PIPELINE_STRUCTURED_SCOPE}:
+        typer.echo(f"{ticker.upper()}: {UNSUPPORTED} -- no configured 7C.6 scope entry for this ticker")
+        return
+    with get_session() as session:
+        results = run_cutover_preflight(session)
+    for result in results:
+        if ticker and not result.scope_label.startswith(ticker.upper() + " "):
+            continue
+        typer.echo(f"{result.scope_label}: {result.verdict} -- {result.detail}")
+
+
+@app.command("compare-cutover")
+def compare_cutover_cmd(
+    ticker: str = typer.Argument(..., help="Company ticker, e.g. BEL or ACT."),
+    unit_key: str = typer.Option(None, "--unit-key", help="Narrative unit_key, e.g. gross_margin."),
+    table_family: str = typer.Option(None, "--table-family", help="Structured table_family_key, e.g. ned_remuneration_policy_table."),
+    schedule: str = typer.Option("financial_performance", "--schedule", help="Only used with --unit-key."),
+    force_enabled: bool = typer.Option(False, "--force-enabled", help="Route as if SEMANTIC_COMPARISON_CUTOVER_ENABLED=true, regardless of the actual setting (smoke-testing only)."),
+) -> None:
+    """Track 7C.6: print the routed, normalized comparison response for
+    every adjacent-year pair of one ticker -- exactly what a caller would
+    receive through `services.cutover_comparison`. Diagnostic only; never
+    mutates anything.
+    """
+    if bool(unit_key) == bool(table_family):
+        typer.echo("pass exactly one of --unit-key or --table-family")
+        raise typer.Exit(code=1)
+    router = ComparisonPathRouter(cutover_enabled=True) if force_enabled else None
+    with get_session() as session:
+        pairs = _report_pairs_for_ticker(session, ticker)
+        for pair in pairs:
+            label = f"{pair.earlier_report.directory_year}->{pair.later_report.directory_year}"
+            if unit_key:
+                resolved_schedule = _resolve_schedule(schedule)
+                response = get_narrative_comparison(session, pair, resolved_schedule, unit_key, router=router)
+            else:
+                response = get_structured_comparison(session, pair, table_family, router=router)
+
+            if isinstance(response, LegacyComparisonResponse):
+                typer.echo(f"{label}: backend={response.comparison_backend.value} status={response.status.value} -- {response.note}")
+            elif isinstance(response, NarrativeComparisonResponse):
+                line = (
+                    f"{label}: backend={response.comparison_backend.value} status={response.status.value} "
+                    f"alignment={response.alignment_status.value if response.alignment_status else '-'} "
+                    f"mode={response.analytical_mode.value if response.analytical_mode else '-'}"
+                )
+                if response.lexical_metrics:
+                    m = response.lexical_metrics
+                    line += f" tfidf={m.tfidf_cosine} words={response.earlier_word_count}->{response.later_word_count}"
+                if response.review_reason:
+                    line += f" -- {response.review_reason}"
+                typer.echo(line)
+            elif isinstance(response, StructuredComparisonResponse):
+                typer.echo(
+                    f"{label}: backend={response.comparison_backend.value} status={response.status.value} "
+                    f"rows={len(response.row_alignments)} columns={len(response.column_alignments)} "
+                    f"value_changes={len(response.value_change_events)}"
+                    + (f" -- {response.review_reason}" if response.review_reason else "")
+                )
