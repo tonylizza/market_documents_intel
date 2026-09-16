@@ -383,3 +383,143 @@ class AnalyticalMode(str, enum.Enum):
     STRUCTURED_COMPARISON_PREFERRED = "STRUCTURED_COMPARISON_PREFERRED"
     PRESENCE_STATUS_ONLY = "PRESENCE_STATUS_ONLY"
     NOT_ELIGIBLE = "NOT_ELIGIBLE"
+
+
+# --------------------------------------------------------------------------
+# Track 7C.4: structured-table reconstruction and cross-year comparison.
+#
+# Implements the STRUCTURED_COMPARISON_PREFERRED modality declared but not
+# executed by 7C.3, for exactly two validated ACT table families
+# (ned_remuneration_policy_table, total_remuneration_outcomes). A parallel
+# track, not an extension of SemanticUnit/SemanticUnitAlignment/
+# AnalyticalDecision: those models assume a heading string identical every
+# year, which both table headings violate (they embed the fiscal year and
+# drift in case). Reads only CanonicalBlock (7C.1a); does not depend on
+# schedule localization at all -- REMUNERATION was never configured in
+# 7C.1 (only FINANCIAL_PERFORMANCE is), and adding it there would mean
+# reopening 7C.1's localization mechanism, which this milestone forbids.
+# Each table family's own heading_pattern plays the localization role
+# directly. Never reads SemanticUnit, Passage, or PassageAlignment. See
+# docs/7c4-structured-table-comparison.md.
+# --------------------------------------------------------------------------
+
+
+class StructuredTableExtractionRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class StructuredTableAlignmentRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class StructuredTableReconstructionStatus(str, enum.Enum):
+    """Per docs/experiments/annual-report-structured-table-comparison.md
+    Section 15. Only CLEAN is produced by the 7C.4 deterministic parser;
+    the other three are declared for future escalation paths (a stricter
+    layout, or eventual multimodal fallback) that this milestone never
+    triggers -- both configured families reconstructed CLEAN on every
+    table-year in the validating research."""
+
+    CLEAN = "CLEAN"
+    MINOR_CORRECTION_NEEDED = "MINOR_CORRECTION_NEEDED"
+    MAJOR_LAYOUT_RECONSTRUCTION_NEEDED = "MAJOR_LAYOUT_RECONSTRUCTION_NEEDED"
+    MULTIMODAL_REQUIRED = "MULTIMODAL_REQUIRED"
+
+
+class StructuredTableShape(str, enum.Enum):
+    """Only RECTANGULAR_MATRIX is needed for the two 7C.4 table families;
+    not a general table-shape ontology."""
+
+    RECTANGULAR_MATRIX = "RECTANGULAR_MATRIX"
+
+
+class StructuredRowIdentityType(str, enum.Enum):
+    """ned_remuneration_policy_table rows are ROLE-keyed; total_remuneration_outcomes
+    rows are PERSON-keyed -- one row-key strategy is never forced across
+    both families."""
+
+    ROLE = "ROLE"
+    PERSON = "PERSON"
+
+
+class StructuredCellStatus(str, enum.Enum):
+    """A dash is never converted to zero, and an absent cell is never
+    fabricated as zero or NULL-without-distinction -- each of these is a
+    genuinely different source fact."""
+
+    NUMERIC = "NUMERIC"
+    NIL_DASH = "NIL_DASH"
+    ZERO = "ZERO"
+    MISSING = "MISSING"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    TEXT_VALUE = "TEXT_VALUE"
+    COMPARATIVE_ONLY = "COMPARATIVE_ONLY"
+    PARTIAL_YEAR_VALUE = "PARTIAL_YEAR_VALUE"
+
+
+class StructuredRowAlignmentStatus(str, enum.Enum):
+    """A departed individual and a newly-added individual in the same role
+    are always REMOVED + ADDED, never merged into one comparison subject --
+    succession inference is explicitly out of scope for this milestone (see
+    docs/experiments/annual-report-structured-table-comparison.md Section
+    15's deferred SUCCESSION_INFERRED proposal)."""
+
+    MATCHED = "MATCHED"
+    ADDED = "ADDED"
+    REMOVED = "REMOVED"
+    COMPARATIVE_ONLY = "COMPARATIVE_ONLY"
+    PARTIAL_YEAR = "PARTIAL_YEAR"
+
+
+class StructuredColumnAlignmentStatus(str, enum.Enum):
+    """SPLIT is deliberately omitted -- not needed by either validated
+    table family in this milestone."""
+
+    MATCHED = "MATCHED"
+    RENAMED = "RENAMED"
+    ADDED = "ADDED"
+    REMOVED = "REMOVED"
+    MERGED = "MERGED"
+
+
+class StructuredComparabilityStatus(str, enum.Enum):
+    """Persisted separately from StructuredColumnAlignmentStatus: alignment
+    answers "is this the same column concept," comparability answers "can
+    its values be diffed as ordinary numbers." The two disagree exactly
+    once in the validated corpus -- total_remuneration_outcomes' STI column
+    stays MATCHED (same position/key) across 2022->2023 but becomes
+    PARTIALLY_COMPARABLE_SCHEMA_CHANGED once "Retention Awards" is folded
+    into it."""
+
+    DIRECTLY_COMPARABLE = "DIRECTLY_COMPARABLE"
+    COMPARABLE_WITH_CAVEAT = "COMPARABLE_WITH_CAVEAT"
+    PARTIALLY_COMPARABLE_SCHEMA_CHANGED = "PARTIALLY_COMPARABLE_SCHEMA_CHANGED"
+    NOT_COMPARABLE = "NOT_COMPARABLE"
+
+
+class StructuredValueChangeEventType(str, enum.Enum):
+    """pct_change is always NULL for COMPARATIVE_ONLY/PARTIAL_YEAR/
+    SCHEMA_CHANGED/VALUE_NOT_COMPARABLE events, and whenever the earlier
+    value is zero -- never fabricated."""
+
+    VALUE_UNCHANGED = "VALUE_UNCHANGED"
+    VALUE_INCREASED = "VALUE_INCREASED"
+    VALUE_DECREASED = "VALUE_DECREASED"
+    ZERO_TO_VALUE = "ZERO_TO_VALUE"
+    VALUE_TO_ZERO = "VALUE_TO_ZERO"
+    NIL_TO_VALUE = "NIL_TO_VALUE"
+    VALUE_TO_NIL = "VALUE_TO_NIL"
+    MISSING_TO_VALUE = "MISSING_TO_VALUE"
+    VALUE_TO_MISSING = "VALUE_TO_MISSING"
+    COMPARATIVE_ONLY = "COMPARATIVE_ONLY"
+    PARTIAL_YEAR = "PARTIAL_YEAR"
+    SCHEMA_CHANGED = "SCHEMA_CHANGED"
+    VALUE_NOT_COMPARABLE = "VALUE_NOT_COMPARABLE"

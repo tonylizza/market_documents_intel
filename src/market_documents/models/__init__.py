@@ -41,6 +41,16 @@ from market_documents.models.enums import (
     SemanticUnitType,
     SimilarityResultQuality,
     SimilarityRunStatus,
+    StructuredCellStatus,
+    StructuredColumnAlignmentStatus,
+    StructuredComparabilityStatus,
+    StructuredRowAlignmentStatus,
+    StructuredRowIdentityType,
+    StructuredTableAlignmentRunStatus,
+    StructuredTableExtractionRunStatus,
+    StructuredTableReconstructionStatus,
+    StructuredTableShape,
+    StructuredValueChangeEventType,
 )
 from market_documents.models.extraction import ExtractionRun, NarrativeDocument, Page, TextBlock
 from market_documents.models.feature import FeatureRun, ReportPairFeatures
@@ -70,6 +80,18 @@ from market_documents.models.schedule import (
 from market_documents.models.semantic_unit import SemanticUnit, SemanticUnitRun, SemanticUnitSourceBlock
 from market_documents.models.semantic_unit_alignment import SemanticUnitAlignment, SemanticUnitAlignmentRun
 from market_documents.models.similarity import DocumentSimilarity, SimilarityRun
+from market_documents.models.structured_table import (
+    StructuredColumnAlignment,
+    StructuredRowAlignment,
+    StructuredTable,
+    StructuredTableAlignmentRun,
+    StructuredTableCell,
+    StructuredTableColumn,
+    StructuredTableExtractionRun,
+    StructuredTableFootnote,
+    StructuredTableRow,
+    StructuredValueChangeEvent,
+)
 
 __all__ = [
     "Base",
@@ -147,4 +169,24 @@ __all__ = [
     "AnalyticalDecisionRun",
     "AnalyticalDecision",
     "LexicalUnitComparison",
+    "StructuredTableExtractionRunStatus",
+    "StructuredTableAlignmentRunStatus",
+    "StructuredTableReconstructionStatus",
+    "StructuredTableShape",
+    "StructuredRowIdentityType",
+    "StructuredCellStatus",
+    "StructuredRowAlignmentStatus",
+    "StructuredColumnAlignmentStatus",
+    "StructuredComparabilityStatus",
+    "StructuredValueChangeEventType",
+    "StructuredTableExtractionRun",
+    "StructuredTable",
+    "StructuredTableColumn",
+    "StructuredTableRow",
+    "StructuredTableCell",
+    "StructuredTableFootnote",
+    "StructuredTableAlignmentRun",
+    "StructuredRowAlignment",
+    "StructuredColumnAlignment",
+    "StructuredValueChangeEvent",
 ]
