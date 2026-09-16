@@ -315,7 +315,7 @@ def _run_analytical_comparison(
                 LexicalUnitComparison(
                     analytical_decision_id=decision.id,
                     semantic_unit_alignment_id=alignment.id,
-                    lexical_cosine_similarity=metrics.lexical_cosine_similarity,
+                    tfidf_cosine=metrics.tfidf_cosine,
                     unigram_jaccard=metrics.unigram_jaccard,
                     bigram_jaccard=metrics.bigram_jaccard,
                     edit_similarity=metrics.edit_similarity,

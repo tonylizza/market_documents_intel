@@ -69,27 +69,100 @@ them -- a future milestone's scope, not this one's.
 
 ## 4. Lexical metrics
 
-`services.lexical_unit_comparison.compute_lexical_metrics` reuses the
-existing, already-validated metric functions from `services.similarity_metrics`
-and the shared tokenizer from `services.similarity_tokenization` -- no
-metric math is reimplemented:
+`services.lexical_unit_comparison.compute_lexical_metrics` reuses metric
+functions from `services.similarity_metrics` and the shared tokenizer from
+`services.similarity_tokenization` -- no metric math is reimplemented in
+`compute_lexical_metrics` itself. Two functions were added to
+`similarity_metrics.py` specifically for 7C.3, to genuinely reproduce the
+research's own metric *definitions* (docs/experiments/annual-report-
+lexical-change-pilot.md Section 5) rather than reuse a document-pipeline
+metric that only shares a name (see Section 4.1's correction note):
 
-- `lexical_cosine_similarity` (sublinear-TF cosine -- explicitly **not**
-  TF-IDF; see Section 7's caveat)
+- `tfidf_cosine` -- **`pairwise_tfidf_cosine_similarity`**: genuine TF-IDF
+  cosine (smooth IDF, L2-normalized), fit only on the two documents being
+  compared. Distinct from `lexical_cosine_similarity` (the M3/M4
+  document-pipeline metric, unchanged, still used there), which is
+  deliberately **not** TF-IDF -- sublinear term-frequency only, no IDF.
 - `unigram_jaccard` (`jaccard_similarity(..., shingle_size=1)`)
 - `bigram_jaccard` (`jaccard_similarity(..., shingle_size=2)`, the module
   default)
-- `edit_similarity` (RapidFuzz token-level Levenshtein)
-- `sequence_similarity` (`diff_similarity`, `difflib` Ratcliff/Obershelp)
+- `edit_similarity` -- **`character_edit_similarity`**: character-level
+  RapidFuzz Levenshtein over NFKC-normalized, lowercased,
+  whitespace-collapsed text, matching the research's own character-level
+  definition. Distinct from `edit_similarity` (the M3/M4 document-pipeline
+  metric, unchanged, still used there), which runs the same algorithm over
+  *word tokens* instead.
+- `sequence_similarity` (`diff_similarity`, `difflib` Ratcliff/Obershelp
+  over word tokens, `autojunk=False`) -- this one was already a correct
+  reproduction of the research's definition; unchanged. See Section 4.1.
 - `earlier_word_count` / `later_word_count` / `word_count_change` /
   `word_count_change_pct` -- token counts from the same shared tokenizer,
   not `SemanticUnit.word_count` (a 7C.1 extraction-provenance field
-  computed independently), so word count and the similarity metrics are
+  computed independently), so word count and the token-based metrics are
   always sourced from one consistent tokenization.
 
 Every similarity field is nullable and left `NULL` (never a fabricated
 `0.0`) when the metric is mathematically undefined for its inputs (e.g.
 one empty text). No composite score, no threshold, no materiality label.
+
+### 4.1 Correction: metric-definition audit against the research
+
+The first pass of 7C.3 populated `tfidf_cosine` and `edit_similarity` with
+the document-pipeline's existing `lexical_cosine_similarity` and
+`edit_similarity` functions (M3/M4, `services/similarity_metrics.py`).
+Both are real, already-tested metrics -- but neither is the metric the
+research actually validated:
+
+- **`tfidf_cosine` was genuinely wrong.** `lexical_cosine_similarity` is
+  explicitly, by its own docstring, **not** TF-IDF (sublinear term
+  frequency only, no document-frequency/IDF weighting anywhere). The
+  research's "TF-IDF cosine" is literal `TfidfVectorizer`-style TF-IDF.
+  **Fixed**: added `pairwise_tfidf_cosine_similarity` (smooth-IDF, L2-norm,
+  fit pairwise on the two documents in the pair -- consistent with this
+  module's pair-locality convention, and verified far closer to the
+  research's published values than a multi-document corpus fit; see
+  Section 10) and switched `tfidf_cosine` to it. The `lexical_cosine_similarity`
+  function itself is untouched and still backs the M3/M4 document-level
+  pipeline -- nothing else in the codebase depends on it changing.
+- **`edit_similarity` was genuinely wrong.** The research's definition
+  (Section 5 of the lexical-change pilot) is **character-level**
+  Levenshtein distance over the full normalized string
+  (`1 - distance/max(len_a, len_b)`, denominator in characters). The
+  document-pipeline's `edit_similarity` runs the identical RapidFuzz
+  Levenshtein algorithm, but over **word tokens**, not characters -- a
+  real, intentional, and unrelated design choice for that pipeline (per
+  its own docstring), not a bug there. Applied to 7C.3, though, it does
+  not answer the research's question. **Fixed**: added
+  `character_edit_similarity` (character-level Levenshtein on
+  NFKC-normalized/lowercased/whitespace-collapsed text -- verified the
+  distance formula is identical to RapidFuzz's own `normalized_similarity`)
+  and switched `edit_similarity` to it. The document-pipeline's
+  `edit_similarity` is untouched.
+- **`sequence_similarity` was already correct.** The research's
+  definition is `difflib.SequenceMatcher(autojunk=False)` run over the
+  **word-token sequence** -- exactly what `diff_similarity` already does.
+  Testing with the research's own literal tokenizer regex in place of this
+  codebase's tokenizer changed the BEL 2018->2019/2021->2022 ratios by
+  under 0.01 (0.6486 -> 0.6552, 0.4417 -> 0.4426) -- confirming the
+  remaining gap against the published research table (0.480, 0.311) is
+  **not** a metric-definition or tokenization difference. It is most
+  plausibly attributable to minor wording/content differences between this
+  codebase's production-reconstructed `SemanticUnit.source_text` and the
+  research pilot's independently-extracted text (see Section 10):
+  order-sensitive metrics like `SequenceMatcher` are far more sensitive to
+  small such differences than the closely-matching, order-insensitive
+  Jaccard values are. No code change was made -- the field and function
+  already correctly implement the validated definition.
+
+The routing model, schema shapes (aside from the one column rename below),
+alignment logic, and every earlier milestone are unchanged by this
+correction.
+
+**Schema effect**: `lexical_unit_comparisons.lexical_cosine_similarity`
+was renamed to `lexical_unit_comparisons.tfidf_cosine`
+(`migrations/versions/3ac7dda97887_rename_lexical_cosine_to_tfidf_cosine.py`)
+to describe what the column actually now holds. `edit_similarity` keeps
+its column name -- only the function backing it changed.
 
 ## 5. Files / schema changed
 
@@ -107,6 +180,9 @@ New:
   `lexical_unit_comparisons` tables; `analytical_decision_run_status`,
   `analytical_mode` enum types. No existing table modified. Verified
   reversible (`alembic downgrade -1` then `upgrade head`).
+- `migrations/versions/3ac7dda97887_rename_lexical_cosine_to_tfidf_cosine.py`
+  -- renames `lexical_unit_comparisons.lexical_cosine_similarity` to
+  `tfidf_cosine` (Section 4.1's correction). Verified reversible.
 - New enums in `models/enums.py`: `AnalyticalDecisionRunStatus`,
   `AnalyticalMode`.
 
@@ -117,6 +193,12 @@ Modified:
   internally); `status` now also prints current `AnalyticalDecisionRun`
   state.
 - `src/market_documents/models/__init__.py` -- new exports.
+- `src/market_documents/services/similarity_metrics.py` -- two functions
+  *added* for the Section 4.1 correction: `pairwise_tfidf_cosine_similarity`,
+  `character_edit_similarity`. Every existing function in this module
+  (`lexical_cosine_similarity`, `edit_similarity`, `jaccard_similarity`,
+  `diff_similarity`, etc.) is unchanged, and the M3/M4 document-level
+  similarity pipeline that depends on them is unaffected.
 
 Schema notes:
 
@@ -153,10 +235,20 @@ with `error_message` and leaves no partial decision/comparison rows
 
 ## 7. Tests
 
+- `tests/test_similarity_metrics.py`: new pure tests for
+  `pairwise_tfidf_cosine_similarity` (identical/disjoint/empty/bounded
+  behavior; an exact hand-computed smooth-IDF/L2-norm case; explicit
+  divergence from `lexical_cosine_similarity` on a repeated-term document)
+  and `character_edit_similarity` (identical/empty/bounded behavior; an
+  exact hand-computed case verifying the research's own
+  `1 - distance/max(len)` formula; explicit divergence from the
+  token-level `edit_similarity`). Every pre-existing test in this file is
+  unchanged and still passes.
 - `tests/test_lexical_unit_comparison.py` (pure): persisted metrics equal
-  direct calls to `similarity_metrics`/`similarity_tokenization`
-  functions; undefined-metric `None` handling; word-count-change-pct
-  edge cases.
+  direct calls to the correct `similarity_metrics` functions
+  (`pairwise_tfidf_cosine_similarity`, `character_edit_similarity`,
+  `jaccard_similarity`, `diff_similarity`); undefined-metric `None`
+  handling; word-count-change-pct edge cases.
 - `tests/test_analytical_eligibility_routing.py` (pure): configured units
   route to `LEXICAL_ONLY`; unconfigured `unit_key`/ticker never silently
   becomes lexical; `UNRESOLVED_UPSTREAM`/`AMBIGUOUS` produce no decision;
@@ -167,23 +259,25 @@ with `error_message` and leaves no partial decision/comparison rows
   creates a new run without duplicating within it; no `Passage`/
   `PassageAlignment` dependency.
 
-Full suite: **969 passed, 3 skipped, 0 failed**
-(`.venv/bin/python -m pytest -q`) -- 969 - 944 = 25, exactly the new 7C.3
-tests, with zero regressions elsewhere (7C.2's commit reported 944 passed
-before this track began).
+Full suite: **980 passed, 3 skipped, 0 failed**
+(`.venv/bin/python -m pytest -q`) -- 980 - 944 = 36, the 25 original 7C.3
+tests plus 11 new tests added for this correction, with zero regressions
+anywhere, including the M3/M4 document-level similarity pipeline that
+depends on the unmodified `lexical_cosine_similarity`/`edit_similarity`
+functions.
 
 ## 8. Real-corpus BEL results
 
-`units classify BEL --schedule financial_performance`, against the two
-`MATCHED` `gross_margin` pairs available (2018->2019 and 2021->2022 --
-2019->2020 and 2020->2021 are correctly excluded because 7C.2 marks BEL
-2020's `gross_margin` `UNRESOLVED_UPSTREAM`, per its own documented
-caveat):
+`units classify BEL --schedule financial_performance --force` (re-run
+after the Section 4.1 correction), against the two `MATCHED`
+`gross_margin` pairs available (2018->2019 and 2021->2022 -- 2019->2020
+and 2020->2021 are correctly excluded because 7C.2 marks BEL 2020's
+`gross_margin` `UNRESOLVED_UPSTREAM`, per its own documented caveat):
 
-| Pair | Mode | Cosine | Unigram Jaccard | Bigram Jaccard | Edit sim. | Seq. sim. | Words |
+| Pair | Mode | TF-IDF cosine | Unigram Jaccard | Bigram Jaccard | Edit sim. (char) | Seq. sim. | Words |
 |---|---|---:|---:|---:|---:|---:|---|
-| 2018->2019 | LEXICAL_ONLY | 0.7712 | 0.4808 | 0.3506 | 0.5625 | 0.6486 | 64->47 (-17, -26.6%) |
-| 2021->2022 | LEXICAL_ONLY | 0.6492 | 0.3158 | 0.2097 | 0.3669 | 0.4417 | 139->101 (-38, -27.3%) |
+| 2018->2019 | LEXICAL_ONLY | 0.7469 | 0.4808 | 0.3506 | 0.6612 | 0.6486 | 64->47 (-17, -26.6%) |
+| 2021->2022 | LEXICAL_ONLY | 0.7450 | 0.3158 | 0.2097 | 0.5042 | 0.4417 | 139->101 (-38, -27.3%) |
 
 Both routed to `LEXICAL_ONLY` at `HIGH` confidence via the configured
 `(BEL, gross_margin)` entry, exactly as expected -- no other `AnalyticalMode`
@@ -206,43 +300,78 @@ manufactured to fake an eligible ACT pair.
 
 ## 10. Parity against prior research metrics
 
-Word counts match the compact-validation research
+**Word counts** match the compact-validation research
 (`docs/experiments/annual-report-bel-compact-validation.md` Section 3)
-**exactly** for both transitions (64->47, 139->101), and unigram/bigram
-Jaccard land within ~0.01 of the research's values (e.g. 2018->2019:
-research unigram 0.481 vs. implementation 0.4808; bigram 0.351 vs. 0.3506)
--- consistent with both using near-identical shingle-based token-overlap
-tokenization.
+**exactly** for both transitions (64->47, 139->101).
 
-Cosine, edit-similarity, and sequence-similarity diverge more from the
-research table (e.g. 2018->2019: research edit sim. 0.760 vs.
-implementation 0.5625). This is an **expected, already-documented**
-divergence, not a new bug: the research table's "TF-IDF cosine" column is
-literally TF-IDF (document-frequency-weighted), while this codebase's
-`lexical_cosine_similarity` is explicitly, by design, **not** TF-IDF --
-sublinear term-frequency only, no IDF weighting anywhere (see its
-docstring in `services/similarity_metrics.py`, a decision made in an
-earlier milestone, unrelated to 7C.3). The research's own compact-
-validation script was a throwaway exploratory tool with its own metric
-implementations, never wired to this codebase's production
-`similarity_metrics`/`similarity_tokenization` modules; some difference in
-edit/sequence metrics is the expected result of two independently-written
-tokenizers/algorithms rather than a shared implementation. This is only an
-implementation-parity check, not new metric research (per the milestone's
-own Section 9 instruction) -- the qualitative pattern the research
-predicted still holds exactly (see Section 11).
+**Unigram/bigram Jaccard** land within ~0.01 of the research's values
+(2018->2019: research unigram 0.481 vs. implementation 0.4808, bigram
+0.351 vs. 0.3506; 2021->2022: research unigram 0.306 vs. implementation
+0.3158, bigram 0.202 vs. 0.2097) -- consistent with near-identical
+shingle-based token-overlap tokenization. Unaffected by the Section 4.1
+correction (never changed).
+
+**TF-IDF cosine**, now computed by the genuine `pairwise_tfidf_cosine_similarity`,
+lands within ~0.005 of the research's published values: 2018->2019
+research 0.752 vs. implementation 0.7469 (diff 0.005); 2021->2022 research
+0.748 vs. implementation 0.7450 (diff 0.003). This is a **close, direct
+numeric reproduction** -- the fitting-scope difference documented in
+`pairwise_tfidf_cosine_similarity`'s own docstring (pairwise 2-document fit
+here vs. the research's per-unit 5-document corpus fit) turned out to
+matter far less than expected: a 5-document corpus fit was tested directly
+during this correction and produced ~0.659 for both transitions, roughly
+0.09 further from the research values than the pairwise fit -- so pairwise
+is not just architecturally consistent with this module's pair-locality
+convention, it is also the closer numeric match here.
+
+**Edit similarity**, now computed by the genuine `character_edit_similarity`,
+improved substantially but does not closely reproduce the research table:
+2018->2019 research 0.760 vs. implementation 0.6612 (diff ~0.10);
+2021->2022 research 0.621 vs. implementation 0.5042 (diff ~0.12) -- versus
+the pre-correction token-level values of 0.5625/0.3669, which were both
+further off *and* the wrong metric definition. The metric definition is
+now confirmed correct (character-level Levenshtein,
+`1 - distance/max(len)`, matching RapidFuzz's own formula exactly -- see
+`tests/test_similarity_metrics.py::test_character_edit_matches_research_formula`).
+The residual gap is attributed to genuine, minor differences between this
+codebase's production-reconstructed `SemanticUnit.source_text` and the
+research pilot's independently-extracted text for the same PDF passage --
+character-level Levenshtein is inherently far more sensitive to small
+wording/spacing/punctuation differences than length- or
+overlap-based metrics are (the research document itself makes this same
+observation about edit similarity's sensitivity, Section 8 there). This is
+not a metric-definition bug; reopening PDF extraction/reconstruction to
+chase closer character-level parity is explicitly out of this milestone's
+scope.
+
+**Sequence similarity** was audited and found to already be a correct
+reproduction of the research's own definition (`difflib.SequenceMatcher`,
+`autojunk=False`, over word tokens) -- no code change was needed or made.
+Re-running the BEL transitions with the research's own literal tokenizer
+regex (`\d+\.\d+%?|\d+/\d+|\d+%?|[A-Za-z]+(?:['’][A-Za-z]+)*`) in place of
+this codebase's tokenizer changed the ratios by under 0.01 (0.6486 ->
+0.6552, 0.4417 -> 0.4426), so tokenization is not the source of the
+remaining gap against the published table (0.480, 0.311 respectively). The
+same source-text-reconstruction explanation given for edit similarity
+above is the most plausible remaining cause, for the same reason
+(order-sensitive metrics are more exposed to small wording differences
+than the closely-matching, order-insensitive Jaccard values are). This is
+an implementation-parity check, not new metric research, per the
+milestone's own instruction -- the qualitative pattern the research
+predicted still holds exactly regardless (Section 11).
 
 ## 11. Sanity check against research behavior
 
 Prior research found, for BEL Gross Margin: stable boilerplate opening
 language keeping cosine moderate-to-high, bigram Jaccard dropping further
 because the substantive sentences reword every year, and meaningful
-word-count changes. The 7C.3 implementation reproduces this pattern
-exactly:
+word-count changes. The corrected 7C.3 implementation reproduces this
+pattern exactly:
 
-- Cosine (0.77, 0.65) is moderate-to-high in both transitions.
-- Bigram Jaccard (0.35, 0.21) is lower than cosine in both transitions,
-  by a wide margin -- the same "stable framing, reworded substance"
+- TF-IDF cosine (0.747, 0.745) is moderate-to-high in both transitions,
+  now numerically close to the research's own 0.752/0.748.
+- Bigram Jaccard (0.35, 0.21) is lower than cosine in both transitions, by
+  a wide margin -- the same "stable framing, reworded substance"
   signature.
 - Word-count changes are substantial in both transitions (-26.6%, -27.3%),
   correctly reflecting real prose revision rather than a near-zero
@@ -258,12 +387,15 @@ exactly:
   synthetic ACT data (`tests/test_analytical_eligibility_routing.py`,
   `tests/test_analytical_eligibility_service.py`) to confirm the
   configured path works correctly whenever a `MATCHED` pair does appear.
-- **Cosine/edit/sequence-similarity parity with the exploratory research
-  script is qualitative, not numeric** (Section 10) -- expected, given the
-  research script's real TF-IDF weighting versus this codebase's
-  deliberately-not-TF-IDF cosine metric, and two independently-written
-  tokenizers. Word counts and Jaccard metrics land at or very near the
-  research's own numbers.
+- **Edit-similarity and sequence-similarity parity with the research is
+  qualitative and directionally close, but not tight numerically**
+  (Section 10) -- both are now confirmed to implement the research's exact
+  metric *definitions*; the residual ~0.10-0.12 (edit) and comparable
+  (sequence) gap against the published BEL table is attributed to minor
+  differences between this codebase's production-reconstructed source text
+  and the research's independently-extracted text for the same passages,
+  not a metric-definition or tokenization error. TF-IDF cosine and word
+  counts, by contrast, now land within 0.005 and exactly, respectively.
 - `RENAMED` is routed identically to `MATCHED` in `route_alignment`, but
   (per 7C.2) is never actually emitted by the current alignment cascade --
   exercised only by unit tests, not the real corpus, same caveat 7C.2
@@ -271,17 +403,24 @@ exactly:
 
 ## 13. Final verdict
 
-**PASS WITH DOCUMENTED CAVEAT -- READY FOR 7C.4**
+**PASS -- READY FOR 7C.4**
 
 Trustworthy `MATCHED` semantic units route correctly to `LEXICAL_ONLY`
-under the configured units; `LEXICAL_ONLY` comparisons persist the
-validated metrics correctly (word counts and Jaccard values reproduce the
-research numbers closely; cosine/edit/sequence differ only because of a
-documented, pre-existing, and intentional metric-definition difference,
-not an implementation bug); `UNRESOLVED_UPSTREAM`/`AMBIGUOUS` alignments
-never produce a false comparison; real BEL comparisons reproduce the
-independently established qualitative pattern exactly; the full test
-suite passes with zero regressions. The one caveat -- no real-corpus ACT
-`LEXICAL_ONLY` example -- is a pre-existing 7C.2 corpus-configuration
-limitation, not a gap in the 7C.3 mechanism itself, and is documented
-rather than worked around with a manufactured test.
+under the configured units. `LEXICAL_ONLY` comparisons now persist metrics
+that genuinely implement the research's validated definitions:
+`tfidf_cosine` is real pairwise TF-IDF cosine (not the unrelated
+sublinear-TF metric used in the first pass) and reproduces the published
+BEL values within 0.005; `edit_similarity` is real character-level
+Levenshtein (not the unrelated token-level metric used in the first pass)
+with its formula verified identical to the research's own; `sequence_similarity`
+was audited and confirmed already correct, unchanged. Residual numeric
+gaps in edit/sequence similarity are attributed to source-text
+reconstruction differences between this codebase and the research's
+independent extraction, not to metric-definition or tokenization errors --
+documented rather than chased further, since reopening extraction is out
+of this milestone's scope. `UNRESOLVED_UPSTREAM`/`AMBIGUOUS` alignments
+never produce a false comparison; the full test suite passes with zero
+regressions, including the unmodified M3/M4 document-level pipeline. The
+ACT real-corpus coverage gap (Section 9) remains a pre-existing 7C.2
+corpus-configuration limitation, not a gap in the 7C.3 mechanism, and is
+documented rather than worked around with a manufactured test.

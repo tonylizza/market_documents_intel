@@ -146,7 +146,7 @@ class LexicalUnitComparison(UUIDPkMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("semantic_unit_alignments.id", ondelete="CASCADE"), nullable=False
     )
 
-    lexical_cosine_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tfidf_cosine: Mapped[float | None] = mapped_column(Float, nullable=True)
     unigram_jaccard: Mapped[float | None] = mapped_column(Float, nullable=True)
     bigram_jaccard: Mapped[float | None] = mapped_column(Float, nullable=True)
     edit_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)

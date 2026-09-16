@@ -214,7 +214,7 @@ def test_integration_matched_alignment_produces_lexical_only_decision_and_metric
     assert comparison.semantic_unit_alignment_id == alignment.id
     assert comparison.earlier_word_count > 0
     assert comparison.later_word_count > 0
-    assert comparison.lexical_cosine_similarity is not None
+    assert comparison.tfidf_cosine is not None
 
 
 def test_ineligible_when_no_current_alignment_run(db_session):

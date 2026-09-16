@@ -1,28 +1,32 @@
 """Pure lexical-change metrics for one `LEXICAL_ONLY` aligned semantic-unit
 pair (Track 7C.3, docs/7c3-analytical-eligibility-and-lexical-comparison.md).
 
-Reuses the exact metric functions validated for document-level comparison
-in `services.similarity_metrics`/`services.similarity_tokenization` --
-no new metric math, no composite score, no threshold, no materiality
-label. Every function here takes plain strings and returns plain values,
-so it can be unit tested without PostgreSQL, mirroring
-`similarity_metrics`'s own convention.
+Reuses metric functions from `services.similarity_metrics` chosen
+specifically to match the validated research's own metric definitions
+(docs/experiments/annual-report-lexical-change-pilot.md Section 5) --
+`pairwise_tfidf_cosine_similarity` for `tfidf_cosine` (genuine TF-IDF, not
+the document-pipeline's sublinear-TF `lexical_cosine_similarity`) and
+`character_edit_similarity` for `edit_similarity` (character-level, not
+the document-pipeline's token-level `edit_similarity`). No new metric
+math is written here -- every value comes from an existing,
+independently-tested `similarity_metrics` function; no composite score,
+no threshold, no materiality label.
 """
 
 from dataclasses import dataclass
 
 from market_documents.services.similarity_metrics import (
+    character_edit_similarity,
     diff_similarity,
-    edit_similarity,
     jaccard_similarity,
-    lexical_cosine_similarity,
+    pairwise_tfidf_cosine_similarity,
 )
 from market_documents.services.similarity_tokenization import tokenize
 
 
 @dataclass(frozen=True)
 class LexicalMetrics:
-    lexical_cosine_similarity: float | None
+    tfidf_cosine: float | None
     unigram_jaccard: float | None
     bigram_jaccard: float | None
     edit_similarity: float | None
@@ -34,15 +38,18 @@ class LexicalMetrics:
 
 
 def compute_lexical_metrics(earlier_text: str, later_text: str) -> LexicalMetrics:
-    """Tokenize both unit texts once (the same tokenizer used for
-    document-level similarity) and compute every 7C.3 lexical metric from
-    that shared token list.
+    """Compute every 7C.3 lexical metric for one aligned unit's earlier/later
+    text.
 
-    Word counts are token counts from this tokenizer, not
-    `SemanticUnit.word_count` (a 7C.1 extraction-provenance field computed
-    independently) -- keeping word count and the similarity metrics
-    sourced from the same tokenization avoids a spurious mismatch between
-    "word count changed by X" and "cosine computed over Y tokens".
+    `tfidf_cosine`, `unigram_jaccard`, `bigram_jaccard`, and
+    `sequence_similarity` are token-based (the shared tokenizer used
+    throughout `services.similarity_metrics`); `edit_similarity` is
+    character-based, per the research's own definition -- see
+    `character_edit_similarity`'s docstring. Word counts are token counts
+    from the same shared tokenizer, not `SemanticUnit.word_count` (a 7C.1
+    extraction-provenance field computed independently), so word count and
+    the token-based metrics are always sourced from one consistent
+    tokenization.
     """
     tokens_a = tokenize(earlier_text)
     tokens_b = tokenize(later_text)
@@ -54,10 +61,10 @@ def compute_lexical_metrics(earlier_text: str, later_text: str) -> LexicalMetric
     )
 
     return LexicalMetrics(
-        lexical_cosine_similarity=lexical_cosine_similarity(tokens_a, tokens_b),
+        tfidf_cosine=pairwise_tfidf_cosine_similarity(tokens_a, tokens_b),
         unigram_jaccard=jaccard_similarity(tokens_a, tokens_b, shingle_size=1),
         bigram_jaccard=jaccard_similarity(tokens_a, tokens_b, shingle_size=2),
-        edit_similarity=edit_similarity(tokens_a, tokens_b),
+        edit_similarity=character_edit_similarity(earlier_text, later_text),
         sequence_similarity=diff_similarity(tokens_a, tokens_b),
         earlier_word_count=earlier_word_count,
         later_word_count=later_word_count,

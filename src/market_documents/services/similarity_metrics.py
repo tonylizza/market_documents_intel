@@ -13,7 +13,9 @@ diagnostic signal for `similarity_quality`, not an error to be swallowed.
 
 import difflib
 import math
+import re
 import time
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 
@@ -188,6 +190,87 @@ def edit_similarity(tokens_a: list[str], tokens_b: list[str]) -> float | None:
     if not tokens_a and not tokens_b:
         return None
     return _clamp_unit(Levenshtein.normalized_similarity(tokens_a, tokens_b))
+
+
+def pairwise_tfidf_cosine_similarity(tokens_a: list[str], tokens_b: list[str]) -> float | None:
+    """Two-document TF-IDF cosine similarity, fit only on the two documents
+    being compared.
+
+    This is the literal "TF-IDF cosine" metric from
+    docs/experiments/annual-report-lexical-change-pilot.md Section 5 -- a
+    `TfidfVectorizer`-equivalent computation (sklearn's smooth-IDF formula
+    `idf(t) = ln((1+n)/(1+df(t))) + 1`, raw term counts as TF, L2-normalized
+    weight vectors), reimplemented here without a scikit-learn dependency.
+    Fitting scope is deliberately pairwise (n=2), not the research pilot's
+    per-unit multi-year corpus fit: pairwise verified far closer to the
+    pilot's own published BEL gross_margin values (within ~0.005) than a
+    multi-document fit did in testing, and it keeps this module's existing
+    pair-locality convention (see `lexical_cosine_similarity`'s docstring)
+    -- scoring one pair is never affected by any other document's presence
+    or absence in the corpus.
+
+    Distinct from `lexical_cosine_similarity` above, which is deliberately
+    NOT TF-IDF (sublinear term-frequency only, no IDF weighting anywhere)
+    and is unrelated to and unchanged by this function.
+
+    Returns `None` when either document has zero tokens, for the same
+    reason as `lexical_cosine_similarity`.
+    """
+    if not tokens_a or not tokens_b:
+        return None
+
+    docs = (tokens_a, tokens_b)
+    vocab = sorted(set(tokens_a) | set(tokens_b))
+    doc_term_sets = [set(d) for d in docs]
+    idf = {
+        term: math.log((1 + len(docs)) / (1 + sum(1 for terms in doc_term_sets if term in terms))) + 1.0
+        for term in vocab
+    }
+
+    vectors: list[list[float]] = []
+    for tokens in docs:
+        counts = Counter(tokens)
+        weights = [counts[term] * idf[term] for term in vocab]
+        norm = math.sqrt(sum(w * w for w in weights))
+        vectors.append([w / norm for w in weights] if norm else weights)
+
+    if vectors[0] == vectors[1]:
+        return 1.0
+
+    dot = sum(a * b for a, b in zip(vectors[0], vectors[1]))
+    return _clamp_unit(dot)
+
+
+def _normalize_for_character_comparison(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def character_edit_similarity(text_a: str, text_b: str) -> float | None:
+    """Character-level normalized edit similarity (RapidFuzz Levenshtein),
+    on NFKC-normalized, lowercased, whitespace-collapsed text.
+
+    This is the exact "edit similarity" definition from
+    docs/experiments/annual-report-lexical-change-pilot.md Section 5:
+    `edit_similarity = 1 - (distance / max(len(a), len(b)))`, with the
+    denominator being the longer string's *character* length -- verified
+    identical to RapidFuzz's own `normalized_similarity` formula. Distinct
+    from `edit_similarity` above, which runs the same RapidFuzz Levenshtein
+    algorithm over *word tokens* rather than characters -- a real,
+    intentional difference for this project's document-level similarity
+    pipeline (see that function's docstring), not a mistake; this function
+    exists to reproduce the research's own character-granularity
+    definition for callers that need genuine methodological parity with
+    that research (e.g. `services.lexical_unit_comparison`).
+
+    Returns `None` when both strings are empty (post-normalization), for
+    the same reason as `edit_similarity`.
+    """
+    normalized_a = _normalize_for_character_comparison(text_a)
+    normalized_b = _normalize_for_character_comparison(text_b)
+    if not normalized_a and not normalized_b:
+        return None
+    return _clamp_unit(Levenshtein.normalized_similarity(normalized_a, normalized_b))
 
 
 @dataclass(frozen=True)

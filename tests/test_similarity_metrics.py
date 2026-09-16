@@ -3,6 +3,7 @@ import time
 
 from market_documents.models.enums import DiffMode
 from market_documents.services.similarity_metrics import (
+    character_edit_similarity,
     compute_length_change_features,
     compute_metrics,
     diff_similarity,
@@ -10,6 +11,7 @@ from market_documents.services.similarity_metrics import (
     edit_similarity,
     jaccard_similarity,
     lexical_cosine_similarity,
+    pairwise_tfidf_cosine_similarity,
 )
 from market_documents.services.similarity_tokenization import tokenize
 
@@ -634,3 +636,122 @@ def test_length_change_features_negative_change():
     )
     assert features.word_count_change == -100
     assert features.word_count_change_ratio == -0.5
+
+
+# ---------------------------------------------------------------------------
+# Pairwise TF-IDF cosine similarity (Track 7C.3)
+# ---------------------------------------------------------------------------
+
+
+def test_pairwise_tfidf_identical_documents_returns_one():
+    tokens = tokenize("the group reported strong revenue growth this year")
+    assert pairwise_tfidf_cosine_similarity(tokens, tokens) == 1.0
+
+
+def test_pairwise_tfidf_completely_disjoint_documents_returns_zero():
+    a = tokenize("apples bananas cherries")
+    b = tokenize("dragons elephants foxes")
+    assert pairwise_tfidf_cosine_similarity(a, b) == 0.0
+
+
+def test_pairwise_tfidf_empty_tokens_returns_none():
+    assert pairwise_tfidf_cosine_similarity([], ["revenue", "growth"]) is None
+    assert pairwise_tfidf_cosine_similarity(["revenue", "growth"], []) is None
+    assert pairwise_tfidf_cosine_similarity([], []) is None
+
+
+def test_pairwise_tfidf_bounded_between_zero_and_one():
+    a = tokenize("revenue increased due to strong demand in the region")
+    b = tokenize("revenue decreased due to weak demand in another region")
+    score = pairwise_tfidf_cosine_similarity(a, b)
+    assert score is not None
+    assert 0.0 <= score <= 1.0
+
+
+def test_pairwise_tfidf_matches_manual_smooth_idf_computation():
+    """Verifies the exact sklearn-style smooth-IDF/L2-norm formula, not just
+    boundary behavior."""
+    a = ["alpha", "alpha", "beta"]
+    b = ["alpha", "gamma"]
+
+    # idf(t) = ln((1+2)/(1+df(t))) + 1
+    idf_alpha = math.log(3 / 3) + 1.0  # df=2 (both docs)
+    idf_beta = math.log(3 / 2) + 1.0  # df=1
+    idf_gamma = math.log(3 / 2) + 1.0  # df=1
+
+    vec_a = {"alpha": 2 * idf_alpha, "beta": 1 * idf_beta, "gamma": 0.0}
+    vec_b = {"alpha": 1 * idf_alpha, "beta": 0.0, "gamma": 1 * idf_gamma}
+    norm_a = math.sqrt(sum(v * v for v in vec_a.values()))
+    norm_b = math.sqrt(sum(v * v for v in vec_b.values()))
+    dot = sum(vec_a[t] / norm_a * vec_b[t] / norm_b for t in vec_a)
+
+    score = pairwise_tfidf_cosine_similarity(a, b)
+    assert score is not None
+    assert math.isclose(score, dot, rel_tol=1e-9)
+
+
+def test_pairwise_tfidf_differs_from_sublinear_tf_cosine_on_repeated_terms():
+    """`pairwise_tfidf_cosine_similarity` and `lexical_cosine_similarity`
+    are genuinely different metrics -- repeated-term weighting and IDF
+    weighting diverge on a document with heavy repetition."""
+    a = tokenize("margin margin margin margin improved due to demand")
+    b = tokenize("margin declined due to demand")
+    tfidf_score = pairwise_tfidf_cosine_similarity(a, b)
+    sublinear_score = lexical_cosine_similarity(a, b)
+    assert tfidf_score != sublinear_score
+
+
+# ---------------------------------------------------------------------------
+# Character-level edit similarity (Track 7C.3)
+# ---------------------------------------------------------------------------
+
+
+def test_character_edit_identical_strings_returns_one():
+    text = "The gross margin improved this year."
+    assert character_edit_similarity(text, text) == 1.0
+
+
+def test_character_edit_matches_research_formula():
+    """`edit_similarity = 1 - (distance / max(len(a), len(b)))`, per
+    docs/experiments/annual-report-lexical-change-pilot.md Section 5,
+    computed over the NFKC-normalized, lowercased, whitespace-collapsed
+    string (not tokens)."""
+    from rapidfuzz.distance import Levenshtein
+
+    a = "The Gross Margin held up well."
+    b = "The gross margin  held up very well."
+    normalized_a = "the gross margin held up well."
+    normalized_b = "the gross margin held up very well."
+    distance = Levenshtein.distance(normalized_a, normalized_b)
+    expected = 1 - (distance / max(len(normalized_a), len(normalized_b)))
+
+    score = character_edit_similarity(a, b)
+    assert score is not None
+    assert math.isclose(score, expected, rel_tol=1e-9)
+
+
+def test_character_edit_both_empty_returns_none():
+    assert character_edit_similarity("", "") is None
+    assert character_edit_similarity("   ", "\n\t") is None
+
+
+def test_character_edit_bounded_between_zero_and_one():
+    a = "The gross margin is dependent on the product mix."
+    b = "Completely unrelated sentence about something else entirely."
+    score = character_edit_similarity(a, b)
+    assert score is not None
+    assert 0.0 <= score <= 1.0
+
+
+def test_character_edit_differs_from_token_level_edit_similarity():
+    """`character_edit_similarity` and `edit_similarity` are genuinely
+    different metrics -- character-level and token-level Levenshtein
+    diverge on a short character-level insertion inside a long string."""
+    a = "The gross margin is dependent on the product and geographic mix of sales."
+    b = "The gross margin is dependent on the product and geographic-mix of sales."
+
+    tokens_a = tokenize(a)
+    tokens_b = tokenize(b)
+    char_score = character_edit_similarity(a, b)
+    token_score = edit_similarity(tokens_a, tokens_b)
+    assert char_score != token_score

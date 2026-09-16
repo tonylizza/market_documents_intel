@@ -163,7 +163,7 @@ def classify_cmd(
                     if decision.analytical_mode == AnalyticalMode.LEXICAL_ONLY and decision.lexical_comparison:
                         m = decision.lexical_comparison
                         line += (
-                            f"\n        cosine={m.lexical_cosine_similarity} unigram_jaccard={m.unigram_jaccard} "
+                            f"\n        tfidf_cosine={m.tfidf_cosine} unigram_jaccard={m.unigram_jaccard} "
                             f"bigram_jaccard={m.bigram_jaccard} edit_sim={m.edit_similarity} seq_sim={m.sequence_similarity} "
                             f"words={m.earlier_word_count}->{m.later_word_count} ({m.word_count_change:+d})"
                         )
