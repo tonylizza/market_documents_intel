@@ -1,10 +1,12 @@
-"""Track 7C.1 CLI: schedule localization and headed-narrative semantic-unit
-extraction, independent of the existing passage pipeline.
+"""Track 7C.1/7C.2 CLI: schedule localization, headed-narrative semantic-unit
+extraction, and cross-year semantic-unit alignment -- independent of the
+existing passage pipeline.
 
 Deliberately minimal, per docs/7c1-schedule-localization-plan.md Section
-5.4: `localize`, `extract`, `status` only. No `align` or `compare`
-subcommand exists in 7C.1 -- alignment and comparison are out of scope for
-this milestone.
+5.4 and docs/7c2-semantic-unit-alignment.md: `localize`, `extract`,
+`align`, `status` only. No `compare` subcommand exists yet -- comparison
+(measuring how much a matched unit changed) is 7C.3's scope, not this
+track's.
 """
 
 from sqlalchemy import select
@@ -15,9 +17,11 @@ from market_documents.db.session import get_session
 from market_documents.models.company import Company
 from market_documents.models.enums import NormalizedSchedule
 from market_documents.models.report import Report
+from market_documents.models.report_pair import ReportPair
 from market_documents.models.schedule import ScheduleInstance
 from market_documents.models.semantic_unit import SemanticUnit
 from market_documents.services.schedule_localization import get_current_localization_run, run_localization
+from market_documents.services.semantic_unit_alignment import get_current_alignment_run, run_alignment
 from market_documents.services.semantic_unit_extraction import get_current_unit_run, run_extraction
 
 app = typer.Typer(help="Track 7C.1: schedule localization + headed narrative semantic units.")
@@ -33,6 +37,17 @@ def _reports_for_ticker(session: Session, ticker: str) -> list[Report]:
     return sorted(
         session.scalars(select(Report).where(Report.company_id == company.id)).all(),
         key=lambda r: r.directory_year,
+    )
+
+
+def _report_pairs_for_ticker(session: Session, ticker: str) -> list[ReportPair]:
+    company = session.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if company is None:
+        typer.echo(f"no company found for ticker {ticker!r}")
+        raise typer.Exit(code=1)
+    return sorted(
+        session.scalars(select(ReportPair).where(ReportPair.company_id == company.id)).all(),
+        key=lambda p: p.earlier_report.directory_year,
     )
 
 
@@ -87,12 +102,40 @@ def extract_cmd(
                 typer.echo(f"{report.directory_year}: {run.status.value}" + (f" -- {run.review_reason}" if run.review_reason else ""))
 
 
+@app.command("align")
+def align_cmd(
+    ticker: str = typer.Argument(..., help="Company ticker, e.g. BEL."),
+    schedule: str = typer.Option("financial_performance", "--schedule", help="Only financial_performance is implemented in 7C.1."),
+    force: bool = typer.Option(False, "--force", help="Re-run even if an identical successful run exists."),
+) -> None:
+    """Align SemanticUnit records across every adjacent-year ReportPair of one company (Track 7C.2)."""
+    resolved_schedule = _resolve_schedule(schedule)
+    with get_session() as session:
+        pairs = _report_pairs_for_ticker(session, ticker)
+        for pair in pairs:
+            label = f"{pair.earlier_report.directory_year}->{pair.later_report.directory_year}"
+            outcome = run_alignment(session, pair, resolved_schedule, force=force)
+            if outcome.ineligible:
+                typer.echo(f"{label}: ineligible -- {outcome.ineligible_reason}")
+            elif outcome.skipped:
+                typer.echo(f"{label}: skipped -- {outcome.skip_reason}")
+            else:
+                run = outcome.run
+                typer.echo(f"{label}: {run.status.value}" + (f" -- {run.review_reason}" if run.review_reason else ""))
+                for alignment in run.alignments:
+                    earlier_key = alignment.earlier_semantic_unit.unit_key if alignment.earlier_semantic_unit else "-"
+                    later_key = alignment.later_semantic_unit.unit_key if alignment.later_semantic_unit else "-"
+                    typer.echo(
+                        f"    {earlier_key} -> {later_key}: {alignment.status.value} ({alignment.confidence.value}) -- {alignment.evidence}"
+                    )
+
+
 @app.command("status")
 def status_cmd(
     ticker: str = typer.Argument(..., help="Company ticker, e.g. BEL."),
     schedule: str = typer.Option("financial_performance", "--schedule", help="Only financial_performance is implemented in 7C.1."),
 ) -> None:
-    """Print current schedule-localization and semantic-unit-extraction state per report."""
+    """Print current schedule-localization, semantic-unit-extraction, and semantic-unit-alignment state."""
     resolved_schedule = _resolve_schedule(schedule)
     with get_session() as session:
         reports = _reports_for_ticker(session, ticker)
@@ -117,3 +160,10 @@ def status_cmd(
                 unit_details = " " + ", ".join(parts) if parts else ""
 
             typer.echo(f"{report.directory_year}: localization={loc_label}{instance_label} | units={unit_label}{unit_details}")
+
+        pairs = _report_pairs_for_ticker(session, ticker)
+        for pair in pairs:
+            label = f"{pair.earlier_report.directory_year}->{pair.later_report.directory_year}"
+            alignment_run = get_current_alignment_run(session, pair.id, resolved_schedule)
+            alignment_label = "none" if alignment_run is None else alignment_run.status.value
+            typer.echo(f"{label}: alignment={alignment_label}")

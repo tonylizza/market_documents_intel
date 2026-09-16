@@ -297,3 +297,53 @@ class CanonicalExtractionStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
     COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
     FAILED = "FAILED"
+
+
+# --------------------------------------------------------------------------
+# Track 7C.2: cross-year semantic-unit alignment.
+#
+# Determines correspondence between persisted SemanticUnit records across
+# an adjacent-year ReportPair -- never how much a matched pair's text
+# changed (that is 7C.3). Reads only SemanticUnit/SemanticUnitRun; never
+# Passage, PassageAlignment, or legacy TextBlock. See
+# docs/7c2-semantic-unit-alignment.md.
+# --------------------------------------------------------------------------
+
+
+class SemanticUnitAlignmentRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class SemanticUnitAlignmentStatus(str, enum.Enum):
+    """Cross-year correspondence outcome for one semantic unit.
+
+    UNRESOLVED_UPSTREAM covers every case where a unit's status on either
+    side is not trustworthy enough to call a genuine disclosure event: a
+    boundary that exists but never resolved, or a unit_key with no row at
+    all in a run that itself completed with warnings. ADDED/REMOVED are
+    reserved for the case where the *other* side's SemanticUnitRun
+    completed with zero warnings -- proof every unit configured for that
+    run was cleanly accounted for -- so a missing counterpart there is
+    confirmed absence, not an extraction limitation. AMBIGUOUS is for more
+    than one plausible normalized-heading candidate on either side; never
+    guessed.
+
+    RENAMED is declared but not currently emitted:
+    `services.semantic_unit_alignment.align_units` only matches a
+    different unit_key across years via normalized-heading equality, and a
+    heading that survives that normalization is indistinguishable from
+    cosmetic formatting noise -- calling it a genuine rename would need
+    evidence this deterministic cascade doesn't have. Reserved for a future
+    milestone with real evidence to justify it.
+    """
+
+    MATCHED = "MATCHED"
+    RENAMED = "RENAMED"
+    ADDED = "ADDED"
+    REMOVED = "REMOVED"
+    UNRESOLVED_UPSTREAM = "UNRESOLVED_UPSTREAM"
+    AMBIGUOUS = "AMBIGUOUS"

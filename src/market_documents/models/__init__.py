@@ -26,6 +26,8 @@ from market_documents.models.enums import (
     ReportSide,
     ScheduleLocalizationRunStatus,
     ScheduleLocalizationStatus,
+    SemanticUnitAlignmentRunStatus,
+    SemanticUnitAlignmentStatus,
     SemanticUnitBoundaryStatus,
     SemanticUnitBoundaryStrategy,
     SemanticUnitRunStatus,
@@ -59,6 +61,7 @@ from market_documents.models.schedule import (
     ScheduleLocalizationRun,
 )
 from market_documents.models.semantic_unit import SemanticUnit, SemanticUnitRun, SemanticUnitSourceBlock
+from market_documents.models.semantic_unit_alignment import SemanticUnitAlignment, SemanticUnitAlignmentRun
 from market_documents.models.similarity import DocumentSimilarity, SimilarityRun
 
 __all__ = [
@@ -122,6 +125,10 @@ __all__ = [
     "SemanticUnitRun",
     "SemanticUnit",
     "SemanticUnitSourceBlock",
+    "SemanticUnitAlignmentRunStatus",
+    "SemanticUnitAlignmentStatus",
+    "SemanticUnitAlignmentRun",
+    "SemanticUnitAlignment",
     "CanonicalExtractionStatus",
     "CanonicalExtractionRun",
     "CanonicalPage",
