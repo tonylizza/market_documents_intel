@@ -1,12 +1,13 @@
-"""Track 7C.1/7C.2 CLI: schedule localization, headed-narrative semantic-unit
-extraction, and cross-year semantic-unit alignment -- independent of the
+"""Track 7C.1/7C.2/7C.3 CLI: schedule localization, headed-narrative
+semantic-unit extraction, cross-year semantic-unit alignment, and
+analytical eligibility routing + lexical comparison -- independent of the
 existing passage pipeline.
 
 Deliberately minimal, per docs/7c1-schedule-localization-plan.md Section
-5.4 and docs/7c2-semantic-unit-alignment.md: `localize`, `extract`,
-`align`, `status` only. No `compare` subcommand exists yet -- comparison
-(measuring how much a matched unit changed) is 7C.3's scope, not this
-track's.
+5.4, docs/7c2-semantic-unit-alignment.md, and
+docs/7c3-analytical-eligibility-and-lexical-comparison.md: `localize`,
+`extract`, `align`, `classify`, `status` only. No structured-table
+subcommand exists yet -- that is out of scope for 7C.3.
 """
 
 from sqlalchemy import select
@@ -15,11 +16,12 @@ import typer
 
 from market_documents.db.session import get_session
 from market_documents.models.company import Company
-from market_documents.models.enums import NormalizedSchedule
+from market_documents.models.enums import AnalyticalMode, NormalizedSchedule
 from market_documents.models.report import Report
 from market_documents.models.report_pair import ReportPair
 from market_documents.models.schedule import ScheduleInstance
 from market_documents.models.semantic_unit import SemanticUnit
+from market_documents.services.analytical_eligibility import get_current_decision_run, run_analytical_comparison
 from market_documents.services.schedule_localization import get_current_localization_run, run_localization
 from market_documents.services.semantic_unit_alignment import get_current_alignment_run, run_alignment
 from market_documents.services.semantic_unit_extraction import get_current_unit_run, run_extraction
@@ -130,12 +132,50 @@ def align_cmd(
                     )
 
 
+@app.command("classify")
+def classify_cmd(
+    ticker: str = typer.Argument(..., help="Company ticker, e.g. BEL."),
+    schedule: str = typer.Option("financial_performance", "--schedule", help="Only financial_performance is implemented in 7C.1."),
+    force: bool = typer.Option(False, "--force", help="Re-run even if an identical successful run exists."),
+) -> None:
+    """Route SemanticUnitAlignments to an analytical comparison mode, and compute lexical metrics for LEXICAL_ONLY units (Track 7C.3)."""
+    resolved_schedule = _resolve_schedule(schedule)
+    with get_session() as session:
+        pairs = _report_pairs_for_ticker(session, ticker)
+        for pair in pairs:
+            label = f"{pair.earlier_report.directory_year}->{pair.later_report.directory_year}"
+            outcome = run_analytical_comparison(session, pair, resolved_schedule, force=force)
+            if outcome.ineligible:
+                typer.echo(f"{label}: ineligible -- {outcome.ineligible_reason}")
+            elif outcome.skipped:
+                typer.echo(f"{label}: skipped -- {outcome.skip_reason}")
+            else:
+                run = outcome.run
+                typer.echo(f"{label}: {run.status.value}" + (f" -- {run.review_reason}" if run.review_reason else ""))
+                for decision in run.decisions:
+                    alignment = decision.semantic_unit_alignment
+                    unit_key = (
+                        alignment.later_semantic_unit.unit_key
+                        if alignment.later_semantic_unit
+                        else alignment.earlier_semantic_unit.unit_key
+                    )
+                    line = f"    {unit_key}: {decision.analytical_mode.value} ({decision.confidence.value}) -- {decision.reason}"
+                    if decision.analytical_mode == AnalyticalMode.LEXICAL_ONLY and decision.lexical_comparison:
+                        m = decision.lexical_comparison
+                        line += (
+                            f"\n        cosine={m.lexical_cosine_similarity} unigram_jaccard={m.unigram_jaccard} "
+                            f"bigram_jaccard={m.bigram_jaccard} edit_sim={m.edit_similarity} seq_sim={m.sequence_similarity} "
+                            f"words={m.earlier_word_count}->{m.later_word_count} ({m.word_count_change:+d})"
+                        )
+                    typer.echo(line)
+
+
 @app.command("status")
 def status_cmd(
     ticker: str = typer.Argument(..., help="Company ticker, e.g. BEL."),
     schedule: str = typer.Option("financial_performance", "--schedule", help="Only financial_performance is implemented in 7C.1."),
 ) -> None:
-    """Print current schedule-localization, semantic-unit-extraction, and semantic-unit-alignment state."""
+    """Print current schedule-localization, semantic-unit-extraction, semantic-unit-alignment, and analytical-decision state."""
     resolved_schedule = _resolve_schedule(schedule)
     with get_session() as session:
         reports = _reports_for_ticker(session, ticker)
@@ -166,4 +206,6 @@ def status_cmd(
             label = f"{pair.earlier_report.directory_year}->{pair.later_report.directory_year}"
             alignment_run = get_current_alignment_run(session, pair.id, resolved_schedule)
             alignment_label = "none" if alignment_run is None else alignment_run.status.value
-            typer.echo(f"{label}: alignment={alignment_label}")
+            decision_run = get_current_decision_run(session, pair.id, resolved_schedule)
+            decision_label = "none" if decision_run is None else decision_run.status.value
+            typer.echo(f"{label}: alignment={alignment_label} | analytical={decision_label}")

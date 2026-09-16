@@ -1,5 +1,10 @@
 from market_documents.db.base import Base
 from market_documents.models.alignment import AlignmentRun, PassageAlignment
+from market_documents.models.analytical_comparison import (
+    AnalyticalDecision,
+    AnalyticalDecisionRun,
+    LexicalUnitComparison,
+)
 from market_documents.models.company import Company
 from market_documents.models.embedding import EmbeddingRun, PassageEmbedding, PassageRetrievalChunk
 from market_documents.models.enums import (
@@ -7,6 +12,8 @@ from market_documents.models.enums import (
     AlignmentRunStatus,
     AlignmentStatus,
     AlignmentType,
+    AnalyticalDecisionRunStatus,
+    AnalyticalMode,
     BlockType,
     BoundaryConfidence,
     CanonicalExtractionStatus,
@@ -135,4 +142,9 @@ __all__ = [
     "CanonicalBlock",
     "CanonicalLine",
     "CanonicalSpan",
+    "AnalyticalDecisionRunStatus",
+    "AnalyticalMode",
+    "AnalyticalDecisionRun",
+    "AnalyticalDecision",
+    "LexicalUnitComparison",
 ]

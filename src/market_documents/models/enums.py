@@ -347,3 +347,39 @@ class SemanticUnitAlignmentStatus(str, enum.Enum):
     REMOVED = "REMOVED"
     UNRESOLVED_UPSTREAM = "UNRESOLVED_UPSTREAM"
     AMBIGUOUS = "AMBIGUOUS"
+
+
+# --------------------------------------------------------------------------
+# Track 7C.3: analytical eligibility routing + lexical comparison.
+#
+# Determines how a MATCHED/RENAMED SemanticUnitAlignment should be compared
+# -- and, for LEXICAL_ONLY only, computes the validated lexical metrics.
+# ADDED/REMOVED/STRUCTURED_COMPARISON_PREFERRED/LEXICAL_WITH_NUMERIC_CONTEXT
+# are represented as routing outcomes only; no comparison engine exists yet
+# for them. UNRESOLVED_UPSTREAM/AMBIGUOUS alignments never reach a decision
+# at all -- see docs/7c3-analytical-eligibility-and-lexical-comparison.md.
+# --------------------------------------------------------------------------
+
+
+class AnalyticalDecisionRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class AnalyticalMode(str, enum.Enum):
+    """Comparison routing outcome for one aligned semantic unit, per the
+    comparison-type taxonomy validated in
+    docs/experiments/annual-report-analytical-unit-eligibility.md. Only
+    LEXICAL_ONLY is executed by `services.lexical_unit_comparison` in
+    7C.3 -- the others are declared routing outcomes with no comparison
+    engine behind them yet.
+    """
+
+    LEXICAL_ONLY = "LEXICAL_ONLY"
+    LEXICAL_WITH_NUMERIC_CONTEXT = "LEXICAL_WITH_NUMERIC_CONTEXT"
+    STRUCTURED_COMPARISON_PREFERRED = "STRUCTURED_COMPARISON_PREFERRED"
+    PRESENCE_STATUS_ONLY = "PRESENCE_STATUS_ONLY"
+    NOT_ELIGIBLE = "NOT_ELIGIBLE"
