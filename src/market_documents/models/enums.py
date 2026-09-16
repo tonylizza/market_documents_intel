@@ -188,3 +188,112 @@ class LanguageSignalQuality(str, enum.Enum):
 class ReportSide(str, enum.Enum):
     EARLIER = "EARLIER"
     LATER = "LATER"
+
+
+# --------------------------------------------------------------------------
+# Track 7C.1: schedule localization + headed narrative semantic units.
+#
+# Parallel replacement track (see docs/7c1-schedule-localization-plan.md):
+# built entirely alongside the existing passage-segmentation/alignment/
+# feature pipeline above, reusing only Report/ExtractionRun/Page/TextBlock
+# read-only. 7C.1 implements exactly one schedule (FINANCIAL_PERFORMANCE)
+# and one semantic-unit type (HEADED_NARRATIVE_UNIT); it stops at
+# source-faithful reconstruction and provenance -- no cross-year alignment,
+# no comparison of any kind. NormalizedSchedule names the full validated
+# ten-schedule taxonomy for future convenience, but `schedule_localization.
+# localize_schedule` rejects any value other than FINANCIAL_PERFORMANCE
+# explicitly (NotImplementedError), not silently.
+# --------------------------------------------------------------------------
+
+
+class NormalizedSchedule(str, enum.Enum):
+    CEO_REVIEW = "CEO_REVIEW"
+    CHAIR_REVIEW = "CHAIR_REVIEW"
+    FINANCIAL_PERFORMANCE = "FINANCIAL_PERFORMANCE"
+    MATERIAL_RISKS = "MATERIAL_RISKS"
+    STRATEGY = "STRATEGY"
+    OUTLOOK = "OUTLOOK"
+    CORPORATE_GOVERNANCE = "CORPORATE_GOVERNANCE"
+    REMUNERATION = "REMUNERATION"
+    LEGAL_REGULATORY = "LEGAL_REGULATORY"
+    MATERIAL_MATTERS_OPERATING_ENVIRONMENT = "MATERIAL_MATTERS_OPERATING_ENVIRONMENT"
+
+
+class ScheduleLocalizationRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class ScheduleLocalizationStatus(str, enum.Enum):
+    FOUND_PRIMARY_ONLY = "FOUND_PRIMARY_ONLY"
+    FOUND_PRIMARY_AND_SUPPORTING = "FOUND_PRIMARY_AND_SUPPORTING"
+    DISTRIBUTED_NO_CLEAR_PRIMARY = "DISTRIBUTED_NO_CLEAR_PRIMARY"
+    NOT_FOUND = "NOT_FOUND"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class BoundaryConfidence(str, enum.Enum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class SemanticUnitRunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"
+
+
+class SemanticUnitType(str, enum.Enum):
+    """Only HEADED_NARRATIVE_UNIT is implemented in 7C.1 -- one member
+    because that's all this milestone needs, not the start of a broad
+    ontology."""
+
+    HEADED_NARRATIVE_UNIT = "HEADED_NARRATIVE_UNIT"
+
+
+class SemanticUnitBoundaryStrategy(str, enum.Enum):
+    NEXT_HEADING = "NEXT_HEADING"
+    ANCHOR_SENTENCE = "ANCHOR_SENTENCE"
+
+
+class SemanticUnitBoundaryStatus(str, enum.Enum):
+    """Whether an end boundary was actually resolved -- kept independent of
+    *how confidently* it was resolved (see `BoundaryConfidence`, reused by
+    `SemanticUnit.boundary_confidence`). A unit with UNRESOLVED here always
+    has `end_page`/`source_text`/`boundary_confidence` set to NULL; nothing
+    is ever fabricated or partially guessed to fill those columns."""
+
+    RESOLVED = "RESOLVED"
+    UNRESOLVED = "UNRESOLVED"
+
+
+# --------------------------------------------------------------------------
+# Track 7C.1a: canonical PDF source representation.
+#
+# A source-faithful, block/line/span-granular capture of one report's raw
+# PDF, built directly from PyMuPDF's own `get_text("dict")` output and
+# persisted alongside (never in place of) the legacy Page/TextBlock layer
+# (see `services.extraction`). Exists specifically because the 7C.1
+# real-corpus acceptance run (docs/implementation/track-7c1-acceptance.md
+# Sections 2.4 and 4.3) found the legacy TextBlock layer to be lossy (BEL
+# 2020's Gross Margin paragraph is entirely absent from persisted
+# TextBlock rows despite being present in the raw PDF) and under-structured
+# (ACT's CFO-review sub-headings cannot be distinguished from schedule
+# boundaries without font/hierarchy signal TextBlock never captured). No
+# classification, cleaning, or heuristic interpretation happens at this
+# layer -- see `models.pdf_source` and `services.pdf_source_extraction`.
+# --------------------------------------------------------------------------
+
+
+class CanonicalExtractionStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    FAILED = "FAILED"

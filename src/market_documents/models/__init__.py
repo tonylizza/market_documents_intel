@@ -8,6 +8,8 @@ from market_documents.models.enums import (
     AlignmentStatus,
     AlignmentType,
     BlockType,
+    BoundaryConfidence,
+    CanonicalExtractionStatus,
     DiffMode,
     EmbeddingRunStatus,
     ExtractionQuality,
@@ -18,9 +20,16 @@ from market_documents.models.enums import (
     LanguageSignalRunStatus,
     MetadataSource,
     MetadataStatus,
+    NormalizedSchedule,
     PassageSegmentationRunStatus,
     PassageType,
     ReportSide,
+    ScheduleLocalizationRunStatus,
+    ScheduleLocalizationStatus,
+    SemanticUnitBoundaryStatus,
+    SemanticUnitBoundaryStrategy,
+    SemanticUnitRunStatus,
+    SemanticUnitType,
     SimilarityResultQuality,
     SimilarityRunStatus,
 )
@@ -35,8 +44,21 @@ from market_documents.models.financial_language import (
     ReportPairLanguageFeatures,
 )
 from market_documents.models.passage import Passage, PassageSegmentationRun, PassageSourceBlock
+from market_documents.models.pdf_source import (
+    CanonicalBlock,
+    CanonicalExtractionRun,
+    CanonicalLine,
+    CanonicalPage,
+    CanonicalSpan,
+)
 from market_documents.models.report import Report
 from market_documents.models.report_pair import ReportPair
+from market_documents.models.schedule import (
+    ScheduleInstance,
+    ScheduleInstanceSupportingSpan,
+    ScheduleLocalizationRun,
+)
+from market_documents.models.semantic_unit import SemanticUnit, SemanticUnitRun, SemanticUnitSourceBlock
 from market_documents.models.similarity import DocumentSimilarity, SimilarityRun
 
 __all__ = [
@@ -86,4 +108,24 @@ __all__ = [
     "LanguageSignalRunStatus",
     "LanguageSignalQuality",
     "ReportSide",
+    "NormalizedSchedule",
+    "BoundaryConfidence",
+    "ScheduleLocalizationRunStatus",
+    "ScheduleLocalizationStatus",
+    "ScheduleLocalizationRun",
+    "ScheduleInstance",
+    "ScheduleInstanceSupportingSpan",
+    "SemanticUnitRunStatus",
+    "SemanticUnitType",
+    "SemanticUnitBoundaryStrategy",
+    "SemanticUnitBoundaryStatus",
+    "SemanticUnitRun",
+    "SemanticUnit",
+    "SemanticUnitSourceBlock",
+    "CanonicalExtractionStatus",
+    "CanonicalExtractionRun",
+    "CanonicalPage",
+    "CanonicalBlock",
+    "CanonicalLine",
+    "CanonicalSpan",
 ]

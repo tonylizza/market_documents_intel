@@ -1,0 +1,96 @@
+"""Centralized, versioned schedule-localization configuration.
+
+Track 7C.1 (docs/7c1-schedule-localization-plan.md): mirrors
+`passage_config.py`'s pattern -- an `ALGORITHM_VERSION` plus a
+`compute_configuration_hash()` fingerprint, so a change to the heading
+vocabulary or matching rules forces a fresh `ScheduleLocalizationRun`
+instead of silently reusing a stale one.
+
+7C.1 implements exactly one schedule, FINANCIAL_PERFORMANCE. The heading
+vocabulary below is drawn directly from
+`docs/experiments/annual-report-schedule-localization.md` (BEL 2021's
+"Finance director's report", ACT 2022's "CFO'S REVIEW") plus generic
+variants observed across the corpus's other companies for that same
+schedule, so the deterministic matcher recognizes the concept without
+requiring per-company configuration. `NormalizedSchedule` names the full
+ten-schedule taxonomy for future milestones; only `FINANCIAL_PERFORMANCE`
+has an entry in `SCHEDULE_HEADING_VOCABULARY` today.
+"""
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field
+
+from market_documents.models.enums import NormalizedSchedule
+
+# v1.0.0 = initial deterministic heading-vocabulary matcher, FINANCIAL_PERFORMANCE only.
+# v1.0.1 = normalize typographic quotes/apostrophes (U+2018/2019/201C/201D) to ASCII
+# before matching -- real BEL/ACT PDF text uses curly apostrophes ("Finance
+# director's report") while the configured vocabulary used straight ones, so every
+# BEL year failed to match until this normalization was added (7C.1 real-corpus
+# acceptance run, docs/implementation/track-7c1-acceptance.md).
+# v1.0.2 = a span's end boundary only advances past a heading-candidate on a
+# strictly later page -- a same-page trailing heading-candidate (e.g. a
+# "salient features" sidebar's numeric callouts) is not a section boundary
+# and must not truncate a multi-page schedule to one page (same acceptance
+# run).
+# v1.0.3 = ignore heading-candidates that recur 3+ times anywhere in the
+# document (running section banners like BEL's "PERFORMANCE REVIEW",
+# misclassified as HEADING_CANDIDATE by the frozen upstream pipeline) when
+# computing a span's end boundary -- otherwise the very next page's repeated
+# banner falsely ends the schedule one page early (same acceptance run).
+# v1.0.4 = a "<heading> continued" candidate is the same section resuming,
+# not a new section -- it must not end the span either (same acceptance
+# run).
+# v1.1.0 = Track 7C.1b (docs/7c1b-canonical-hierarchy-integration.md):
+# hierarchy-aware boundary termination -- a later heading-candidate only
+# ends a span if `heading_structure.assess_heading_structure` finds it
+# plausibly top-level (document-relative font-size tiering, paired/grouped
+# labels, table-of-contents pattern), so an internal subsection heading or
+# chart title no longer truncates its parent schedule. Also prefers the
+# Track 7C.1a canonical source over legacy TextBlock when a report has a
+# current successful CanonicalExtractionRun.
+ALGORITHM_VERSION = "1.1.0"
+
+HEADING_VOCABULARY_VERSION = 1
+
+# Canonical heading strings for FINANCIAL_PERFORMANCE, matched
+# case-insensitively as a substring of a HEADING_CANDIDATE block's text
+# (see `schedule_localization.py`). Order is not significant -- every
+# configured string is checked for every heading-candidate block.
+SCHEDULE_HEADING_VOCABULARY: dict[NormalizedSchedule, tuple[str, ...]] = {
+    NormalizedSchedule.FINANCIAL_PERFORMANCE: (
+        "Finance director's report",
+        "Finance Director's Report",
+        "CFO's review",
+        "CFO'S REVIEW",
+        "CFO's report",
+        "Financial performance",
+        "Financial Performance",
+        "Financial review",
+        "Financial Review",
+    ),
+}
+
+
+@dataclass(frozen=True)
+class ScheduleConfig:
+    heading_vocabulary: dict[NormalizedSchedule, tuple[str, ...]] = field(
+        default_factory=lambda: SCHEDULE_HEADING_VOCABULARY
+    )
+
+
+SCHEDULE_CONFIG = ScheduleConfig()
+
+
+def compute_configuration_hash(config: ScheduleConfig = SCHEDULE_CONFIG) -> str:
+    """Deterministic fingerprint of everything that can change localization output."""
+    payload = {
+        "algorithm_version": ALGORITHM_VERSION,
+        "heading_vocabulary_version": HEADING_VOCABULARY_VERSION,
+        "heading_vocabulary": {
+            schedule.value: list(headings) for schedule, headings in config.heading_vocabulary.items()
+        },
+    }
+    canonical = json.dumps(payload, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

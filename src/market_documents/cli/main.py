@@ -1,6 +1,6 @@
 import typer
 
-from market_documents.cli import db, language, pairs, passages, publish, reports, validation
+from market_documents.cli import canonical_source, db, language, pairs, passages, publish, reports, units, validation
 from market_documents.logging import setup_logging
 
 app = typer.Typer(name="market-documents", help="JSE annual-report disclosure intelligence CLI.")
@@ -11,6 +11,8 @@ app.add_typer(language.app, name="language")
 app.add_typer(passages.app, name="passages")
 app.add_typer(publish.app, name="publish")
 app.add_typer(validation.app, name="validation")
+app.add_typer(units.app, name="units")
+app.add_typer(canonical_source.app, name="canonical")
 
 
 @app.callback()
