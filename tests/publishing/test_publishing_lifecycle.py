@@ -16,14 +16,28 @@ from sqlalchemy import func, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _feature_fixtures import build_ready_pair  # noqa: E402
+from test_cutover_comparison import (  # noqa: E402
+    _alignment,
+    _alignment_run,
+    _decision,
+    _decision_run,
+    _lexical,
+    _localization_run,
+    _schedule_instance,
+    _unit,
+    _unit_run,
+)
 
+from market_documents.models.enums import SemanticUnitAlignmentStatus
 from market_documents.publishing.models import (
     ApplicationState,
     Company as AppCompany,
+    NarrativeUnitComparison,
     PassageComparison,
     PassageLanguageSignal,
     Publication,
     PublicationStatus,
+    StructuredTableComparison,
 )
 from market_documents.publishing.publisher import PublicationBuilder, activate_publication, cleanup_publications
 from market_documents.services.feature_extraction import build_features
@@ -160,3 +174,71 @@ def test_cleanup_dry_run_does_not_delete(db_session, app_db_session):
     removed = cleanup_publications(app_db_session, keep=0, dry_run=True)
     assert publication.id in {p.id for p in removed}
     assert app_db_session.get(Publication, publication.id) is not None
+
+
+def test_build_populates_cutover_comparison_rows_for_in_scope_pair(db_session, app_db_session):
+    """Track 7A.3/7A.4: `PublicationBuilder.build()` must persist Track
+    7C.6 narrative/structured comparison rows for an in-scope pair,
+    regardless of the live `SEMANTIC_COMPARISON_CUTOVER_ENABLED` flag (the
+    router used here is always force-enabled at publish time -- see
+    `cutover_publishing.py`)."""
+    pair = _build_and_feature(db_session, ticker="BEL")
+
+    # Layer Track 7C.6 semantic-unit fixtures on top of the same pair so it
+    # resolves for BEL's gross_margin scope entry.
+    earlier_loc = _localization_run(db_session, pair.earlier_report)
+    later_loc = _localization_run(db_session, pair.later_report)
+    earlier_instance = _schedule_instance(db_session, earlier_loc, pair.earlier_report)
+    later_instance = _schedule_instance(db_session, later_loc, pair.later_report)
+    earlier_unit_run = _unit_run(db_session, pair.earlier_report, earlier_loc)
+    later_unit_run = _unit_run(db_session, pair.later_report, later_loc)
+    earlier_unit = _unit(db_session, earlier_unit_run, pair.earlier_report, earlier_instance, word_count=64)
+    later_unit = _unit(db_session, later_unit_run, pair.later_report, later_instance, word_count=47)
+    arun = _alignment_run(db_session, pair, earlier_unit_run, later_unit_run)
+    alignment = _alignment(
+        db_session, arun, pair, earlier_unit=earlier_unit, later_unit=later_unit,
+        status=SemanticUnitAlignmentStatus.MATCHED,
+    )
+    drun = _decision_run(db_session, pair, arun)
+    decision = _decision(db_session, drun, alignment)
+    _lexical(db_session, decision, alignment)
+    db_session.flush()
+
+    builder = PublicationBuilder(publication_version="test-cutover-v1")
+    publication = builder.build(db_session, app_db_session)
+
+    assert publication.status == PublicationStatus.READY.value, publication.failure_reason
+    assert publication.narrative_comparison_count == 1
+    # BEL is not in NEW_PIPELINE_STRUCTURED_SCOPE.
+    assert publication.structured_comparison_count == 0
+
+    rows = app_db_session.scalars(select(NarrativeUnitComparison)).all()
+    assert len(rows) == 1
+    assert rows[0].unit_key == "gross_margin"
+    assert rows[0].status == "RESOLVED"
+    assert rows[0].comparison_backend == "SEMANTIC_UNIT"
+
+
+def test_build_populates_both_narrative_and_structured_rows_for_act(db_session, app_db_session):
+    """ACT is in scope for a narrative unit AND two structured table
+    families at once -- these are not mutually exclusive."""
+    _build_and_feature(db_session, ticker="ACT")
+
+    builder = PublicationBuilder(publication_version="test-cutover-v2")
+    publication = builder.build(db_session, app_db_session)
+
+    assert publication.status == PublicationStatus.READY.value, publication.failure_reason
+    # No upstream Track 7C.1-7C.5 data was built for this pair, so every
+    # in-scope row is published unresolved -- never silently omitted.
+    assert publication.narrative_comparison_count == 1
+    assert publication.structured_comparison_count == 2
+
+    narrative_rows = app_db_session.scalars(select(NarrativeUnitComparison)).all()
+    assert narrative_rows[0].status == "UNRESOLVED_UPSTREAM"
+
+    structured_rows = app_db_session.scalars(select(StructuredTableComparison)).all()
+    assert {r.table_family_key for r in structured_rows} == {
+        "ned_remuneration_policy_table",
+        "total_remuneration_outcomes",
+    }
+    assert all(r.status == "UNRESOLVED_UPSTREAM" for r in structured_rows)

@@ -347,6 +347,115 @@ async function seedLanguageMetricsAndPassageComposition(
 }
 
 /**
+ * Track 7A.3/7A.4: seeds one resolved `app.narrative_unit_comparisons` row
+ * and both a resolved and an unresolved `app.structured_table_comparisons`
+ * row -- mirroring the real local dataset, where ACT is in scope for both a
+ * narrative unit (`cfo_conclusion`) and two structured table families at
+ * once (not mutually exclusive; see `comparison-facade.ts`), and one of
+ * ACT's two table families does not always resolve.
+ */
+async function seedCutoverComparisons(
+  client: Client,
+  publicationId: string,
+  comparisonId: string,
+  earlierReportId: string,
+  laterReportId: string,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO app.narrative_unit_comparisons
+       (id, publication_id, report_comparison_id, schedule, unit_key, comparison_backend, status,
+        alignment_status, alignment_confidence, analytical_mode, lexical_metrics,
+        earlier_word_count, later_word_count, earlier_provenance, later_provenance, review_reason)
+     VALUES ($1, $2, $3, 'FINANCIAL_PERFORMANCE', 'cfo_conclusion', 'SEMANTIC_UNIT', 'RESOLVED',
+             'MATCHED', 'HIGH', 'LEXICAL_ONLY', $4,
+             64, 47, $5, $6, NULL)`,
+    [
+      randomUUID(),
+      publicationId,
+      comparisonId,
+      JSON.stringify({
+        tfidf_cosine: 0.75,
+        unigram_jaccard: 0.48,
+        bigram_jaccard: 0.35,
+        edit_similarity: 0.66,
+        sequence_similarity: 0.65,
+        word_count_change: -17,
+        word_count_change_pct: -0.27,
+      }),
+      JSON.stringify({
+        report_id: earlierReportId,
+        directory_year: 2022,
+        start_page: 10,
+        end_page: 11,
+        source_block_ids: [randomUUID()],
+        source_excerpt: "CFO conclusion narrative excerpt (earlier).",
+      }),
+      JSON.stringify({
+        report_id: laterReportId,
+        directory_year: 2023,
+        start_page: 9,
+        end_page: 10,
+        source_block_ids: [randomUUID()],
+        source_excerpt: "CFO conclusion narrative excerpt (later).",
+      }),
+    ],
+  );
+
+  const structuredFamilies = [
+    {
+      key: "total_remuneration_outcomes",
+      status: "RESOLVED",
+      rowAlignments: [{ earlier_row_identity: "a banderker", later_row_identity: "a banderker", status: "MATCHED", confidence: "HIGH", evidence: "matched on name" }],
+      columnAlignments: [{ normalized_key: "total_remuneration", is_restated: false, status: "MATCHED", comparability_status: "COMPARABLE" }],
+      valueChangeEvents: [
+        {
+          row_identity: "a banderker", column_normalized_key: "total_remuneration", event_type: "VALUE_INCREASED",
+          earlier_raw_value: "1 148 904", later_raw_value: "4 781 364", earlier_numeric: 1148904, later_numeric: 4781364,
+          absolute_change: 3632460, pct_change: 3.162,
+        },
+      ],
+      footnotes: ["Restated for prior-year comparatives."],
+    },
+    {
+      key: "ned_remuneration_policy_table",
+      status: "UNRESOLVED_UPSTREAM",
+      rowAlignments: [],
+      columnAlignments: [],
+      valueChangeEvents: [],
+      footnotes: [],
+    },
+  ];
+
+  for (const family of structuredFamilies) {
+    await client.query(
+      `INSERT INTO app.structured_table_comparisons
+         (id, publication_id, report_comparison_id, table_family_key, comparison_backend, status,
+          row_alignments, column_alignments, value_change_events, footnotes,
+          earlier_provenance, later_provenance, review_reason)
+       VALUES ($1, $2, $3, $4, 'STRUCTURED_TABLE', $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        randomUUID(),
+        publicationId,
+        comparisonId,
+        family.key,
+        family.status,
+        JSON.stringify(family.rowAlignments),
+        JSON.stringify(family.columnAlignments),
+        JSON.stringify(family.valueChangeEvents),
+        JSON.stringify(family.footnotes),
+        family.status === "RESOLVED"
+          ? JSON.stringify({ report_id: earlierReportId, directory_year: 2022, start_page: 105, end_page: 106, source_block_ids: [randomUUID()], source_excerpt: null })
+          : null,
+        family.status === "RESOLVED"
+          ? JSON.stringify({ report_id: laterReportId, directory_year: 2023, start_page: 104, end_page: 105, source_block_ids: [randomUUID()], source_excerpt: null })
+          : null,
+        family.status === "UNRESOLVED_UPSTREAM" ? "no current successful StructuredTableAlignmentRun for this report pair" : null,
+      ],
+    );
+  }
+}
+
+/**
  * Truncates and repopulates the application schema in the dedicated
  * frontend test database (`market_documents_app_test`) with a small,
  * realistic-shaped fixture: 6 companies matching the real corpus's report
@@ -366,6 +475,8 @@ export async function seedAppDatabase(): Promise<{ publicationId: string }> {
     await client.query(
       `TRUNCATE TABLE
          app.discovery_items,
+         app.narrative_unit_comparisons,
+         app.structured_table_comparisons,
          app.passage_language_signals,
          app.passage_comparisons,
          app.language_metrics,
@@ -582,6 +693,7 @@ export async function seedAppDatabase(): Promise<{ publicationId: string }> {
 
           if (company.ticker === "ACT") {
             await seedLanguageMetricsAndPassageComposition(client, publicationId, companyId, comparisonId, reportIds[i], reportIds[i + 1]);
+            await seedCutoverComparisons(client, publicationId, comparisonId, reportIds[i], reportIds[i + 1]);
           }
         }
       }

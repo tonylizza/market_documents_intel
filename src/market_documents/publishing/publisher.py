@@ -16,6 +16,10 @@ from sqlalchemy.orm import Session
 from market_documents.config import Settings, get_settings
 from market_documents.models.enums import AlignmentStatus, AlignmentType, ReportSide
 from market_documents.publishing import labels
+from market_documents.publishing.cutover_publishing import (
+    build_narrative_comparison_rows,
+    build_structured_comparison_rows,
+)
 from market_documents.publishing.discovery import DiscoveryCandidate, rank_discovery_items
 from market_documents.publishing.findings import ComparisonMetrics, eligible_candidates, select_findings
 from market_documents.publishing.models import (
@@ -26,9 +30,11 @@ from market_documents.publishing.models import (
     LanguageMetric,
     MetricDefinition,
     MetricLabelThreshold,
+    NarrativeUnitComparison,
     Passage,
     PassageComparison,
     PassageLanguageSignal,
+    StructuredTableComparison,
 )
 from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
 from market_documents.publishing.models import QaChunk as AppQaChunk
@@ -236,7 +242,7 @@ class PublicationBuilder:
         app_session.flush()
 
         try:
-            counts = self._build_rows(app_session, publication, snapshot)
+            counts = self._build_rows(research_session, app_session, publication, snapshot)
         except Exception as exc:  # noqa: BLE001 -- must record failure, never re-raise silently past this point
             publication.status = PublicationStatus.FAILED.value
             publication.failure_reason = str(exc)
@@ -261,7 +267,13 @@ class PublicationBuilder:
         app_session.flush()
         return publication
 
-    def _build_rows(self, app_session: Session, publication: Publication, snapshot: ResearchSnapshot) -> dict:
+    def _build_rows(
+        self,
+        research_session: Session,
+        app_session: Session,
+        publication: Publication,
+        snapshot: ResearchSnapshot,
+    ) -> dict:
         pub_id = publication.id
         pv = self.publication_version
 
@@ -404,6 +416,8 @@ class PublicationBuilder:
         app_comparisons: dict[uuid.UUID, ReportComparison] = {}
         comparisons_by_company: dict[uuid.UUID, list[ComparisonDataset]] = {}
         comparison_metrics_by_source: dict[uuid.UUID, ComparisonMetrics] = {}
+        narrative_comparison_count = 0
+        structured_comparison_count = 0
 
         for cd in snapshot.comparisons:
             pair = cd.pair
@@ -537,6 +551,42 @@ class PublicationBuilder:
             app_comparisons[pair.id] = app_comparison
             comparisons_by_company.setdefault(company_source_id, []).append(cd)
             app_session.add(app_comparison)
+
+        app_session.flush()
+
+        # --- Track 7A.3/7A.4: Track 7C.6 cutover comparison rows ---
+        # A separate pass, after `ReportComparison` rows are flushed (same
+        # ordering discipline as the passage-comparisons/language-metrics
+        # pass further below): `NarrativeUnitComparison`/
+        # `StructuredTableComparison` have no ORM `relationship()` back to
+        # `ReportComparison`, only a raw FK column, so their parent row must
+        # already be persisted before they are added -- adding both in the
+        # same flush risks an insert-order FK violation. See
+        # `cutover_publishing.py` -- always force-enabled at publish time;
+        # the live web app decides at read time whether to prefer these over
+        # the legacy `ReportComparison` fields above.
+        for cd in snapshot.comparisons:
+            app_comparison = app_comparisons.get(cd.pair.id)
+            if app_comparison is None:
+                continue
+            narrative_rows: list[NarrativeUnitComparison] = build_narrative_comparison_rows(
+                research_session,
+                cd.pair,
+                app_comparison_id=app_comparison.id,
+                publication_id=pub_id,
+                publication_version=pv,
+            )
+            structured_rows: list[StructuredTableComparison] = build_structured_comparison_rows(
+                research_session,
+                cd.pair,
+                app_comparison_id=app_comparison.id,
+                publication_id=pub_id,
+                publication_version=pv,
+            )
+            app_session.add_all(narrative_rows)
+            app_session.add_all(structured_rows)
+            narrative_comparison_count += len(narrative_rows)
+            structured_comparison_count += len(structured_rows)
 
         app_session.flush()
 
@@ -1186,6 +1236,8 @@ class PublicationBuilder:
             "discovery_item_count": len(ranked_items),
             "qa_chunk_count": qa_chunk_count,
             "qa_chunk_passage_mapping_count": qa_chunk_passage_mapping_count,
+            "narrative_comparison_count": narrative_comparison_count,
+            "structured_comparison_count": structured_comparison_count,
         }
 
 

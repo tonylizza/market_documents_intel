@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PostgresComparisonRepository } from "@/lib/repositories/postgres-comparison-repository";
-import { getComparisonPageViewModel } from "@/lib/services/comparison-service";
+import { getComparisonView } from "@/lib/services/comparison-facade";
 import { PageHeader } from "@/components/PageHeader";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ErrorState } from "@/components/ErrorState";
@@ -14,6 +14,8 @@ import { LanguageMetricsSection } from "@/components/LanguageMetricsSection";
 import { PassageCompositionSection } from "@/components/PassageCompositionSection";
 import { TechnicalDetails } from "@/components/TechnicalDetails";
 import { DefinitionList } from "@/components/DefinitionList";
+import { NarrativeUnitComparisonSection } from "@/components/NarrativeUnitComparisonSection";
+import { StructuredTableComparisonSection } from "@/components/StructuredTableComparisonSection";
 import { formatPeriodEnd } from "@/lib/formatting/dates";
 import { formatCount, formatMetricValue } from "@/lib/formatting/numbers";
 import styles from "./page.module.css";
@@ -35,19 +37,22 @@ export async function generateMetadata({ params }: ComparisonPageProps): Promise
 }
 
 /**
- * Report-comparison detail page (Milestone 7A.3): the primary analytical
- * page. Three queries total via `getComparisonPageViewModel` -- findings,
+ * Report-comparison detail page (Milestone 7A.3; Track 7A.3/7A.4 wired the
+ * Track 7C.6 cutover layer in via `getComparisonView`). Legacy data is
+ * three queries total via `getComparisonPageViewModel` -- findings,
  * headline metrics, and technical details are all derived from the first
- * query's row, not fetched separately.
+ * query's row, not fetched separately. When cutover is in scope for this
+ * comparison, two additional narrow reads (`getNarrativeUnitComparison`/
+ * `getStructuredTableComparisons`) run alongside it.
  */
 export default async function ComparisonPage({ params }: ComparisonPageProps) {
   const { comparisonId } = await params;
   const repository = new PostgresComparisonRepository();
 
-  let viewModel: Awaited<ReturnType<typeof getComparisonPageViewModel>> = null;
+  let view: Awaited<ReturnType<typeof getComparisonView>> = null;
   let failed = false;
   try {
-    viewModel = await getComparisonPageViewModel(repository, comparisonId);
+    view = await getComparisonView(repository, comparisonId);
   } catch (error) {
     failed = true;
     console.error("Failed to load comparison page data:", (error as Error).message);
@@ -56,10 +61,11 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
   if (failed) {
     return <ErrorState title="This comparison is temporarily unavailable" />;
   }
-  if (!viewModel) {
+  if (!view) {
     notFound();
   }
 
+  const { legacy: viewModel } = view;
   const { comparison, findings, headlineMetrics, technicalDetails, reportSideLanguageMetrics, alignmentChangeLanguageMetrics, passageComposition } =
     viewModel;
 
@@ -92,6 +98,30 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
           />
         </div>
       </section>
+
+      {view.backend === "CUTOVER" && view.narrative && (
+        <section aria-labelledby="narrative-unit-heading" className={styles.section}>
+          <SectionHeader
+            id="narrative-unit-heading"
+            title="Longitudinal comparison"
+            description="Semantic-unit comparison between the matched narrative sections of the two reports."
+          />
+          <NarrativeUnitComparisonSection narrative={view.narrative} />
+        </section>
+      )}
+
+      {view.backend === "CUTOVER" && view.structured.length > 0 && (
+        <section aria-labelledby="structured-table-heading" className={styles.section}>
+          <SectionHeader
+            id="structured-table-heading"
+            title="Longitudinal comparison"
+            description="Structured-table comparison between the matched tables of the two reports."
+          />
+          {view.structured.map((table) => (
+            <StructuredTableComparisonSection structured={table} key={table.tableFamilyKey} />
+          ))}
+        </section>
+      )}
 
       <section aria-labelledby="metrics-heading" className={styles.section}>
         <SectionHeader id="metrics-heading" title="Headline metrics" />

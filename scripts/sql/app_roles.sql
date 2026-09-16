@@ -94,3 +94,12 @@ TO app_readonly;
 -- app.current_companies LIMIT 1`) rather than reading across every
 -- historical publication.
 GRANT SELECT ON app.metric_definitions, app.metric_label_thresholds TO app_readonly;
+
+-- Track 7A.3/7A.4: Track 7C.6 cutover comparison rows (narrative
+-- semantic-unit / structured-table comparisons), scoped to the active
+-- publication only, same current-view-wrapper discipline as every other
+-- grant above.
+GRANT SELECT ON
+    app.current_narrative_unit_comparisons,
+    app.current_structured_table_comparisons
+TO app_readonly;

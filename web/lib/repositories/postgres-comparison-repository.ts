@@ -9,6 +9,17 @@ import {
 } from "@/lib/schemas/comparison";
 import { COMPARISON_ROW_COLUMNS_SQL, mapComparisonRow } from "@/lib/repositories/comparison-mapper";
 import type { ComparisonRepository } from "@/lib/repositories/comparison-repository";
+import type { NarrativeUnitComparison, StructuredTableComparison } from "@/lib/domain/cutover-comparison";
+import {
+  NARRATIVE_UNIT_COMPARISON_ROW_COLUMNS_SQL,
+  STRUCTURED_TABLE_COMPARISON_ROW_COLUMNS_SQL,
+  narrativeUnitComparisonRowSchema,
+  structuredTableComparisonRowSchema,
+} from "@/lib/schemas/cutover-comparison";
+import {
+  mapNarrativeUnitComparisonRow,
+  mapStructuredTableComparisonRow,
+} from "@/lib/repositories/cutover-comparison-mapper";
 import type {
   ComparisonEvidenceFilterOptions,
   ComparisonEvidenceFilters,
@@ -311,5 +322,41 @@ export class PostgresComparisonRepository implements ComparisonRepository {
         .sort((a, b) => a.label.localeCompare(b.label)),
       subcategoriesByCategory,
     } satisfies ComparisonEvidenceFilterOptions;
+  }
+
+  async getNarrativeUnitComparison(comparisonId: string): Promise<NarrativeUnitComparison | null> {
+    const rows = await query(
+      "SELECT " +
+        NARRATIVE_UNIT_COMPARISON_ROW_COLUMNS_SQL +
+        `FROM app.current_narrative_unit_comparisons
+       WHERE report_comparison_id = $1`,
+      [comparisonId],
+    );
+    if (rows.length === 0) return null;
+
+    const parsed = narrativeUnitComparisonRowSchema.safeParse(rows[0]);
+    if (!parsed.success) {
+      throw new MalformedRowError("narrative-unit-comparison", parsed.error.message);
+    }
+    return mapNarrativeUnitComparisonRow(parsed.data);
+  }
+
+  async getStructuredTableComparisons(comparisonId: string): Promise<StructuredTableComparison[]> {
+    const rows = await query(
+      "SELECT " +
+        STRUCTURED_TABLE_COMPARISON_ROW_COLUMNS_SQL +
+        `FROM app.current_structured_table_comparisons
+       WHERE report_comparison_id = $1
+       ORDER BY table_family_key`,
+      [comparisonId],
+    );
+
+    return rows.map((row, index) => {
+      const parsed = structuredTableComparisonRowSchema.safeParse(row);
+      if (!parsed.success) {
+        throw new MalformedRowError(`structured-table-comparison[${index}]`, parsed.error.message);
+      }
+      return mapStructuredTableComparisonRow(parsed.data);
+    });
   }
 }

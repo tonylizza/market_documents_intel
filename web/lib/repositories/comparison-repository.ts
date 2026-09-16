@@ -1,5 +1,6 @@
 import type { LanguageMetric, PassageComposition, ReportComparisonDetail } from "@/lib/domain/comparison";
 import type { ComparisonEvidenceFilterOptions, ComparisonEvidenceFilters, ComparisonEvidenceItem } from "@/lib/domain/passage";
+import type { NarrativeUnitComparison, StructuredTableComparison } from "@/lib/domain/cutover-comparison";
 
 /**
  * No generic/arbitrary-query method exists on this interface by design --
@@ -22,4 +23,16 @@ export interface ComparisonRepository {
   getComparisonEvidence(comparisonId: string, filters: ComparisonEvidenceFilters): Promise<ComparisonEvidenceItem[]>;
   countComparisonEvidence(comparisonId: string, filters: ComparisonEvidenceFilters): Promise<number>;
   getComparisonEvidenceFilterOptions(comparisonId: string): Promise<ComparisonEvidenceFilterOptions>;
+
+  /**
+   * Track 7A.3/7A.4: Track 7C.6 cutover comparison rows, present only for
+   * report comparisons whose (ticker, schedule, unit_key) /
+   * (ticker, table_family_key) is in the fixed cutover scope -- `null`/`[]`
+   * for every out-of-scope comparison. A non-null/non-empty result may still
+   * carry an unresolved `status`; callers must never treat that as "row not
+   * found" and substitute legacy data (docs/7a3-7a4-live-comparison-
+   * integration.md).
+   */
+  getNarrativeUnitComparison(comparisonId: string): Promise<NarrativeUnitComparison | null>;
+  getStructuredTableComparisons(comparisonId: string): Promise<StructuredTableComparison[]>;
 }

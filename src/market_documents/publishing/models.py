@@ -118,6 +118,9 @@ class Publication(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     # Milestone 7B.2
     qa_chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     qa_chunk_passage_mapping_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Milestone 7A.3/7A.4: Track 7C.6 cutover comparison rows
+    narrative_comparison_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    structured_comparison_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     validation_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -461,6 +464,106 @@ class PassageComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     collision_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     split_merge_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     primary_alignment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class NarrativeUnitComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """Track 7C.6 semantic-unit comparison, persisted at publish time for
+    every report-comparison whose (ticker, schedule, unit_key) is in the
+    fixed `cutover_config.NEW_PIPELINE_NARRATIVE_SCOPE` scope -- always
+    computed with the cutover router force-enabled (mirroring
+    `compare-cutover --force-enabled`), regardless of the live
+    `SEMANTIC_COMPARISON_CUTOVER_ENABLED` flag at publish time. Whether the
+    live caller actually *prefers* this row over the legacy
+    `ReportComparison` fields is a read-time decision made by the web
+    application against its own copy of that flag -- see
+    docs/7a3-7a4-live-comparison-integration.md. `status` may be
+    `UNRESOLVED_UPSTREAM`/`AMBIGUOUS`/`REVIEW_REQUIRED`: an unresolved row is
+    still published (never silently substituted with a legacy result), so
+    the caller can render an explicit unresolved state."""
+
+    __tablename__ = "narrative_unit_comparisons"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id", "report_comparison_id", "unit_key",
+            name="uq_app_narrative_unit_comparisons_scope",
+        ),
+        Index("ix_app_narrative_unit_comparisons_publication_id", "publication_id"),
+        Index("ix_app_narrative_unit_comparisons_comparison_id", "report_comparison_id"),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    report_comparison_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.report_comparisons.id", ondelete="CASCADE"), nullable=False
+    )
+
+    schedule: Mapped[str] = mapped_column(String(64), nullable=False)
+    unit_key: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    comparison_backend: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    alignment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    alignment_confidence: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    analytical_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    lexical_metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    earlier_word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    later_word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    earlier_provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    later_provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class StructuredTableComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """Track 7C.6 structured-table comparison, persisted at publish time for
+    every report-comparison whose (ticker, table_family_key) is in the fixed
+    `cutover_config.NEW_PIPELINE_STRUCTURED_SCOPE` scope. One report
+    comparison may have more than one row (ACT has two in-scope table
+    families). Row/column alignments, value-change events, and footnotes are
+    stored as JSONB arrays rather than normalized child tables: only two
+    table families are in scope for this integration milestone, so a fully
+    normalized shape would be schema sprawl this milestone does not need
+    (docs/7a3-7a4-live-comparison-integration.md). Same publish-time/
+    read-time flag split as `NarrativeUnitComparison` above."""
+
+    __tablename__ = "structured_table_comparisons"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id", "report_comparison_id", "table_family_key",
+            name="uq_app_structured_table_comparisons_scope",
+        ),
+        Index("ix_app_structured_table_comparisons_publication_id", "publication_id"),
+        Index("ix_app_structured_table_comparisons_comparison_id", "report_comparison_id"),
+        {"schema": "app"},
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_internal.publications.id", ondelete="CASCADE"), nullable=False
+    )
+    report_comparison_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app.report_comparisons.id", ondelete="CASCADE"), nullable=False
+    )
+
+    table_family_key: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    comparison_backend: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    row_alignments: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    column_alignments: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    value_change_events: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    footnotes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    earlier_provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    later_provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

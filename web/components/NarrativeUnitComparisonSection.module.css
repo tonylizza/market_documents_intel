@@ -1,0 +1,22 @@
+.unitLabel {
+  font-weight: var(--font-weight-medium);
+  margin: 0 0 var(--space-3);
+}
+
+.unresolved {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-tinted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.unresolvedTitle {
+  font-weight: var(--font-weight-medium);
+  margin: 0 0 var(--space-1);
+}
+
+.unresolvedDescription {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}

@@ -159,3 +159,29 @@ QA_CHUNK_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
 DROP_QA_CHUNK_CURRENT_VIEWS_SQL = tuple(
     f"DROP VIEW IF EXISTS app.{name};" for name, _ in reversed(QA_CHUNK_CURRENT_VIEWS)
 )
+
+# ---------------------------------------------------------------------------
+# Track 7A.3/7A.4: Track 7C.6 cutover-comparison current views
+# ---------------------------------------------------------------------------
+#
+# Same replay-safety reasoning as `RETRIEVAL_CURRENT_VIEWS`/
+# `QA_CHUNK_CURRENT_VIEWS` above: a SEPARATE tuple, created/dropped only by
+# the migration that introduces `app.narrative_unit_comparisons`/
+# `app.structured_table_comparisons`, never appended to an earlier
+# milestone's tuple.
+CUTOVER_COMPARISON_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
+    (
+        "current_narrative_unit_comparisons",
+        "CREATE OR REPLACE VIEW app.current_narrative_unit_comparisons AS "
+        f"SELECT t.* FROM app.narrative_unit_comparisons t {_ACTIVE_PUBLICATION_JOIN};",
+    ),
+    (
+        "current_structured_table_comparisons",
+        "CREATE OR REPLACE VIEW app.current_structured_table_comparisons AS "
+        f"SELECT t.* FROM app.structured_table_comparisons t {_ACTIVE_PUBLICATION_JOIN};",
+    ),
+)
+
+DROP_CUTOVER_COMPARISON_CURRENT_VIEWS_SQL = tuple(
+    f"DROP VIEW IF EXISTS app.{name};" for name, _ in reversed(CUTOVER_COMPARISON_CURRENT_VIEWS)
+)
