@@ -35,6 +35,7 @@ from market_documents.services.structured_table_reconstruction import (
     get_current_extraction_run as get_current_structured_extraction_run,
     run_table_reconstruction,
 )
+from market_documents.services.shadow_evaluation import render_markdown_report, run_shadow_evaluation
 
 app = typer.Typer(help="Track 7C.1: schedule localization + headed narrative semantic units.")
 
@@ -295,3 +296,29 @@ def status_cmd(
             structured_label = " | structured=" + ", ".join(structured_parts) if structured_parts else ""
 
             typer.echo(f"{label}: alignment={alignment_label} | analytical={decision_label}{structured_label}")
+
+
+@app.command("evaluate-shadow")
+def evaluate_shadow_cmd(
+    ticker: list[str] = typer.Option(None, "--ticker", help="Company ticker; repeatable. Defaults to every ticker with new-pipeline output."),
+    all_supported: bool = typer.Option(False, "--all-supported", help="Evaluate every ticker with at least one new-pipeline run (BEL, ACT today)."),
+    output: str = typer.Option(None, "--output", help="Path to write the markdown report; defaults to stdout only."),
+) -> None:
+    """Track 7C.5: read-only shadow comparison of legacy passage alignment
+    against the new semantic-unit/structured-table pipeline. Computes
+    descriptive metrics only -- never runs or mutates either pipeline, and
+    never cuts production over.
+    """
+    tickers = list(ticker) if ticker else (["BEL", "ACT"] if all_supported else None)
+    if not tickers:
+        typer.echo("pass --ticker (repeatable) or --all-supported")
+        raise typer.Exit(code=1)
+    with get_session() as session:
+        evaluation = run_shadow_evaluation(session, tickers)
+    markdown = render_markdown_report(evaluation)
+    if output:
+        with open(output, "w") as f:
+            f.write(markdown)
+        typer.echo(f"wrote {output}")
+    else:
+        typer.echo(markdown)
