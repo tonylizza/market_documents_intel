@@ -3,6 +3,7 @@ from market_documents.services.block_classification import (
     PageBlockGeometry,
     classify_block,
     find_table_header_fragment_indices,
+    is_short_alphanumeric_fragment,
 )
 from market_documents.services.extraction_config import ExtractionConfig
 
@@ -326,3 +327,138 @@ def test_no_geometry_available_short_circuits():
         PageBlockGeometry(block_type=BlockType.TABLE_LIKE, x0=None, y0=None, x1=None, y1=None),
     ]
     assert find_table_header_fragment_indices(blocks, CONFIG) == set()
+
+
+# --------------------------------------------------------------------------
+# Track 7D.2b -- short alphanumeric chart/data-label fragment hardening.
+#
+# Fixtures are the real ACT 2021/2022 corpus blocks (canonical_blocks raw
+# text, confirmed via direct DB inspection during this track) that leaked
+# into `healthcare_services_review`'s persisted source_text, plus nearby
+# real narrative from the same pages/reports used as false-positive guards.
+# --------------------------------------------------------------------------
+
+
+def test_number_plus_short_label_classified_as_fragment():
+    # Real ACT 2021 corpus block (p63): a chart figure paired with a
+    # one-word data-series label.
+    block_type, excluded, reason = _classify("385 Denis")
+    assert block_type == BlockType.NUMERIC_FRAGMENT
+    assert excluded is True
+    assert reason == "short alphanumeric chart/data-label fragment"
+
+
+def test_multiple_percentage_tokens_classified_as_fragment():
+    # Real ACT 2022 corpus block (p62): two percentage figures with no
+    # label text at all.
+    block_type, excluded, _ = _classify("15.1%\n-2.1%")
+    assert block_type == BlockType.NUMERIC_FRAGMENT
+    assert excluded is True
+
+
+def test_year_plus_short_label_classified_as_fragment():
+    # Real ACT 2021 corpus block (p63): a bare year paired with the start
+    # of a parenthetical chart annotation.
+    block_type, excluded, _ = _classify("2021\n(excluding")
+    assert block_type == BlockType.NUMERIC_FRAGMENT
+    assert excluded is True
+
+
+def test_currency_unit_prefixed_figure_with_label_classified_as_fragment():
+    block_type, excluded, _ = _classify("R450m Revenue")
+    assert block_type == BlockType.NUMERIC_FRAGMENT
+    assert excluded is True
+
+
+def test_legitimate_short_sentence_with_percentage_not_reclassified():
+    # Contains the generic connector "by" -- real grammatical structure,
+    # not a bare label -- and is also too long for the word cap.
+    block_type, excluded, _ = _classify("revenue increased by 15%")
+    assert block_type != BlockType.NUMERIC_FRAGMENT
+    assert excluded is False
+
+
+def test_legitimate_sentence_with_year_not_reclassified():
+    text = "Revenue increased by 15.1% during the year."
+    block_type, excluded, _ = _classify(text)
+    assert block_type == BlockType.PARAGRAPH
+    assert excluded is False
+
+
+def test_ordinary_heading_not_reclassified_as_fragment():
+    block_type, _, _ = _classify("CORPORATE GOVERNANCE")
+    assert block_type == BlockType.HEADING_CANDIDATE
+
+
+def test_bold_large_font_short_block_with_number_stays_heading_not_fragment():
+    # A table-of-contents entry ("OUR BUSINESS 6") is shouty and would
+    # otherwise satisfy the fragment shape (one short label + one bare
+    # number) -- heading-like signals must win first.
+    block_type, excluded, _ = _classify("OUR BUSINESS \n6")
+    assert block_type == BlockType.HEADING_CANDIDATE
+    assert excluded is False
+
+
+def test_footnote_text_not_reclassified():
+    text = "Note 12: Refer to the 2022 annual financial statements for detail."
+    block_type, excluded, _ = _classify(text)
+    assert block_type == BlockType.PARAGRAPH
+    assert excluded is False
+
+
+def test_word_with_glued_footnote_marker_digit_not_reclassified():
+    # Real ACT corpus block, recurring across years: a genuine short
+    # heading ("Group structure") where PyMuPDF merged a footnote/
+    # superscript reference-mark digit directly onto the last word with no
+    # space -- not a real numeric token.
+    block_type, excluded, _ = _classify("Group structure1")
+    assert block_type != BlockType.NUMERIC_FRAGMENT
+    assert excluded is False
+
+
+def test_existing_numeric_fragment_behavior_still_valid():
+    # Pre-existing NUMERIC_FRAGMENT case (high digit ratio, low token
+    # count) must remain unaffected by the new rule.
+    block_type, excluded, _ = _classify("1,245.30 890.15")
+    assert block_type == BlockType.NUMERIC_FRAGMENT
+    assert excluded is True
+
+
+def test_existing_table_like_behavior_still_valid():
+    block_type, excluded, _ = _classify("Revenue 1200 1100 980 850 720")
+    assert block_type == BlockType.TABLE_LIKE
+    assert excluded is True
+
+
+# --------------------------------------------------------------------------
+# is_short_alphanumeric_fragment -- direct unit tests of the pure helper.
+# --------------------------------------------------------------------------
+
+
+def _is_fragment(text: str) -> bool:
+    return is_short_alphanumeric_fragment(text.strip(), len(text.strip().split()), CONFIG)
+
+
+def test_helper_true_for_known_fragment_shapes():
+    for text in ["385 Denis", "26 Retail", "2022 Core", "15.1% -2.1%"]:
+        assert _is_fragment(text), text
+
+
+def test_helper_false_when_sentence_punctuation_present():
+    assert _is_fragment("Revenue rose 15%.") is False
+
+
+def test_helper_false_when_connector_word_present():
+    assert _is_fragment("by 15%") is False
+
+
+def test_helper_false_when_no_digit_token_present():
+    assert _is_fragment("Denis") is False
+
+
+def test_helper_false_for_list_item_shape():
+    assert _is_fragment("2) Retail") is False
+
+
+def test_helper_false_beyond_word_cap():
+    assert _is_fragment("2022 Core Segment") is False

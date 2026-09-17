@@ -32,6 +32,7 @@ already claims those.
 """
 
 import re
+import string
 from dataclasses import dataclass
 
 from market_documents.models.enums import BlockType
@@ -42,6 +43,38 @@ _ROMAN_NUMERAL_RE = re.compile(r"m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?
 _LIST_ITEM_RE = re.compile(r"^\s*([-•●▪*]|\d+[.)])\s+")
 _URL_RE = re.compile(r"^(https?://|www\.)\S+$", re.IGNORECASE)
 _SENTENCE_END_RE = re.compile(r"[.!?]\s*$")
+
+# A word with a footnote/superscript marker digit glued directly onto its
+# end (e.g. "structure1", "Health1") is a PDF-extraction artifact -- the
+# reference mark lost its superscript formatting and merged into the word's
+# text run -- not a numeric chart/data label. It is structurally distinct
+# from a real numeric token: the digit sits at the very end of a run of 3+
+# letters with nothing else numeric in the token, whereas real figures
+# either stand alone ("385", "2022") or lead with a unit/currency affix
+# ("R450m"). Excluded from `_has_digit` so a genuine short heading like
+# "Group structure" is not treated as numeric-adjacent just because a
+# footnote mark rode along with it.
+_FOOTNOTE_MARKER_SUFFIX_RE = re.compile(r"^[A-Za-z]{3,}\d{1,2}$")
+
+# Generic English function words (articles, prepositions, conjunctions,
+# copula/auxiliary verbs, demonstratives) -- deliberately not financial or
+# report-specific vocabulary. Their presence is strong evidence of a real
+# grammatical clause ("membership grew by 385 lives", "declined to 8.2%")
+# rather than a bare chart/data label ("385 Denis", "26 Retail"), so any
+# short block containing one of these is left alone by
+# `is_short_alphanumeric_fragment` regardless of its numeric-token ratio.
+_NARRATIVE_CONNECTOR_WORDS = frozenset(
+    {
+        "a", "an", "the",
+        "and", "or", "but", "nor", "so", "yet",
+        "of", "in", "on", "by", "to", "at", "as", "per",
+        "with", "from", "into", "onto", "over", "under",
+        "between", "across", "during", "after", "before", "than", "then",
+        "is", "are", "was", "were", "be", "been", "being",
+        "that", "this", "these", "those",
+        "it", "its", "which", "who", "whom", "whose",
+    }
+)
 
 
 def _digit_ratio(text: str) -> float:
@@ -58,6 +91,66 @@ def _looks_like_page_number(stripped: str) -> bool:
     if 1 <= len(stripped) <= 5 and _ROMAN_NUMERAL_RE.fullmatch(stripped):
         return True
     return False
+
+
+def _has_digit(token: str) -> bool:
+    if _FOOTNOTE_MARKER_SUFFIX_RE.match(token):
+        return False
+    return any(ch.isdigit() for ch in token)
+
+
+def is_short_alphanumeric_fragment(stripped: str, word_count: int, config: ExtractionConfig) -> bool:
+    """True for a short mixed alphanumeric chart/data-label fragment, e.g.
+    "385 Denis", "26 Retail", "15.1% -2.1%", "2022 Core" -- a bare numeric
+    token (a figure, a percentage, a bare year) paired with at most one
+    short label token, torn out of a chart/infographic layout.
+
+    These clear none of the existing digit-ratio thresholds: the label
+    token dilutes the whole-block digit ratio below both
+    `numeric_fragment_min_digit_ratio` and `table_like_min_digit_ratio`,
+    and `alpha_ratio` is not low enough to trip DECORATIVE_OR_FRAGMENT
+    either -- see docs/7d2a-semantic-unit-extraction-hardening.md Section 5
+    for the real-corpus root-cause analysis this generalizes.
+
+    Deliberately conservative and narrow, mirroring
+    `find_table_header_fragment_indices`'s own bias toward under-firing:
+
+    - Capped at two words/a handful of characters -- real narrative
+      sentences discussing a figure are longer than a chart label, and
+      capping at two words means at most one token can be the non-numeric
+      label, so this never has to weigh one label word against another.
+    - Excluded outright if it ends in sentence punctuation, or contains any
+      generic English function word (`_NARRATIVE_CONNECTOR_WORDS`) -- both
+      are evidence of a real grammatical clause, not a label.
+    - Excluded if it looks like a list item (a different, already-handled
+      short-block category).
+    - Requires at least one token containing a digit -- this rule only
+      targets the numeric-adjacent case; a bare isolated word with no
+      digit at all is left to other rules (or, if none apply, PARAGRAPH).
+    - The caller additionally withholds this rule whenever the block
+      already reads as heading-like (shouty case, bold, or large font) --
+      see the call site in `classify_block` -- so a table-of-contents entry
+      like "OUR BUSINESS 6" is never reclassified out from under the
+      heading-candidate rule just because it also contains a bare number.
+    """
+    if word_count == 0 or word_count > config.short_alphanumeric_fragment_max_words:
+        return False
+    if len(stripped) > config.short_alphanumeric_fragment_max_chars:
+        return False
+    if _SENTENCE_END_RE.search(stripped):
+        return False
+    if _LIST_ITEM_RE.match(stripped):
+        return False
+
+    tokens = stripped.split()
+    if not any(_has_digit(token) for token in tokens):
+        return False
+
+    normalized = [token.strip(string.punctuation).lower() for token in tokens]
+    if any(token in _NARRATIVE_CONNECTOR_WORDS for token in normalized if token):
+        return False
+
+    return True
 
 
 def _line_density(text: str, bbox_height: float | None) -> float | None:
@@ -151,6 +244,18 @@ def classify_block(
         font_size is not None and page_median_font_size is not None and font_size > page_median_font_size * 1.15
     )
     is_shouty = stripped.isupper()
+    # The short-alphanumeric-fragment check runs only after the heading-like
+    # signals above have had first refusal: a shouty or bold/large-font short
+    # block (e.g. a table-of-contents entry like "OUR BUSINESS 6") must stay
+    # HEADING_CANDIDATE, not be reclassified as a fragment just because it
+    # also contains a bare page number -- see docs/7d2b-short-alphanumeric-
+    # fragment-hardening.md for the real-corpus false positive this ordering
+    # fixes.
+    if not (is_heading_like_font or bool(is_bold) or is_shouty) and is_short_alphanumeric_fragment(
+        stripped, word_count, config
+    ):
+        return BlockType.NUMERIC_FRAGMENT, True, "short alphanumeric chart/data-label fragment"
+
     if word_count <= config.heading_max_words and not _SENTENCE_END_RE.search(stripped) and (
         is_heading_like_font or bool(is_bold) or is_shouty
     ):

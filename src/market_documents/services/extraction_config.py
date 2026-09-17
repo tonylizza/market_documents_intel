@@ -17,7 +17,7 @@ EXTRACTOR_NAME = "pymupdf"
 
 CLEANING_RULES_VERSION = 1
 QUALITY_THRESHOLDS_VERSION = 1
-CLASSIFICATION_RULES_VERSION = 4
+CLASSIFICATION_RULES_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -82,6 +82,17 @@ class ExtractionConfig:
     table_header_fragment_max_width_ratio: float = 0.5
     table_header_fragment_adjacency_window: int = 6
     table_header_fragment_min_cluster_size: int = 2
+
+    # Short mixed alphanumeric chart/data-label fragments (Track 7D.2b):
+    # blocks like "385 Denis" or "26 Retail" -- a bare numeric token paired
+    # with one or two short label tokens, torn out of a chart/infographic --
+    # that clear neither the NUMERIC_FRAGMENT nor TABLE_LIKE digit-ratio
+    # thresholds because the label token dilutes the whole-block digit
+    # ratio, and clear neither DECORATIVE_OR_FRAGMENT (alpha_ratio is not
+    # low, just the digit ratio) nor HEADING_CANDIDATE font/case rules
+    # (mixed case, not shouty). See block_classification.is_short_alphanumeric_fragment.
+    short_alphanumeric_fragment_max_words: int = 2
+    short_alphanumeric_fragment_max_chars: int = 30
 
     # Report-level quality rollup
     low_text_page_tolerance: float = 0.20
