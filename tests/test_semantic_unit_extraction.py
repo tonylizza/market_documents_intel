@@ -237,3 +237,51 @@ def test_next_heading_falls_back_to_end_of_provided_range_when_no_further_headin
     assert result is not None
     assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
     assert result.end_page == 39
+
+
+def test_next_heading_skips_continuation_banner_and_keeps_scanning():
+    """Track 7D.2 real-corpus defect (ACT 2021 "Healthcare Services
+    Financial Performance"): a "<heading> continued" page banner is a
+    heading-candidate classified as narrative in this report year, and must
+    not terminate the section -- the real content resumes on the next page
+    before the true next section heading. Mirrors
+    `schedule_localization.py`'s own schedule-level "continued" rule."""
+    blocks = [
+        _block(62, 0, "Gross Margin", BlockType.HEADING_CANDIDATE),
+        _block(62, 1, "First paragraph of real content."),
+        _block(62, 2, "CFO's review continued", BlockType.HEADING_CANDIDATE),
+        _block(63, 0, "Second paragraph, a real continuation of the same section."),
+        _block(63, 1, "Financial position", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, NEXT_HEADING_CONFIG)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.end_page == 63
+    assert "First paragraph of real content." in result.source_text
+    assert "Second paragraph, a real continuation of the same section." in result.source_text
+    assert "continued" not in result.source_text.lower()
+
+
+def test_next_heading_still_stops_at_a_genuine_non_continuation_heading():
+    """Regression guard: an ordinary heading-candidate (not a "continued"
+    banner) must still terminate the section exactly as before."""
+    blocks = [
+        _block(62, 0, "Gross Margin", BlockType.HEADING_CANDIDATE),
+        _block(62, 1, "First paragraph of real content."),
+        _block(62, 2, "Financial position", BlockType.HEADING_CANDIDATE),
+        _block(63, 0, "Unrelated content from the next section."),
+    ]
+    result = sue.extract_unit(blocks, NEXT_HEADING_CONFIG)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.end_page == 62
+    assert "Unrelated content from the next section." not in result.source_text
+
+
+def test_is_continuation_heading_matches_trailing_word_only():
+    assert sue._is_continuation_heading("CFO's review continued") is True
+    assert sue._is_continuation_heading("Finance director's report continued") is True
+    assert sue._is_continuation_heading("Continued operations") is False
+    assert sue._is_continuation_heading("Financial position") is False

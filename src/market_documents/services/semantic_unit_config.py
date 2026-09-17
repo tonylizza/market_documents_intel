@@ -32,7 +32,28 @@ from market_documents.models.enums import NormalizedSchedule, SemanticUnitBounda
 # -- BEL 2017's real closing sentence names the comparison year directly
 # ("...for 2016.") instead of saying "the prior year", and the old pattern
 # never generalized to that phrasing.
-CONFIG_VERSION = "1.2.0"
+# v1.3.0 = Track 7D.2 (docs/7d2-financial-performance-unit-expansion.md):
+# added ACT_HEALTHCARE_SERVICES_REVIEW ("Healthcare Services Financial
+# Performance", NEXT_HEADING, resolved 2021-2023, giving two genuinely
+# adjacent ReportPairs). A second candidate, ACT "Capital management", was
+# evaluated and rejected -- its 2024 occurrence exposed a pre-existing
+# generic false-positive substring-match defect in
+# `semantic_unit_extraction._matches_heading` (an unrelated decorative
+# pull-quote heading fragment earlier in the same report, "...driven by
+# prudent capital management policies...", contains "capital management" as
+# a bare substring and matches first), and this milestone's one-bounded-
+# generic-parser-correction budget was already spent on the NEXT_HEADING
+# continuation-banner gap below. Without that second fix, "Capital
+# management" only safely resolves in one year (2021), failing the
+# recurring-across-multiple-years selection criterion -- see the milestone
+# doc's rejected-candidates section. No BEL unit added this track -- BEL's
+# real corpus has no further recurring section whose narrative is bounded by
+# a standalone heading-candidate after 2018 (every later subsection heading
+# is fused run-in onto its own paragraph with no standalone heading
+# following it before the next section, which NEXT_HEADING cannot bound
+# without a bespoke ANCHOR_SENTENCE calibration per unit -- deferred, see
+# the milestone doc's rejected-candidates section).
+CONFIG_VERSION = "1.3.0"
 
 # A trailing clause that names the prior-year comparison a closing sentence
 # is making, in any of the generic phrasings observed across the corpus
@@ -109,7 +130,38 @@ ACT_CFO_CONCLUSION = UnitConfig(
     anchor_pattern=None,
 )
 
-UNIT_CONFIGS: tuple[UnitConfig, ...] = (BEL_GROSS_MARGIN, ACT_CFO_CONCLUSION)
+# ACT's "Healthcare Services Financial Performance" subsection -- a
+# recurring narrative review of the Medscheme/medical-scheme-administration
+# cluster's operating performance, confirmed present in the real ACT 2021,
+# 2022, and 2023 PDFs (Track 7D.2 real-corpus inventory), with the
+# 2021-2022-2023 span giving two genuinely adjacent ReportPairs for
+# alignment/lexical comparison (2021->2022 and 2022->2023). 2022's and 2023's
+# narrative is fully captured by NEXT_HEADING (each page's trailing
+# "continued"/numeric-table content is independently classified
+# excluded_from_narrative, so the boundary lands cleanly on the next
+# genuine heading-candidate, "Operating margin" in 2022 and "Five-year
+# summary of Profit before tax" in 2023). 2021 is the one year where the
+# immediately following page-banner heading-candidate ("CFO's review
+# continued") is not itself excluded from narrative, which is exactly the
+# generic NEXT_HEADING-vs-continuation-banner gap this track's one bounded
+# parser fix addresses (see semantic_unit_extraction.py ALGORITHM_VERSION
+# 1.2.0) -- without that fix, 2021 would under-recover a real continuation
+# paragraph that resumes on the following page before the next genuine
+# heading.
+ACT_HEALTHCARE_SERVICES_REVIEW = UnitConfig(
+    unit_key="healthcare_services_review",
+    schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE,
+    ticker="ACT",
+    start_heading="Healthcare Services Financial Performance",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+UNIT_CONFIGS: tuple[UnitConfig, ...] = (
+    BEL_GROSS_MARGIN,
+    ACT_CFO_CONCLUSION,
+    ACT_HEALTHCARE_SERVICES_REVIEW,
+)
 
 
 def unit_configs_for(ticker: str, schedule: NormalizedSchedule) -> tuple[UnitConfig, ...]:

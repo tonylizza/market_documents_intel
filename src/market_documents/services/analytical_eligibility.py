@@ -50,7 +50,12 @@ logger = logging.getLogger(__name__)
 # v1.0.0 = initial routing: config-driven LEXICAL_ONLY for BEL gross_margin
 # and ACT cfo_conclusion; ADDED/REMOVED -> PRESENCE_STATUS_ONLY (routing
 # outcome only); everything else configured -> NOT_ELIGIBLE.
-ALGORITHM_VERSION = "1.0.0"
+# v1.1.0 = Track 7D.2 (docs/7d2-financial-performance-unit-expansion.md):
+# added ACT healthcare_services_review, LEXICAL_ONLY -- real-corpus
+# inspection confirmed it is direct narrative prose with no embedded
+# numeric/tabular content once excluded_from_narrative blocks are filtered
+# out, the same profile as the two existing LEXICAL_ONLY units.
+ALGORITHM_VERSION = "1.1.0"
 
 # Per docs/experiments/annual-report-bel-compact-validation.md Section 3
 # and docs/7c1-schedule-localization-plan.md's original unit selection:
@@ -60,9 +65,15 @@ ALGORITHM_VERSION = "1.0.0"
 # not derived from word count or unit_type alone (see module docstring of
 # docs/7c3-analytical-eligibility-and-lexical-comparison.md, Section 2):
 # function and validated analytical role, not length, drive eligibility.
+# healthcare_services_review (Track 7D.2) meets the same bar: direct
+# narrative prose, no numeric/tabular framing, a stable analytical role
+# (medical-scheme-administration-cluster performance commentary) across its
+# resolved years -- see
+# docs/7d2-financial-performance-unit-expansion.md Section 6.
 UNIT_ANALYTICAL_MODES: dict[tuple[str, str], AnalyticalMode] = {
     ("BEL", "gross_margin"): AnalyticalMode.LEXICAL_ONLY,
     ("ACT", "cfo_conclusion"): AnalyticalMode.LEXICAL_ONLY,
+    ("ACT", "healthcare_services_review"): AnalyticalMode.LEXICAL_ONLY,
 }
 
 

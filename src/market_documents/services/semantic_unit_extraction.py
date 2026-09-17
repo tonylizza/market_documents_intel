@@ -59,7 +59,23 @@ logger = logging.getLogger(__name__)
 # -- BEL 2020's "Gross Margin" heading is fused onto the *end* of the
 # preceding section's paragraph rather than starting a fresh block
 # (docs/7d1-known-recall-defect-remediation.md).
-ALGORITHM_VERSION = "1.1.0"
+# v1.2.0 = Track 7D.2 (docs/7d2-financial-performance-unit-expansion.md):
+# NEXT_HEADING's end-boundary scan now skips a heading-candidate that is a
+# "<something> continued" page-continuation banner instead of treating it
+# as the section's terminator -- mirroring the same generic rule
+# `schedule_localization.py` already applies at the schedule level (its
+# v1.0.4: "a '<heading> continued' candidate is the same section resuming,
+# not a new section"). Real ACT 2021 corpus evidence
+# (ACT_HEALTHCARE_SERVICES_REVIEW's real-corpus validation) showed the
+# opposite classification for the exact same "CFO's review continued"
+# banner text across adjacent report years -- ACT 2022 classifies it
+# excluded_from_narrative (so it was never a candidate boundary there) while
+# ACT 2021 classifies it as a genuine, narrative heading-candidate, which
+# would otherwise truncate the unit one page early and drop a real
+# continuation paragraph. Generic (matches on the trailing word "continued"
+# after normalization, not any specific heading text), so it applies to any
+# NEXT_HEADING unit, not just this track's new ones.
+ALGORITHM_VERSION = "1.2.0"
 
 
 # --------------------------------------------------------------------------
@@ -101,6 +117,14 @@ _QUOTE_TRANSLATION = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '
 
 def _normalize(text: str) -> str:
     return " ".join(text.strip().split()).lower().translate(_QUOTE_TRANSLATION)
+
+
+def _is_continuation_heading(text: str) -> bool:
+    """True for a "<something> continued" page-continuation banner --
+    the same section resuming on a new page, never a new section's own
+    heading. Mirrors `schedule_localization._matches_vocabulary`'s sibling
+    rule at the schedule level (its v1.0.4 comment)."""
+    return _normalize(text).endswith("continued")
 
 
 def _matches_heading(block_text: str, configured_heading: str) -> bool:
@@ -214,9 +238,20 @@ def extract_unit(blocks: list[UnitBlock], config: UnitConfig) -> SemanticUnitExt
 
     if config.boundary_strategy == SemanticUnitBoundaryStrategy.NEXT_HEADING:
         end_idx = next(
-            (j for j, b in enumerate(body_blocks) if b.block_type == BlockType.HEADING_CANDIDATE), None
+            (
+                j
+                for j, b in enumerate(body_blocks)
+                if b.block_type == BlockType.HEADING_CANDIDATE and not _is_continuation_heading(b.text)
+            ),
+            None,
         )
         included = body_blocks if end_idx is None else body_blocks[:end_idx]
+        # A continuation banner skipped above as a non-terminator still
+        # falls inside `included` by position -- drop it from the actual
+        # unit content, it is a running page header, not unit prose.
+        included = [
+            b for b in included if not (b.block_type == BlockType.HEADING_CANDIDATE and _is_continuation_heading(b.text))
+        ]
         if lead_fragment is None and not included:
             return _unresolved(
                 config, start_block, "next heading-candidate block immediately follows the start heading"

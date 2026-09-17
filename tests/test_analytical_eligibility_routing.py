@@ -26,6 +26,20 @@ def test_configured_act_unit_routes_to_lexical_only():
     assert decision.mode == AnalyticalMode.LEXICAL_ONLY
 
 
+def test_configured_act_healthcare_services_review_routes_to_lexical_only():
+    """Track 7D.2."""
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="healthcare_services_review",
+        later_unit_key="healthcare_services_review",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+    assert decision.confidence == AlignmentConfidence.HIGH
+
+
 def test_unconfigured_unit_does_not_silently_become_lexical():
     decision = route_alignment(
         status=SemanticUnitAlignmentStatus.MATCHED, ticker="BEL", earlier_unit_key="unknown_unit", later_unit_key="unknown_unit"
