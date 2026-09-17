@@ -21,6 +21,14 @@ import { isCutoverEnabled } from "@/lib/config/cutover";
  * "did the new pipeline contribute anything to this comparison" signal for
  * observability; the page renders each payload independently of the other.
  *
+ * `narrative` is a list for the same reason `structured` is (Track 7D.2c):
+ * once a second narrative unit (`healthcare_services_review`) joined
+ * `cfo_conclusion` in ACT's FINANCIAL_PERFORMANCE cutover scope, a single
+ * report comparison could carry two narrative rows at once -- an earlier
+ * `NarrativeUnitComparison | null` shape picked an arbitrary single row
+ * (no `unit_key` filter, no deterministic order) and silently dropped
+ * whichever unit didn't win.
+ *
  * `legacy` is always populated (even when narrative/structured are present)
  * as diagnostic/audit context -- it must never be shown as the *primary*
  * result for a unit/table the new pipeline covers, including when `status`
@@ -34,7 +42,7 @@ export type ComparisonView =
   | { backend: "LEGACY_PASSAGE"; legacy: ComparisonPageViewModel }
   | {
       backend: "CUTOVER";
-      narrative: NarrativeUnitComparison | null;
+      narrative: NarrativeUnitComparison[];
       structured: StructuredTableComparison[];
       legacy: ComparisonPageViewModel;
     };
@@ -51,11 +59,11 @@ export async function getComparisonView(
   }
 
   const [narrative, structured] = await Promise.all([
-    repository.getNarrativeUnitComparison(comparisonId),
+    repository.getNarrativeUnitComparisons(comparisonId),
     repository.getStructuredTableComparisons(comparisonId),
   ]);
 
-  if (narrative || structured.length > 0) {
+  if (narrative.length > 0 || structured.length > 0) {
     return { backend: "CUTOVER", narrative, structured, legacy };
   }
   return { backend: "LEGACY_PASSAGE", legacy };

@@ -220,8 +220,10 @@ def test_build_populates_cutover_comparison_rows_for_in_scope_pair(db_session, a
 
 
 def test_build_populates_both_narrative_and_structured_rows_for_act(db_session, app_db_session):
-    """ACT is in scope for a narrative unit AND two structured table
-    families at once -- these are not mutually exclusive."""
+    """ACT is in scope for narrative units AND two structured table
+    families at once -- these are not mutually exclusive. Since Track
+    7D.2c, ACT has two in-scope FINANCIAL_PERFORMANCE narrative units
+    (cfo_conclusion, healthcare_services_review)."""
     _build_and_feature(db_session, ticker="ACT")
 
     builder = PublicationBuilder(publication_version="test-cutover-v2")
@@ -230,11 +232,11 @@ def test_build_populates_both_narrative_and_structured_rows_for_act(db_session, 
     assert publication.status == PublicationStatus.READY.value, publication.failure_reason
     # No upstream Track 7C.1-7C.5 data was built for this pair, so every
     # in-scope row is published unresolved -- never silently omitted.
-    assert publication.narrative_comparison_count == 1
+    assert publication.narrative_comparison_count == 2
     assert publication.structured_comparison_count == 2
 
     narrative_rows = app_db_session.scalars(select(NarrativeUnitComparison)).all()
-    assert narrative_rows[0].status == "UNRESOLVED_UPSTREAM"
+    assert all(r.status == "UNRESOLVED_UPSTREAM" for r in narrative_rows)
 
     structured_rows = app_db_session.scalars(select(StructuredTableComparison)).all()
     assert {r.table_family_key for r in structured_rows} == {

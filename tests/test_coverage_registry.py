@@ -18,12 +18,18 @@ def test_every_configured_unit_has_a_registry_entry():
         assert entry.alignment_supported is True
 
 
-def test_new_7d2_unit_is_lexical_only_and_a_production_candidate():
+def test_promoted_7d2c_unit_is_lexical_only_and_enabled_in_production():
     entry = coverage_registry.coverage_for("ACT", NormalizedSchedule.FINANCIAL_PERFORMANCE, "healthcare_services_review")
 
     assert entry is not None
     assert entry.analytical_mode == AnalyticalMode.LEXICAL_ONLY
-    assert entry.production_status == "candidate"
+    assert entry.production_status == "enabled"
+
+
+def test_unconfigured_unit_has_no_registry_entry_and_is_not_promoted():
+    # Not a HEADED_NARRATIVE_UNIT extraction config at all -- must not be
+    # confused with an in-scope-but-not-enabled "candidate".
+    assert coverage_registry.coverage_for("ACT", NormalizedSchedule.FINANCIAL_PERFORMANCE, "capital_management") is None
 
 
 def test_existing_cutover_units_are_enabled_in_the_registry():

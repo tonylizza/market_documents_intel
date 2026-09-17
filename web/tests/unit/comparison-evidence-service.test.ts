@@ -83,7 +83,7 @@ function makeFakeRepository(overrides: Partial<ComparisonRepository> = {}): Comp
     getComparisonEvidence: async () => [],
     countComparisonEvidence: async () => 0,
     getComparisonEvidenceFilterOptions: async () => ({ confidenceLevels: [], categories: [], subcategoriesByCategory: {} }),
-    getNarrativeUnitComparison: async () => null,
+    getNarrativeUnitComparisons: async () => [],
     getStructuredTableComparisons: async () => [],
     ...overrides,
   };

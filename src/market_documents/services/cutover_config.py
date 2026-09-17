@@ -12,7 +12,10 @@ dynamic "does a row exist" check (docs/7c6-...md Section 3: "do NOT infer
 support dynamically from whether rows happen to exist in the database").
 
 Expanding this scope is explicitly out of 7C.6's own stated scope -- see
-the milestone's hard-stop instructions.
+the milestone's hard-stop instructions. Track 7D.2c is the first deliberate
+promotion beyond that original scope: ACT's `healthcare_services_review`
+(docs/7d2c-healthcare-services-review-production-promotion.md), validated
+as a production candidate by Track 7D.2/7D.2a/7D.2b.
 """
 
 import hashlib
@@ -20,14 +23,16 @@ import json
 
 from market_documents.models.enums import NormalizedSchedule
 
-# v1.0.0 = initial scoped cutover: BEL gross_margin, ACT cfo_conclusion
-# (both FINANCIAL_PERFORMANCE), ACT's two REMUNERATION table families.
-CONFIG_VERSION = "1.0.0"
+# v1.1.0 = 7D.2c promotion: added ACT healthcare_services_review
+# (FINANCIAL_PERFORMANCE) on top of the v1.0.0 scope (BEL gross_margin,
+# ACT cfo_conclusion, ACT's two REMUNERATION table families).
+CONFIG_VERSION = "1.1.0"
 
 NEW_PIPELINE_NARRATIVE_SCOPE: frozenset[tuple[str, NormalizedSchedule, str]] = frozenset(
     {
         ("BEL", NormalizedSchedule.FINANCIAL_PERFORMANCE, "gross_margin"),
         ("ACT", NormalizedSchedule.FINANCIAL_PERFORMANCE, "cfo_conclusion"),
+        ("ACT", NormalizedSchedule.FINANCIAL_PERFORMANCE, "healthcare_services_review"),
     }
 )
 

@@ -25,19 +25,26 @@ afterAll(async () => {
 });
 
 describe("PostgresComparisonRepository cutover-comparison reads against the seeded test database", () => {
-  it("getNarrativeUnitComparison returns the seeded resolved cfo_conclusion row for ACT's latest comparison", async () => {
-    const narrative = await repository.getNarrativeUnitComparison(actLatestComparisonId);
-    expect(narrative).not.toBeNull();
-    expect(narrative?.comparisonBackend).toBe("SEMANTIC_UNIT");
-    expect(narrative?.status).toBe("RESOLVED");
-    expect(narrative?.unitKey).toBe("cfo_conclusion");
-    expect(narrative?.lexicalMetrics?.tfidfCosine).toBeCloseTo(0.75, 2);
-    expect(narrative?.earlierProvenance?.startPage).toBe(10);
+  it("getNarrativeUnitComparisons returns both seeded ACT rows -- cfo_conclusion resolved, healthcare_services_review unresolved -- not silently dropping either", async () => {
+    const narrative = await repository.getNarrativeUnitComparisons(actLatestComparisonId);
+    expect(narrative).toHaveLength(2);
+
+    const byUnitKey = new Map(narrative.map((n) => [n.unitKey, n]));
+    const cfoConclusion = byUnitKey.get("cfo_conclusion");
+    expect(cfoConclusion?.comparisonBackend).toBe("SEMANTIC_UNIT");
+    expect(cfoConclusion?.status).toBe("RESOLVED");
+    expect(cfoConclusion?.lexicalMetrics?.tfidfCosine).toBeCloseTo(0.75, 2);
+    expect(cfoConclusion?.earlierProvenance?.startPage).toBe(10);
+
+    const healthcareServicesReview = byUnitKey.get("healthcare_services_review");
+    expect(healthcareServicesReview?.comparisonBackend).toBe("SEMANTIC_UNIT");
+    expect(healthcareServicesReview?.status).toBe("UNRESOLVED_UPSTREAM");
+    expect(healthcareServicesReview?.reviewReason).not.toBeNull();
   });
 
-  it("getNarrativeUnitComparison returns null (never throws) for a comparison outside the cutover scope", async () => {
-    const narrative = await repository.getNarrativeUnitComparison(belComparisonId);
-    expect(narrative).toBeNull();
+  it("getNarrativeUnitComparisons returns an empty array (never an error) for a comparison outside the cutover scope", async () => {
+    const narrative = await repository.getNarrativeUnitComparisons(belComparisonId);
+    expect(narrative).toEqual([]);
   });
 
   it("getStructuredTableComparisons returns both ACT table families -- one resolved, one unresolved -- not mutually exclusive", async () => {
@@ -75,7 +82,7 @@ describe("PostgresComparisonRepository cutover-comparison source -- static query
   });
 
   it("scopes both cutover reads by report_comparison_id = $1", () => {
-    const narrativeIdx = source.indexOf("getNarrativeUnitComparison");
+    const narrativeIdx = source.indexOf("getNarrativeUnitComparisons");
     const structuredIdx = source.indexOf("getStructuredTableComparisons");
     expect(source.slice(narrativeIdx, narrativeIdx + 400)).toContain("report_comparison_id = $1");
     expect(source.slice(structuredIdx, structuredIdx + 400)).toContain("report_comparison_id = $1");

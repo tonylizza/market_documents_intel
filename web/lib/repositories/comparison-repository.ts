@@ -33,6 +33,6 @@ export interface ComparisonRepository {
    * found" and substitute legacy data (docs/7a3-7a4-live-comparison-
    * integration.md).
    */
-  getNarrativeUnitComparison(comparisonId: string): Promise<NarrativeUnitComparison | null>;
+  getNarrativeUnitComparisons(comparisonId: string): Promise<NarrativeUnitComparison[]>;
   getStructuredTableComparisons(comparisonId: string): Promise<StructuredTableComparison[]>;
 }

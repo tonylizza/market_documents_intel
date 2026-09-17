@@ -556,3 +556,56 @@ def test_cutover_disabled_returns_legacy_response_for_in_scope_unit(db_session):
     response = get_narrative_comparison(db_session, pair, FP, "gross_margin", router=DISABLED)
     assert isinstance(response, LegacyComparisonResponse)
     assert response.comparison_backend == ComparisonBackend.LEGACY_PASSAGE
+
+
+# --- Track 7D.2c: healthcare_services_review promoted to production scope ---------
+
+
+def test_promoted_healthcare_services_review_matched_returns_lexical_comparison(db_session):
+    company = _company(db_session, "ACT")
+    earlier_report = _report(db_session, company, 2021, "e")
+    later_report = _report(db_session, company, 2022, "l")
+    pair = _pair(db_session, company, earlier_report, later_report)
+
+    earlier_loc = _localization_run(db_session, earlier_report)
+    later_loc = _localization_run(db_session, later_report)
+    earlier_instance = _schedule_instance(db_session, earlier_loc, earlier_report)
+    later_instance = _schedule_instance(db_session, later_loc, later_report)
+    earlier_unit_run = _unit_run(db_session, earlier_report, earlier_loc)
+    later_unit_run = _unit_run(db_session, later_report, later_loc)
+    earlier_unit = _unit(
+        db_session, earlier_unit_run, earlier_report, earlier_instance, unit_key="healthcare_services_review", word_count=64
+    )
+    later_unit = _unit(
+        db_session, later_unit_run, later_report, later_instance, unit_key="healthcare_services_review", word_count=47
+    )
+
+    arun = _alignment_run(db_session, pair, earlier_unit_run, later_unit_run)
+    alignment = _alignment(db_session, arun, pair, earlier_unit=earlier_unit, later_unit=later_unit, status=SemanticUnitAlignmentStatus.MATCHED)
+    drun = _decision_run(db_session, pair, arun)
+    decision = _decision(db_session, drun, alignment)
+    _lexical(db_session, decision, alignment)
+
+    response = get_narrative_comparison(db_session, pair, FP, "healthcare_services_review", router=ENABLED)
+
+    assert isinstance(response, NarrativeComparisonResponse)
+    assert response.comparison_backend == ComparisonBackend.SEMANTIC_UNIT
+    assert response.status == ComparisonResponseStatus.RESOLVED
+    assert response.analytical_mode == AnalyticalMode.LEXICAL_ONLY
+    assert response.lexical_metrics is not None
+    assert response.earlier_provenance is not None
+    assert response.later_provenance is not None
+
+
+def test_promoted_healthcare_services_review_unresolved_upstream_is_not_silently_backfilled_from_legacy(db_session):
+    company = _company(db_session, "ACT")
+    earlier_report = _report(db_session, company, 2023, "e")
+    later_report = _report(db_session, company, 2024, "l")
+    pair = _pair(db_session, company, earlier_report, later_report)
+
+    response = get_narrative_comparison(db_session, pair, FP, "healthcare_services_review", router=ENABLED)
+
+    assert isinstance(response, NarrativeComparisonResponse)
+    assert response.status == ComparisonResponseStatus.UNRESOLVED_UPSTREAM
+    # Still SEMANTIC_UNIT (in-scope), never a silent switch to LEGACY_PASSAGE.
+    assert response.comparison_backend == ComparisonBackend.SEMANTIC_UNIT

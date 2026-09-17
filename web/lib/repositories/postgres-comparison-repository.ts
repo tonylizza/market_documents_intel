@@ -324,21 +324,23 @@ export class PostgresComparisonRepository implements ComparisonRepository {
     } satisfies ComparisonEvidenceFilterOptions;
   }
 
-  async getNarrativeUnitComparison(comparisonId: string): Promise<NarrativeUnitComparison | null> {
+  async getNarrativeUnitComparisons(comparisonId: string): Promise<NarrativeUnitComparison[]> {
     const rows = await query(
       "SELECT " +
         NARRATIVE_UNIT_COMPARISON_ROW_COLUMNS_SQL +
         `FROM app.current_narrative_unit_comparisons
-       WHERE report_comparison_id = $1`,
+       WHERE report_comparison_id = $1
+       ORDER BY unit_key`,
       [comparisonId],
     );
-    if (rows.length === 0) return null;
 
-    const parsed = narrativeUnitComparisonRowSchema.safeParse(rows[0]);
-    if (!parsed.success) {
-      throw new MalformedRowError("narrative-unit-comparison", parsed.error.message);
-    }
-    return mapNarrativeUnitComparisonRow(parsed.data);
+    return rows.map((row, index) => {
+      const parsed = narrativeUnitComparisonRowSchema.safeParse(row);
+      if (!parsed.success) {
+        throw new MalformedRowError(`narrative-unit-comparison[${index}]`, parsed.error.message);
+      }
+      return mapNarrativeUnitComparisonRow(parsed.data);
+    });
   }
 
   async getStructuredTableComparisons(comparisonId: string): Promise<StructuredTableComparison[]> {

@@ -96,7 +96,10 @@ def test_narrative_resolved_row_built_from_matched_alignment(db_session):
 def test_narrative_unresolved_row_is_still_built_never_dropped(db_session):
     """Mirrors the real ACT cfo_conclusion case (0/9 pairs resolve): an
     unresolved comparison is still published, never silently omitted or
-    substituted with a legacy result."""
+    substituted with a legacy result. Since Track 7D.2c, ACT's in-scope
+    narrative units for FINANCIAL_PERFORMANCE are cfo_conclusion and the
+    promoted healthcare_services_review, so both surface as unresolved
+    rows here (no reports/units set up for either)."""
     company = _company(db_session, "ACT")
     earlier_report = _report(db_session, company, 2019, "e")
     later_report = _report(db_session, company, 2020, "l")
@@ -106,13 +109,14 @@ def test_narrative_unresolved_row_is_still_built_never_dropped(db_session):
         db_session, pair, app_comparison_id=uuid.uuid4(), **_PUB_ARGS
     )
 
-    assert len(rows) == 1
-    row = rows[0]
-    assert row.unit_key == "cfo_conclusion"
-    assert row.status == ComparisonResponseStatus.UNRESOLVED_UPSTREAM.value
-    assert row.comparison_backend == "SEMANTIC_UNIT"
-    assert row.lexical_metrics is None
-    assert row.review_reason is not None
+    assert len(rows) == 2
+    rows_by_unit_key = {row.unit_key: row for row in rows}
+    assert set(rows_by_unit_key) == {"cfo_conclusion", "healthcare_services_review"}
+    for row in rows:
+        assert row.status == ComparisonResponseStatus.UNRESOLVED_UPSTREAM.value
+        assert row.comparison_backend == "SEMANTIC_UNIT"
+        assert row.lexical_metrics is None
+        assert row.review_reason is not None
 
 
 def test_narrative_out_of_scope_ticker_returns_no_rows(db_session):

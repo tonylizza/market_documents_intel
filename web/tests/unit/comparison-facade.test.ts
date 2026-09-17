@@ -82,7 +82,7 @@ function makeFakeRepository(overrides: Partial<ComparisonRepository> = {}): Comp
     getComparisonEvidence: async () => [],
     countComparisonEvidence: async () => 0,
     getComparisonEvidenceFilterOptions: async () => ({ confidenceLevels: [], categories: [], subcategoriesByCategory: {} }),
-    getNarrativeUnitComparison: async () => null,
+    getNarrativeUnitComparisons: async () => [],
     getStructuredTableComparisons: async () => [],
     ...overrides,
   };
@@ -96,7 +96,7 @@ describe("getComparisonView", () => {
   it("flag off -> always LEGACY_PASSAGE, even for a comparison that has cutover rows", async () => {
     vi.stubEnv("SEMANTIC_COMPARISON_CUTOVER_ENABLED", "false");
     const repository = makeFakeRepository({
-      getNarrativeUnitComparison: async () => makeNarrative(),
+      getNarrativeUnitComparisons: async () => [makeNarrative()],
     });
 
     const view = await getComparisonView(repository, "cmp-1");
@@ -114,13 +114,14 @@ describe("getComparisonView", () => {
   it("flag on + resolved narrative row -> CUTOVER with narrative populated", async () => {
     vi.stubEnv("SEMANTIC_COMPARISON_CUTOVER_ENABLED", "true");
     const repository = makeFakeRepository({
-      getNarrativeUnitComparison: async () => makeNarrative({ status: "RESOLVED" }),
+      getNarrativeUnitComparisons: async () => [makeNarrative({ status: "RESOLVED" })],
     });
 
     const view = await getComparisonView(repository, "cmp-1");
     expect(view?.backend).toBe("CUTOVER");
     if (view?.backend === "CUTOVER") {
-      expect(view.narrative?.status).toBe("RESOLVED");
+      expect(view.narrative).toHaveLength(1);
+      expect(view.narrative[0].status).toBe("RESOLVED");
       expect(view.structured).toEqual([]);
       // Legacy stays available as diagnostic context, never as the primary result.
       expect(view.legacy).toBeDefined();
@@ -130,17 +131,17 @@ describe("getComparisonView", () => {
   it("flag on + unresolved narrative row -> CUTOVER with unresolved status, never silently replaced by legacy", async () => {
     vi.stubEnv("SEMANTIC_COMPARISON_CUTOVER_ENABLED", "true");
     const repository = makeFakeRepository({
-      getNarrativeUnitComparison: async () => makeNarrative({ status: "UNRESOLVED_UPSTREAM", lexicalMetrics: null }),
+      getNarrativeUnitComparisons: async () => [makeNarrative({ status: "UNRESOLVED_UPSTREAM", lexicalMetrics: null })],
     });
 
     const view = await getComparisonView(repository, "cmp-1");
     expect(view?.backend).toBe("CUTOVER");
     if (view?.backend === "CUTOVER") {
-      expect(view.narrative?.status).toBe("UNRESOLVED_UPSTREAM");
+      expect(view.narrative[0].status).toBe("UNRESOLVED_UPSTREAM");
     }
   });
 
-  it("flag on + structured rows only -> CUTOVER with structured populated and narrative null", async () => {
+  it("flag on + structured rows only -> CUTOVER with structured populated and narrative empty", async () => {
     vi.stubEnv("SEMANTIC_COMPARISON_CUTOVER_ENABLED", "true");
     const repository = makeFakeRepository({
       getStructuredTableComparisons: async () => [
@@ -152,7 +153,7 @@ describe("getComparisonView", () => {
     const view = await getComparisonView(repository, "cmp-1");
     expect(view?.backend).toBe("CUTOVER");
     if (view?.backend === "CUTOVER") {
-      expect(view.narrative).toBeNull();
+      expect(view.narrative).toEqual([]);
       expect(view.structured).toHaveLength(2);
     }
   });
@@ -160,15 +161,34 @@ describe("getComparisonView", () => {
   it("flag on + both narrative and structured rows -> CUTOVER carries both simultaneously (ACT's real shape)", async () => {
     vi.stubEnv("SEMANTIC_COMPARISON_CUTOVER_ENABLED", "true");
     const repository = makeFakeRepository({
-      getNarrativeUnitComparison: async () => makeNarrative({ unitKey: "cfo_conclusion" }),
+      getNarrativeUnitComparisons: async () => [makeNarrative({ unitKey: "cfo_conclusion" })],
       getStructuredTableComparisons: async () => [makeStructured()],
     });
 
     const view = await getComparisonView(repository, "cmp-1");
     expect(view?.backend).toBe("CUTOVER");
     if (view?.backend === "CUTOVER") {
-      expect(view.narrative?.unitKey).toBe("cfo_conclusion");
+      expect(view.narrative[0].unitKey).toBe("cfo_conclusion");
       expect(view.structured).toHaveLength(1);
+    }
+  });
+
+  it("flag on + two narrative rows (7D.2c: cfo_conclusion + healthcare_services_review) -> CUTOVER carries both, neither silently dropped", async () => {
+    vi.stubEnv("SEMANTIC_COMPARISON_CUTOVER_ENABLED", "true");
+    const repository = makeFakeRepository({
+      getNarrativeUnitComparisons: async () => [
+        makeNarrative({ unitKey: "cfo_conclusion", status: "UNRESOLVED_UPSTREAM", lexicalMetrics: null }),
+        makeNarrative({ unitKey: "healthcare_services_review", status: "RESOLVED" }),
+      ],
+    });
+
+    const view = await getComparisonView(repository, "cmp-1");
+    expect(view?.backend).toBe("CUTOVER");
+    if (view?.backend === "CUTOVER") {
+      expect(view.narrative).toHaveLength(2);
+      const byUnitKey = new Map(view.narrative.map((n) => [n.unitKey, n]));
+      expect(byUnitKey.get("cfo_conclusion")?.status).toBe("UNRESOLVED_UPSTREAM");
+      expect(byUnitKey.get("healthcare_services_review")?.status).toBe("RESOLVED");
     }
   });
 

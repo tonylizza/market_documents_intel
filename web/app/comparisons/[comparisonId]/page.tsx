@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: ComparisonPageProps): Promise
  * three queries total via `getComparisonPageViewModel` -- findings,
  * headline metrics, and technical details are all derived from the first
  * query's row, not fetched separately. When cutover is in scope for this
- * comparison, two additional narrow reads (`getNarrativeUnitComparison`/
+ * comparison, two additional narrow reads (`getNarrativeUnitComparisons`/
  * `getStructuredTableComparisons`) run alongside it.
  */
 export default async function ComparisonPage({ params }: ComparisonPageProps) {
@@ -99,14 +99,16 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
         </div>
       </section>
 
-      {view.backend === "CUTOVER" && view.narrative && (
+      {view.backend === "CUTOVER" && view.narrative.length > 0 && (
         <section aria-labelledby="narrative-unit-heading" className={styles.section}>
           <SectionHeader
             id="narrative-unit-heading"
             title="Longitudinal comparison"
             description="Semantic-unit comparison between the matched narrative sections of the two reports."
           />
-          <NarrativeUnitComparisonSection narrative={view.narrative} />
+          {view.narrative.map((narrative) => (
+            <NarrativeUnitComparisonSection narrative={narrative} key={narrative.unitKey} />
+          ))}
         </section>
       )}
 

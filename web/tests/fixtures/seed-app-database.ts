@@ -353,6 +353,11 @@ async function seedLanguageMetricsAndPassageComposition(
  * narrative unit (`cfo_conclusion`) and two structured table families at
  * once (not mutually exclusive; see `comparison-facade.ts`), and one of
  * ACT's two table families does not always resolve.
+ *
+ * Track 7D.2c adds a second `app.narrative_unit_comparisons` row
+ * (`healthcare_services_review`, UNRESOLVED_UPSTREAM) to exercise the
+ * multi-narrative-unit case introduced when that unit joined
+ * `cfo_conclusion` in ACT's FINANCIAL_PERFORMANCE cutover scope.
  */
 async function seedCutoverComparisons(
   client: Client,
@@ -399,6 +404,17 @@ async function seedCutoverComparisons(
         source_excerpt: "CFO conclusion narrative excerpt (later).",
       }),
     ],
+  );
+
+  await client.query(
+    `INSERT INTO app.narrative_unit_comparisons
+       (id, publication_id, report_comparison_id, schedule, unit_key, comparison_backend, status,
+        alignment_status, alignment_confidence, analytical_mode, lexical_metrics,
+        earlier_word_count, later_word_count, earlier_provenance, later_provenance, review_reason)
+     VALUES ($1, $2, $3, 'FINANCIAL_PERFORMANCE', 'healthcare_services_review', 'SEMANTIC_UNIT', 'UNRESOLVED_UPSTREAM',
+             'UNRESOLVED_UPSTREAM', NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL, $4)`,
+    [randomUUID(), publicationId, comparisonId, "later run completed with warnings"],
   );
 
   const structuredFamilies = [
