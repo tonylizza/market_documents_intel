@@ -42,6 +42,8 @@ from market_documents.models.extraction import ExtractionRun, Page, TextBlock
 from market_documents.models.report import Report
 from market_documents.models.schedule import ScheduleInstance, ScheduleLocalizationRun
 from market_documents.models.semantic_unit import SemanticUnit, SemanticUnitRun, SemanticUnitSourceBlock
+from market_documents.services import source_adapter
+from market_documents.services.canonical_extraction import get_current_canonical_run
 from market_documents.services.extraction import get_current_extraction_run
 from market_documents.services.schedule_localization import get_current_localization_run
 from market_documents.services.semantic_unit_config import UnitConfig, compute_configuration_hash, unit_configs_for
@@ -75,7 +77,32 @@ logger = logging.getLogger(__name__)
 # continuation paragraph. Generic (matches on the trailing word "continued"
 # after normalization, not any specific heading text), so it applies to any
 # NEXT_HEADING unit, not just this track's new ones.
-ALGORITHM_VERSION = "1.2.0"
+# v1.3.0 = Track 7D.2a (docs/7d2a-semantic-unit-extraction-hardening.md):
+# two hardening changes.
+# (1) `_matches_heading` (formerly a bare case-insensitive substring check)
+# now returns (matched, exact) with the same exact/substring/word-order-
+# tolerant evidence hierarchy `schedule_localization._matches_vocabulary`
+# already uses, and `extract_unit`'s start-heading scan now ranks every
+# match in the report (exact first, then earliest position) instead of
+# simply taking the first positional match. Fixes the generic false-positive
+# risk Track 7D.2 documented and deliberately left unfixed (its own
+# one-correction-per-track budget was already spent): real ACT 2024 corpus
+# text contains an unrelated decorative pull-quote heading-candidate
+# fragment, "by prudent capital management policies", a bare substring
+# match for a heading like "Capital management" that sits earlier in
+# reading order than the real, exact "CAPITAL MANAGEMENT" section heading --
+# the old first-match behavior let the false match win and the real section
+# was never reached.
+# (2) `_run_extraction` now prefers the canonical PDF source (Track 7C.1a)
+# over legacy `TextBlock` when a report has a current successful
+# `CanonicalExtractionRun`, mirroring `schedule_localization.py`'s own
+# canonical preference (its 7C.1b) via the same `source_adapter` module --
+# resolves the numeric-fragment-noise extraction-quality gap Track 7D.2
+# Section 14 documented for `ACT healthcare_services_review` (legacy
+# `TextBlock` did not mark several small chart-label fragments as
+# `excluded_from_narrative`; the canonical/7C.1a path already classifies
+# the equivalent content `NUMERIC_FRAGMENT`, excluded).
+ALGORITHM_VERSION = "1.3.0"
 
 
 # --------------------------------------------------------------------------
@@ -127,10 +154,38 @@ def _is_continuation_heading(text: str) -> bool:
     return _normalize(text).endswith("continued")
 
 
-def _matches_heading(block_text: str, configured_heading: str) -> bool:
+def _matches_heading(block_text: str, configured_heading: str) -> tuple[bool, bool]:
+    """Returns (matched, exact) -- mirrors
+    `schedule_localization._matches_vocabulary`'s evidence hierarchy at the
+    unit level: an exact normalized-text match is stronger evidence than a
+    bare substring match, and a substring match is generalized further by a
+    tight, order-tolerant word-window check for the same real
+    PDF-extraction word-reordering artifact `_matches_vocabulary` documents.
+
+    A bare substring check alone is a real, generic false-positive risk
+    (Track 7D.2's rejected-candidate finding, fixed here in Track 7D.2a):
+    real ACT 2024 corpus text contains an unrelated decorative pull-quote
+    heading-candidate fragment, "by prudent capital management policies",
+    which contains "capital management" as a bare substring and sits
+    earlier in reading order than the real, exact "CAPITAL MANAGEMENT"
+    section heading later in the document. Returning exactness lets the
+    caller (`extract_unit`) rank every match in the document instead of
+    simply taking whichever one occurs first."""
     normalized_block = _normalize(block_text)
     normalized_heading = _normalize(configured_heading)
-    return normalized_heading in normalized_block
+    if normalized_block == normalized_heading:
+        return True, True
+    if normalized_heading in normalized_block:
+        return True, False
+    heading_words = normalized_heading.split()
+    block_word_list = normalized_block.split()
+    window_size = len(heading_words) + 1
+    if len(heading_words) >= 2 and any(
+        set(heading_words) <= set(block_word_list[i : i + window_size])
+        for i in range(len(block_word_list))
+    ):
+        return True, False
+    return False, False
 
 
 def _heading_run_in_match(text: str, configured_heading: str) -> re.Match | None:
@@ -201,28 +256,34 @@ def extract_unit(blocks: list[UnitBlock], config: UnitConfig) -> SemanticUnitExt
     heading has actually matched (see module docstring). Once a start
     heading is found, always returns a result (RESOLVED or UNRESOLVED),
     never `None`.
+
+    Track 7D.2a: every candidate match in the document is collected and
+    ranked (an exact match first, then earliest position), not just the
+    first one encountered -- a coincidental bare-substring match can
+    precede the real heading in reading order (see `_matches_heading`), and
+    picking the first positional match let that false match win. A run-in
+    match (`_heading_run_in_match`) is exact by construction (its regex
+    requires the heading's exact word sequence), so it ranks the same as a
+    standalone exact match.
     """
     ordered = sorted(blocks, key=lambda b: (b.page_number, b.reading_order))
 
-    start_idx: int | None = None
-    start_heading_text: str | None = None
-    remainder_offset = 0
+    candidates: list[tuple[int, bool, str, int]] = []
     for i, b in enumerate(ordered):
-        if b.block_type == BlockType.HEADING_CANDIDATE and _matches_heading(b.text, config.start_heading):
-            start_idx = i
-            start_heading_text = b.text.strip()
-            remainder_offset = len(b.text)
-            break
-        if b.block_type == BlockType.PARAGRAPH:
+        if b.block_type == BlockType.HEADING_CANDIDATE:
+            matched, exact = _matches_heading(b.text, config.start_heading)
+            if matched:
+                candidates.append((i, exact, b.text.strip(), len(b.text)))
+        elif b.block_type == BlockType.PARAGRAPH:
             run_in_match = _heading_run_in_match(b.text, config.start_heading)
             if run_in_match is not None:
-                start_idx = i
-                start_heading_text = run_in_match.group(1).strip()
-                remainder_offset = run_in_match.end(1)
-                break
+                candidates.append((i, True, run_in_match.group(1).strip(), run_in_match.end(1)))
 
-    if start_idx is None:
+    if not candidates:
         return None
+
+    candidates.sort(key=lambda c: (0 if c[1] else 1, c[0]))
+    start_idx, _, start_heading_text, remainder_offset = candidates[0]
 
     start_block = ordered[start_idx]
     remainder_text = start_block.text[remainder_offset:]
@@ -448,31 +509,48 @@ def _run_extraction(
     configs: tuple[UnitConfig, ...],
     run: SemanticUnitRun,
 ) -> None:
-    extraction_run = session.get(ExtractionRun, localization_run.extraction_run_id)
-    pages = session.scalars(
-        select(Page).where(
-            Page.extraction_run_id == extraction_run.id,
-            Page.page_number >= instance.start_page,
-            Page.page_number <= instance.end_page,
+    # Track 7D.2a: prefer the canonical source (Track 7C.1a) when this
+    # report has a current successful CanonicalExtractionRun, mirroring
+    # `schedule_localization._run_localization`'s own canonical preference
+    # (its 7C.1b) -- canonical classification already marks small numeric
+    # chart-label fragments `excluded_from_narrative` where legacy TextBlock
+    # extraction did not (Track 7D.2 Section 14's documented gap for `ACT
+    # healthcare_services_review`). Falls back to legacy TextBlock,
+    # unchanged, for a report with no canonical extraction yet.
+    canonical_run = get_current_canonical_run(session, report.id)
+    using_canonical = canonical_run is not None
+    if using_canonical:
+        source_pages = source_adapter.load_source_pages(session, canonical_run.id)
+        classified = source_adapter.classify_source_pages(source_pages)
+        unit_blocks = source_adapter.build_unit_blocks(
+            classified, start_page=instance.start_page, end_page=instance.end_page
         )
-    ).all()
-    page_number_by_id = {p.id: p.page_number for p in pages}
+    else:
+        extraction_run = session.get(ExtractionRun, localization_run.extraction_run_id)
+        pages = session.scalars(
+            select(Page).where(
+                Page.extraction_run_id == extraction_run.id,
+                Page.page_number >= instance.start_page,
+                Page.page_number <= instance.end_page,
+            )
+        ).all()
+        page_number_by_id = {p.id: p.page_number for p in pages}
 
-    text_blocks = session.scalars(
-        select(TextBlock).where(
-            TextBlock.extraction_run_id == extraction_run.id,
-            TextBlock.page_id.in_(page_number_by_id.keys()),
-            TextBlock.excluded_from_narrative.is_(False),
-        )
-    ).all()
+        text_blocks = session.scalars(
+            select(TextBlock).where(
+                TextBlock.extraction_run_id == extraction_run.id,
+                TextBlock.page_id.in_(page_number_by_id.keys()),
+                TextBlock.excluded_from_narrative.is_(False),
+            )
+        ).all()
 
-    unit_blocks = [
-        UnitBlock(
-            id=b.id, page_number=page_number_by_id[b.page_id], reading_order=b.reading_order,
-            block_type=b.block_type, text=b.cleaned_text or b.raw_text,
-        )
-        for b in text_blocks
-    ]
+        unit_blocks = [
+            UnitBlock(
+                id=b.id, page_number=page_number_by_id[b.page_id], reading_order=b.reading_order,
+                block_type=b.block_type, text=b.cleaned_text or b.raw_text,
+            )
+            for b in text_blocks
+        ]
 
     notes: list[str] = []
     for config in configs:
@@ -504,7 +582,9 @@ def _run_extraction(
         for order, (block_id, char_start, char_end) in enumerate(result.source_block_spans):
             session.add(
                 SemanticUnitSourceBlock(
-                    semantic_unit_id=unit.id, text_block_id=block_id,
+                    semantic_unit_id=unit.id,
+                    canonical_block_id=block_id if using_canonical else None,
+                    text_block_id=None if using_canonical else block_id,
                     block_order=order, char_start=char_start, char_end=char_end,
                 )
             )

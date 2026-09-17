@@ -285,3 +285,88 @@ def test_is_continuation_heading_matches_trailing_word_only():
     assert sue._is_continuation_heading("Finance director's report continued") is True
     assert sue._is_continuation_heading("Continued operations") is False
     assert sue._is_continuation_heading("Financial position") is False
+
+
+# --------------------------------------------------------------------------
+# Track 7D.2a: exact/substring/word-order-aware start-heading matching
+# --------------------------------------------------------------------------
+
+
+def test_matches_heading_exact_normalized_match():
+    matched, exact = sue._matches_heading("CAPITAL MANAGEMENT", "Capital management")
+    assert matched is True
+    assert exact is True
+
+
+def test_matches_heading_substring_match_is_not_exact():
+    matched, exact = sue._matches_heading("Capital management and funding", "Capital management")
+    assert matched is True
+    assert exact is False
+
+
+def test_matches_heading_word_order_tolerant_match_is_not_exact():
+    matched, exact = sue._matches_heading("REPORT Group CFO's", "Group CFO's Report")
+    assert matched is True
+    assert exact is False
+
+
+def test_matches_heading_unrelated_text_does_not_match():
+    matched, _ = sue._matches_heading("Group CEO's report", "CFO's report")
+    assert matched is False
+
+
+def test_start_heading_selection_prefers_exact_match_over_earlier_coincidental_substring():
+    """Real ACT 2024 corpus defect (Track 7D.2's rejected-candidate finding,
+    fixed here): an unrelated decorative pull-quote heading-candidate
+    fragment, "by prudent capital management policies", bare-substring-
+    matches the configured heading "Capital management" and sits earlier in
+    reading order than the real, exact "CAPITAL MANAGEMENT" section
+    heading. The pre-7D.2a first-positional-match behavior let the false
+    match win and never reached the real section; ranking by exactness
+    first must pick the real heading instead."""
+    config = UnitConfig(
+        unit_key="capital_management",
+        schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE,
+        ticker="ACT",
+        start_heading="Capital management",
+        boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+        anchor_pattern=None,
+    )
+    blocks = [
+        _block(60, 0, "by prudent capital management policies", BlockType.HEADING_CANDIDATE),
+        _block(60, 1, "Unrelated pull-quote page content."),
+        _block(65, 0, "CAPITAL MANAGEMENT", BlockType.HEADING_CANDIDATE),
+        _block(65, 1, "The real capital management narrative content."),
+        _block(66, 0, "Funding", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, config)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.source_heading == "CAPITAL MANAGEMENT"
+    assert result.start_page == 65
+    assert "Unrelated pull-quote page content." not in result.source_text
+    assert "The real capital management narrative content." in result.source_text
+
+
+def test_start_heading_selection_still_picks_earliest_among_equal_exactness():
+    """Two equally exact matches must still resolve to the earliest one, so
+    existing single-match/first-occurrence behavior is unchanged."""
+    config = UnitConfig(
+        unit_key="capital_management",
+        schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE,
+        ticker="ACT",
+        start_heading="Capital management",
+        boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+        anchor_pattern=None,
+    )
+    blocks = [
+        _block(21, 0, "Capital management", BlockType.HEADING_CANDIDATE),
+        _block(21, 1, "First occurrence content."),
+        _block(22, 0, "Funding", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, config)
+
+    assert result is not None
+    assert result.start_page == 21
+    assert "First occurrence content." in result.source_text

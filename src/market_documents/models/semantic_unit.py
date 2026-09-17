@@ -158,13 +158,21 @@ class SemanticUnit(UUIDPkMixin, TimestampMixin, Base):
 
 class SemanticUnitSourceBlock(UUIDPkMixin, Base):
     """Ordered association between a SemanticUnit and a character span of
-    one of its source TextBlocks -- answers "exactly which source block
-    text produced this semantic unit?" Mirrors `PassageSourceBlock`.
+    one of its source blocks -- answers "exactly which source block text
+    produced this semantic unit?" Mirrors `PassageSourceBlock`.
 
     Empty for an UNRESOLVED unit (no trustworthy span was ever
-    reconstructed). `(0, len(text_block.text))` for a fully-included block;
-    a narrower span only for the block containing an `ANCHOR_SENTENCE`
+    reconstructed). `(0, len(block.text))` for a fully-included block; a
+    narrower span only for the block containing an `ANCHOR_SENTENCE`
     boundary.
+
+    Exactly one of `text_block_id`/`canonical_block_id` is set per row
+    (Track 7D.2a, docs/7d2a-semantic-unit-extraction-hardening.md):
+    `text_block_id` for a report extracted from legacy `TextBlock` rows,
+    `canonical_block_id` for a report extracted from the canonical source
+    (Track 7C.1a), whichever `semantic_unit_extraction._run_extraction`
+    preferred for that run -- enforced in application code, mirroring how
+    this codebase already treats other either/or provenance columns.
     """
 
     __tablename__ = "semantic_unit_source_blocks"
@@ -174,17 +182,22 @@ class SemanticUnitSourceBlock(UUIDPkMixin, Base):
         ),
         Index("ix_semantic_unit_source_blocks_unit_id", "semantic_unit_id"),
         Index("ix_semantic_unit_source_blocks_text_block_id", "text_block_id"),
+        Index("ix_semantic_unit_source_blocks_canonical_block_id", "canonical_block_id"),
     )
 
     semantic_unit_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("semantic_units.id", ondelete="CASCADE"), nullable=False
     )
-    text_block_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("text_blocks.id", ondelete="CASCADE"), nullable=False
+    text_block_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("text_blocks.id", ondelete="CASCADE"), nullable=True
+    )
+    canonical_block_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("canonical_blocks.id", ondelete="CASCADE"), nullable=True
     )
     block_order: Mapped[int] = mapped_column(Integer, nullable=False)
     char_start: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     char_end: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     semantic_unit: Mapped["SemanticUnit"] = relationship(back_populates="source_blocks")
-    text_block: Mapped["TextBlock"] = relationship()  # noqa: F821
+    text_block: Mapped["TextBlock | None"] = relationship()  # noqa: F821
+    canonical_block: Mapped["CanonicalBlock | None"] = relationship()  # noqa: F821
