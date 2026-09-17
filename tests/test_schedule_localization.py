@@ -176,6 +176,123 @@ def test_table_of_contents_entry_is_not_matched_as_primary_heading():
     assert result.primary.start_page == 38  # the real heading, not the p.3 TOC listing
 
 
+# --------------------------------------------------------------------------
+# Track 7D.1: word-order-tolerant matching, evidence-based primary
+# selection, and per-span font-ratio boundary termination
+# --------------------------------------------------------------------------
+
+
+def test_word_order_scrambled_heading_matches_vocabulary():
+    """Real ACT 2019 corpus text extracts a heading's words in a different
+    order than they're laid out on the page ("REPORT Group CFO's" for what
+    reads as "Group CFO's Report"). A pure substring check never
+    generalizes to this; `_matches_vocabulary` must also match when the
+    heading contains every word of a vocabulary phrase, in any order."""
+    matched, exact = sl._matches_vocabulary("REPORT Group CFO's", ("CFO's report",))
+    assert matched is True
+    assert exact is False  # weaker evidence than a substring/exact match
+
+
+def test_word_order_tolerant_matching_does_not_relax_exact_match():
+    matched, exact = sl._matches_vocabulary("CFO's report", ("CFO's report",))
+    assert matched is True
+    assert exact is True
+
+
+def test_unrelated_heading_with_only_some_words_does_not_match():
+    matched, _ = sl._matches_vocabulary("Group CEO's report", ("CFO's report",))
+    assert matched is False
+
+
+def test_word_order_tolerance_does_not_match_words_scattered_far_apart():
+    """Real BEL 2016 corpus false-positive risk: an unrelated heading
+    ("FINANCIAL STATEMENTS AND EXTERNAL REVIEW", an audit-review section)
+    contains both "financial" and "review" but three words apart -- must
+    not match "Financial review" just because both words appear somewhere
+    in the heading. Word-order tolerance is for a local
+    reordering/insertion artifact, not scattered coincidental word reuse."""
+    matched, _ = sl._matches_vocabulary("FINANCIAL STATEMENTS AND EXTERNAL REVIEW", ("Financial review",))
+    assert matched is False
+
+
+def test_primary_selection_prefers_genuine_section_over_earlier_coincidental_match():
+    """ACT-2019-shaped: an ordinary early-page sentence fragment
+    substring-matches the vocabulary and precedes the real, much larger
+    section heading by many pages. The real heading (found only via
+    word-order-tolerant matching) must still win primary selection."""
+    headings = [
+        _heading(13, 11, "Consistent financial performance", font_size=11.0),
+        _heading(40, 2, "REPORT\nGroup CFO's", font_size=57.58),
+        _heading(42, 1, "GROUP CFO'S REPORT (CONTINUED)", font_size=11.0),
+        _heading(44, 1, "Results AT A GLANCE", font_size=45.08),
+    ]
+    config = ScheduleConfig(heading_vocabulary={NormalizedSchedule.FINANCIAL_PERFORMANCE: ("CFO's report",)})
+
+    result = sl.localize_schedule(headings, last_page_number=100, schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE, config=config)
+
+    assert result.primary.start_page == 40
+    assert result.primary.end_page == 43  # page before "Results AT A GLANCE" (44)
+
+
+def test_end_boundary_excludes_subsection_heading_close_in_font_to_parent():
+    """BEL-2017-shaped: the schedule's own subsection headings (e.g. 'Gross
+    margin', 'Revenue analysis') sit at 18pt under a 24pt section heading --
+    a ratio (0.75) landing exactly on `heading_structure`'s own
+    document-wide cluster-gap threshold, so document-wide clustering alone
+    cannot tell them apart from a genuine next top-level section. The
+    per-span font-ratio check must still exclude them."""
+    headings = [
+        _heading(24, 1, "Finance Director's Report", font_size=24.0),
+        _heading(25, 3, "Revenue analysis", font_size=18.0),
+        _heading(25, 4, "Gross margin", font_size=18.0),
+        _heading(28, 1, "Corporate Governance Report", font_size=24.0),
+    ]
+    config = ScheduleConfig(
+        heading_vocabulary={NormalizedSchedule.FINANCIAL_PERFORMANCE: ("Finance director's report",)}
+    )
+
+    result = sl.localize_schedule(headings, last_page_number=100, schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE, config=config)
+
+    assert result.primary.end_page == 27  # page before the genuine next section (28), not 24
+
+
+def test_end_boundary_includes_genuine_next_section_moderately_smaller_in_font():
+    """ACT-2019-shaped: the genuine next top-level section is rendered at a
+    moderately smaller font than the schedule's own heading (45.08pt vs
+    57.58pt, ratio 0.783) -- still close enough to be the same "cover title"
+    tier, and must still terminate the span."""
+    headings = [
+        _heading(40, 2, "Group CFO's Report", font_size=57.58),
+        _heading(42, 1, "Group CFO's Report (continued)", font_size=11.0),
+        _heading(43, 5, "In conclusion", font_size=11.0),
+        _heading(44, 1, "Results AT A GLANCE", font_size=45.08),
+    ]
+    config = ScheduleConfig(heading_vocabulary={NormalizedSchedule.FINANCIAL_PERFORMANCE: ("CFO's report",)})
+
+    result = sl.localize_schedule(headings, last_page_number=100, schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE, config=config)
+
+    assert result.primary.end_page == 43  # includes "In conclusion", stops before the next real section
+
+
+def test_end_boundary_font_ratio_scales_with_document_not_absolute_points():
+    """The same relative pattern (a materially smaller subsection tier vs.
+    the schedule heading's own tier) must behave identically at a different
+    absolute point scale, proving the ratio isn't tuned to one document's
+    literal font sizes."""
+    headings = [
+        _heading(10, 1, "Finance director's report", font_size=12.0),
+        _heading(11, 1, "Gross margin", font_size=9.0),  # ratio 0.75, same as the BEL 24/18 case
+        _heading(14, 1, "Corporate governance report", font_size=12.0),
+    ]
+    config = ScheduleConfig(
+        heading_vocabulary={NormalizedSchedule.FINANCIAL_PERFORMANCE: ("Finance director's report",)}
+    )
+
+    result = sl.localize_schedule(headings, last_page_number=50, schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE, config=config)
+
+    assert result.primary.end_page == 13  # subsection at page 11 does not terminate; page 14 does
+
+
 def test_previously_working_schedule_unchanged_with_no_font_evidence():
     """A report with no font data at all (the exact fixture from
     `test_exact_match_is_found_primary_only_high_confidence`) must localize

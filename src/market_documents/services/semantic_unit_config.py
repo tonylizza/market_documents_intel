@@ -26,7 +26,30 @@ from market_documents.models.enums import NormalizedSchedule, SemanticUnitBounda
 # "Results overview" heading never appeared in the real ACT corpus) with
 # ACT_CFO_CONCLUSION, verified against the actual ACT PDFs during the 7C.1
 # real-corpus acceptance run (docs/implementation/track-7c1-acceptance.md).
-CONFIG_VERSION = "1.1.0"
+# v1.2.0 = Track 7D.1: broadened BEL_GROSS_MARGIN's closing-anchor clause
+# from the single literal "in the prior year" to a configurable set of
+# generic year-reference variants (docs/7d1-known-recall-defect-remediation.md)
+# -- BEL 2017's real closing sentence names the comparison year directly
+# ("...for 2016.") instead of saying "the prior year", and the old pattern
+# never generalized to that phrasing.
+CONFIG_VERSION = "1.2.0"
+
+# A trailing clause that names the prior-year comparison a closing sentence
+# is making, in any of the generic phrasings observed across the corpus
+# (recurring-year-comparison wording, not any one issuer's or year's exact
+# sentence). Shared so any future ANCHOR_SENTENCE unit can reuse it instead
+# of re-deriving its own variant list.
+_YEAR_REFERENCE_CLAUSE = (
+    r"(?:"
+    r"in\s+the\s+prior\s+year"
+    r"|in\s+the\s+previous\s+year"
+    r"|compared\s+with\s+\d{4}"
+    r"|compared\s+to\s+\d{4}"
+    r"|versus\s+\d{4}"
+    r"|vs\.?\s+\d{4}"
+    r"|for\s+\d{4}"
+    r")"
+)
 
 
 @dataclass(frozen=True)
@@ -46,14 +69,21 @@ class UnitConfig:
 # Section 3. NEXT_HEADING alone was shown to fail on the 2019 report (a bar
 # chart's axis labels/percentages sit between the paragraph and the next
 # heading, "Other operating income"); the recurring closing sentence
-# ("...compared with X% in the prior year.") is the load-bearing anchor.
+# ("...compared with X% <year-reference clause>.") is the load-bearing
+# anchor. The year-reference clause itself varies by year -- most years say
+# "...in the prior year.", but 2017 instead says "...for 2016.", naming the
+# comparison year directly (see `_YEAR_REFERENCE_CLAUSE`) -- so the pattern
+# accepts any of that shared, generic set of phrasings rather than one
+# literal sentence.
 BEL_GROSS_MARGIN = UnitConfig(
     unit_key="gross_margin",
     schedule=NormalizedSchedule.FINANCIAL_PERFORMANCE,
     ticker="BEL",
     start_heading="Gross Margin",
     boundary_strategy=SemanticUnitBoundaryStrategy.ANCHOR_SENTENCE,
-    anchor_pattern=re.compile(r"compared\s+with\s+[\d.,]+\s*%\s+in\s+the\s+prior\s+year\.", re.IGNORECASE),
+    anchor_pattern=re.compile(
+        rf"compared\s+with\s+[\d.,]+\s*%\s+{_YEAR_REFERENCE_CLAUSE}\.", re.IGNORECASE
+    ),
 )
 
 # ACT's headed-narrative unit inside its CFO's review, validating that the

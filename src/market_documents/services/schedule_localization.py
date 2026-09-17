@@ -97,6 +97,24 @@ class ScheduleLocalizationResult:
 
 _QUOTE_TRANSLATION = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
 
+# A later heading-candidate's own font size must be at least this fraction
+# of the schedule's own matched heading's font size to end the span (Track
+# 7D.1). Real-corpus verification (docs/7d1-known-recall-defect-remediation.md)
+# showed BEL's and ACT's full heading-candidate font-size populations are
+# dense, near-continuous spectrums -- `heading_structure`'s whole-document
+# clustering collapses almost the entire top of the range into one cluster
+# regardless of its own gap-ratio setting, so it cannot reliably separate a
+# genuine next top-level section from an internal subsection heading in
+# these documents. Comparing a candidate directly to *this specific span's*
+# own matched heading is a narrower, per-span use of the same
+# relative-font-size evidence. 0.78 is calibrated against two real,
+# confirmed cases: BEL 2017's "Gross margin"/"Revenue analysis" subsection
+# headings (18pt under a 24pt "Finance Director's Report" heading, ratio
+# 0.75 -- must be excluded) and ACT 2019's genuine next section, "Results AT
+# A GLANCE" (45.08pt under a 57.58pt "Group CFO's Report" heading, ratio
+# 0.783 -- must be included).
+_END_BOUNDARY_FONT_RATIO = 0.78
+
 
 def _normalize_heading(text: str) -> str:
     return " ".join(text.strip().split()).lower().translate(_QUOTE_TRANSLATION)
@@ -105,13 +123,39 @@ def _normalize_heading(text: str) -> str:
 def _matches_vocabulary(heading_text: str, vocabulary: tuple[str, ...]) -> tuple[bool, bool]:
     """Returns (matched, exact) -- `exact` means the normalized heading text
     equals a vocabulary entry exactly (not merely contains it), which is
-    treated as a stronger signal than a substring match."""
+    treated as a stronger signal than a substring match.
+
+    A heading also matches if every word of a vocabulary phrase appears
+    within a small window of consecutive heading words, in any order -- real
+    PDF text extraction sometimes reorders a heading's words relative to
+    their visual layout, occasionally with one stray intervening word (e.g.
+    real ACT 2019 corpus text extracts as "REPORT Group CFO's" for what
+    reads as "Group CFO's Report" on the page), which a pure substring check
+    never generalizes to no matter how the vocabulary is worded. The window
+    is deliberately tight -- vocabulary word count plus one -- so this
+    catches a genuine local reordering/insertion artifact without also
+    matching an unrelated heading that merely happens to contain the same
+    words scattered far apart (real BEL corpus false-positive risk: "FINANCIAL
+    STATEMENTS AND EXTERNAL REVIEW" contains both "financial" and "review"
+    but is an unrelated section, three words apart). Word-order tolerance is
+    deliberately weaker evidence
+    than a substring match (never `exact`), since the caller
+    (`localize_schedule`) also weighs each match's structural top-level
+    evidence before picking a primary span -- see its module docstring."""
     normalized = _normalize_heading(heading_text)
+    heading_word_list = normalized.split()
     for candidate in vocabulary:
         normalized_candidate = _normalize_heading(candidate)
         if normalized == normalized_candidate:
             return True, True
         if normalized_candidate in normalized:
+            return True, False
+        candidate_words = set(normalized_candidate.split())
+        window_size = len(candidate_words) + 1
+        if len(candidate_words) >= 2 and any(
+            candidate_words <= set(heading_word_list[i : i + window_size])
+            for i in range(len(heading_word_list))
+        ):
             return True, False
     return False, False
 
@@ -251,17 +295,58 @@ def localize_schedule(
         # Geographic") is a HEADING_CANDIDATE like any other, but is not a
         # document-hierarchy section boundary, and must not truncate its
         # parent schedule.
+        #
+        # Track 7D.1: `is_top_level` alone isn't a reliable enough filter on
+        # its own -- real BEL/ACT heading-candidate font-size populations
+        # are dense spectrums that `heading_structure`'s whole-document
+        # clustering can merge into one broad top cluster, spanning both the
+        # schedule's own heading tier and a materially smaller subsection
+        # tier beneath it (real BEL 2017 case: 24pt "Finance Director's
+        # Report" and its own 18pt "Revenue analysis"/"Gross margin"
+        # subsections). Additionally requiring a candidate's own font size
+        # to be reasonably close to *this specific schedule heading's* font
+        # size -- a per-span comparison, not the whole document's tiering --
+        # is a second, independent use of the same relative-font-size
+        # evidence (see `_END_BOUNDARY_FONT_RATIO`).
         heading_norm = _normalize_heading(heading.text)
         later = [
             h for h in boundary_candidates
             if h.page_number > heading.page_number
             and _normalize_heading(h.text) != f"{heading_norm} continued"
             and structural[h.id].is_top_level
+            and (
+                heading.font_size is None
+                or h.font_size is None
+                or h.font_size >= heading.font_size * _END_BOUNDARY_FONT_RATIO
+            )
         ]
         if not later:
             return last_page_number
         next_page = later[0].page_number
         return max(heading.page_number, next_page - 1)
+
+    # Track 7D.1: the primary span is the best-evidenced match, not simply
+    # whichever match happens to occur on the earliest page -- a real
+    # section's own genuine heading can sit *after* an unrelated,
+    # coincidental substring/word-set match earlier in the document (real
+    # ACT 2019 corpus case: "Consistent financial performance", an ordinary
+    # sentence fragment on an early overview page, substring-matches the
+    # FINANCIAL_PERFORMANCE vocabulary at 11pt and precedes the real, much
+    # larger "CFO's Report" heading (57.58pt) by dozens of pages). Ranked by:
+    # an exact vocabulary match first; then structural top-level assessment
+    # (Track 7C.1b's document-relative font-size tiering); then, as a
+    # tie-break among matches that land in the same tier, the match's own
+    # font size descending; then page order as the final tie-break.
+    ranked_matches = sorted(
+        matches,
+        key=lambda pair: (
+            0 if pair[1] else 1,
+            0 if structural[pair[0].id].is_top_level else 1,
+            -(pair[0].font_size if pair[0].font_size is not None else float("-inf")),
+            pair[0].page_number,
+            pair[0].reading_order,
+        ),
+    )
 
     spans = [
         SpanResult(
@@ -270,7 +355,7 @@ def localize_schedule(
             end_page=_end_page_for(heading),
             exact_match=exact,
         )
-        for heading, exact in matches
+        for heading, exact in ranked_matches
     ]
 
     primary = spans[0]

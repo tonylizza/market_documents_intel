@@ -58,6 +58,19 @@ class _HeadingLike(Protocol):
 # this fraction of the current cluster's smallest member. Relative, not an
 # absolute point size -- ACT's ~62pt/~12pt split and a hypothetical
 # 14pt/10pt split are both "a gap" under this rule if the ratio holds.
+#
+# Track 7D.1 investigated raising this to separate a real BEL 2017 case
+# (18pt subsection headings landing exactly on the old 0.75 ratio against
+# their 24pt parent-section heading, so never separating) -- reverted after
+# real-corpus verification showed both BEL's and ACT's full heading-candidate
+# font-size populations are dense, near-continuous spectrums with no usable
+# gap anywhere near the top tier (every real report-year checked collapses
+# to one ~30-50-member top cluster under any ratio from 0.75-0.85), so no
+# single whole-document ratio can separate the cases that motivated the
+# change without merging cases that must stay separate elsewhere in the
+# corpus. `schedule_localization._end_page_for` instead compares a boundary
+# candidate's font size directly to the schedule's own matched heading (see
+# its module docstring) -- a per-span, not whole-document, comparison.
 _CLUSTER_GAP_RATIO = 0.75
 
 # A font-size gap between the top tier and the next tier at or above this

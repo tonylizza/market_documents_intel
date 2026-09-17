@@ -50,7 +50,16 @@ from market_documents.models.enums import NormalizedSchedule
 # chart title no longer truncates its parent schedule. Also prefers the
 # Track 7C.1a canonical source over legacy TextBlock when a report has a
 # current successful CanonicalExtractionRun.
-ALGORITHM_VERSION = "1.1.0"
+# v1.2.0 = Track 7D.1 (docs/7d1-known-recall-defect-remediation.md):
+# `_matches_vocabulary` also matches a heading whose words contain every
+# word of a vocabulary phrase in any order (real corpus text extraction can
+# reorder a heading's words relative to its visual layout), and the primary
+# span is chosen by strongest evidence (exact match, then structural
+# top-level assessment, then page order) instead of simply the earliest
+# page a vocabulary match happens to occur on -- a real section's own
+# heading can be preceded by an unrelated, coincidental substring/word-set
+# match many pages earlier.
+ALGORITHM_VERSION = "1.2.0"
 
 HEADING_VOCABULARY_VERSION = 1
 

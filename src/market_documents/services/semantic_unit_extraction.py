@@ -53,7 +53,13 @@ logger = logging.getLogger(__name__)
 # v1.0.1 = normalize typographic quotes/apostrophes to ASCII before heading
 # matching, mirroring the same fix in schedule_localization.py (7C.1
 # real-corpus acceptance run).
-ALGORITHM_VERSION = "1.0.1"
+# v1.1.0 = Track 7D.1: `_heading_run_in_match` (formerly `_heading_prefix_match`)
+# now also matches a configured heading immediately after a sentence
+# boundary anywhere inside a PARAGRAPH block, not just at the block's start
+# -- BEL 2020's "Gross Margin" heading is fused onto the *end* of the
+# preceding section's paragraph rather than starting a fresh block
+# (docs/7d1-known-recall-defect-remediation.md).
+ALGORITHM_VERSION = "1.1.0"
 
 
 # --------------------------------------------------------------------------
@@ -103,20 +109,36 @@ def _matches_heading(block_text: str, configured_heading: str) -> bool:
     return normalized_heading in normalized_block
 
 
-def _heading_prefix_match(text: str, configured_heading: str) -> re.Match | None:
-    """Match a heading rendered as a run-in prefix of a PARAGRAPH block's raw
-    text (e.g. "Gross Margin The gross margin is dependent on..."), a
-    pattern the real BEL corpus shows in 4 of 5 validated years -- the
-    upstream block classifier types the whole run as one PARAGRAPH block
+def _heading_run_in_match(text: str, configured_heading: str) -> re.Match | None:
+    """Match a heading rendered as a run-in inside a PARAGRAPH block's raw
+    text, either at the block's start (e.g. "Gross Margin The gross margin
+    is dependent on...", the pattern the real BEL corpus shows in 4 of 5
+    validated years) or mid-block, immediately after a sentence boundary
+    (e.g. BEL 2020's "...for parts and machines supplied. Gross Margin The
+    gross margin is dependent on...", where the upstream block classifier
+    fuses the heading onto the *end* of the preceding section's own
+    paragraph rather than starting a fresh block with it). In either case
+    the upstream block classifier typed the whole run as one PARAGRAPH block
     rather than splitting a separate HEADING_CANDIDATE block, so a start
     heading that only ever matches a standalone HEADING_CANDIDATE block (as
-    `_matches_heading` requires) misses it entirely. Whitespace-tolerant and
-    quote-normalized like the rest of this module's matching."""
+    `_matches_heading` requires) misses it entirely.
+
+    Anchoring the mid-block case to a sentence boundary -- immediately after
+    a preceding '.', '!' or '?' plus whitespace, never just anywhere in the
+    block -- is what keeps this from firing on an ordinary occurrence of the
+    heading's words in the middle of unrelated body prose: real prose
+    referring to the same concept mid-sentence (e.g. "...remains driven by
+    gross margin trends across...") is never immediately preceded by
+    sentence-ending punctuation. Whitespace-tolerant and quote-normalized
+    like the rest of this module's matching. Returns the heading itself as
+    capture group 1, so callers can recover its exact start/end offsets
+    within the block regardless of which case matched."""
     words = configured_heading.translate(_QUOTE_TRANSLATION).split()
     if not words:
         return None
-    pattern = r"^\s*" + r"\s+".join(re.escape(w) for w in words) + r"\b"
-    return re.match(pattern, text.translate(_QUOTE_TRANSLATION), re.IGNORECASE)
+    heading_pattern = r"\s+".join(re.escape(w) for w in words) + r"\b"
+    pattern = r"(?:^\s*|(?<=[.!?])\s+)(" + heading_pattern + r")"
+    return re.search(pattern, text.translate(_QUOTE_TRANSLATION), re.IGNORECASE)
 
 
 def _unresolved(config: UnitConfig, start_block: UnitBlock, note: str) -> SemanticUnitExtractionResult:
@@ -140,12 +162,15 @@ def extract_unit(blocks: list[UnitBlock], config: UnitConfig) -> SemanticUnitExt
     """Deterministically extract one HEADED_NARRATIVE_UNIT.
 
     A start heading is recognized two ways: as a standalone HEADING_CANDIDATE
-    block (the common case), or as a run-in prefix of a PARAGRAPH block's raw
-    text -- the real BEL corpus shows the upstream block classifier fusing a
-    sub-heading like "Gross Margin" onto the same block as its body text in
-    most validated years, rather than segmenting it as its own heading block
-    (see `_heading_prefix_match`). In the run-in case, the remainder of that
-    same block (after the heading) is the first fragment of body content.
+    block (the common case), or as a run-in inside a PARAGRAPH block's raw
+    text, at the block's start or mid-block after a sentence boundary -- the
+    real BEL corpus shows the upstream block classifier fusing a sub-heading
+    like "Gross Margin" onto the same block as its body text (most validated
+    years at the block's start; 2020 mid-block, fused onto the end of the
+    *preceding* section's own paragraph) rather than segmenting it as its
+    own heading block (see `_heading_run_in_match`). In the run-in case, the
+    remainder of that same block (after the heading) is the first fragment
+    of body content.
 
     Returns `None` -- not a row of any kind -- if `config.start_heading`
     never matches: a SemanticUnit row is only ever created once a start
@@ -165,11 +190,11 @@ def extract_unit(blocks: list[UnitBlock], config: UnitConfig) -> SemanticUnitExt
             remainder_offset = len(b.text)
             break
         if b.block_type == BlockType.PARAGRAPH:
-            prefix_match = _heading_prefix_match(b.text, config.start_heading)
-            if prefix_match is not None:
+            run_in_match = _heading_run_in_match(b.text, config.start_heading)
+            if run_in_match is not None:
                 start_idx = i
-                start_heading_text = b.text[: prefix_match.end()].strip()
-                remainder_offset = prefix_match.end()
+                start_heading_text = run_in_match.group(1).strip()
+                remainder_offset = run_in_match.end(1)
                 break
 
     if start_idx is None:
