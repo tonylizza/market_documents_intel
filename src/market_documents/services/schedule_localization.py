@@ -181,24 +181,28 @@ def localize_schedule(
        or the report's last page if it is the final heading.
 
     FINANCIAL_PERFORMANCE (Track 7C.1), CORPORATE_GOVERNANCE (Track 7D.3,
-    docs/7d3-corporate-governance-expansion.md), and REMUNERATION (Track
-    7D.4, docs/7d4-corpus-wide-remuneration-expansion.md) are implemented --
-    raises NotImplementedError for any other schedule (see module
-    docstring). The algorithm itself is schedule-agnostic (driven entirely
-    by `SCHEDULE_HEADING_VOCABULARY`); this guard only enforces which
-    schedules have been validated against the real corpus so far.
+    docs/7d3-corporate-governance-expansion.md), REMUNERATION (Track
+    7D.4, docs/7d4-corpus-wide-remuneration-expansion.md), and
+    MATERIAL_RISKS (Track 7D.5, docs/7d5-corpus-wide-material-risks-
+    expansion.md) are implemented -- raises NotImplementedError for any
+    other schedule (see module docstring). The algorithm itself is
+    schedule-agnostic (driven entirely by `SCHEDULE_HEADING_VOCABULARY`);
+    this guard only enforces which schedules have been validated against
+    the real corpus so far.
     """
     if schedule not in (
         NormalizedSchedule.FINANCIAL_PERFORMANCE,
         NormalizedSchedule.CORPORATE_GOVERNANCE,
         NormalizedSchedule.REMUNERATION,
+        NormalizedSchedule.MATERIAL_RISKS,
     ):
         raise NotImplementedError(
             f"schedule_localization.localize_schedule: {schedule.value} is not implemented -- "
-            "only FINANCIAL_PERFORMANCE, CORPORATE_GOVERNANCE, and REMUNERATION are supported. "
-            "See docs/7c1-schedule-localization-plan.md Section 2, "
-            "docs/7d3-corporate-governance-expansion.md, and "
-            "docs/7d4-corpus-wide-remuneration-expansion.md (explicit scope boundary)."
+            "only FINANCIAL_PERFORMANCE, CORPORATE_GOVERNANCE, REMUNERATION, and MATERIAL_RISKS "
+            "are supported. See docs/7c1-schedule-localization-plan.md Section 2, "
+            "docs/7d3-corporate-governance-expansion.md, "
+            "docs/7d4-corpus-wide-remuneration-expansion.md, and "
+            "docs/7d5-corpus-wide-material-risks-expansion.md (explicit scope boundary)."
         )
 
     vocabulary = config.heading_vocabulary.get(schedule, ())

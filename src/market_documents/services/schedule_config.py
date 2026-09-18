@@ -76,9 +76,19 @@ from market_documents.models.enums import NormalizedSchedule
 # SUR 2023-2025, and SDL 2024-2025 ("REMUNERATION REPORT (AUDITED)", still a
 # substring match). Pure vocabulary addition -- no matching-logic change,
 # does not draw on this milestone's one-generic-correction parser budget.
-ALGORITHM_VERSION = "1.4.0"
+# v1.5.0 = Track 7D.5 (docs/7d5-corpus-wide-material-risks-expansion.md):
+# added MATERIAL_RISKS vocabulary, real-corpus inventoried across all 6
+# tickers (see the milestone doc's schedule-inventory section). Deliberately
+# excludes "Risk management", "Enterprise Risk Management", "Audit and Risk
+# Committee", and similar HOW-risk-is-governed headings -- those name risk
+# oversight/governance, not the material-risk disclosure itself (the
+# milestone's own Section 2 distinction), and were confirmed in the real
+# corpus to belong to CORPORATE_GOVERNANCE-adjacent content, not this
+# schedule. Pure vocabulary addition -- no matching-logic change, does not
+# draw on this milestone's one-generic-correction parser budget.
+ALGORITHM_VERSION = "1.5.0"
 
-HEADING_VOCABULARY_VERSION = 4
+HEADING_VOCABULARY_VERSION = 5
 
 # Canonical heading strings per schedule, matched case-insensitively as a
 # substring of a HEADING_CANDIDATE block's text (see
@@ -124,6 +134,36 @@ SCHEDULE_HEADING_VOCABULARY: dict[NormalizedSchedule, tuple[str, ...]] = {
         "REMUNERATION COMMITTEE REPORT",
         "Remuneration report",
         "REMUNERATION REPORT",
+    ),
+    # Real-corpus heading strings confirmed via docs/7d5-corpus-wide-
+    # material-risks-expansion.md's schedule-inventory section (ACT 2016,
+    # 2018, 2022-2024, BEL 2018-2022, SUR 2023-2025). Deliberately does NOT
+    # include "Risk management", "Enterprise Risk Management", "Audit and
+    # Risk Committee" -- those describe HOW risk is governed, not WHAT the
+    # material risks are, and were confirmed in the real corpus to belong to
+    # risk-governance content, not this schedule (see the milestone doc's
+    # Section 2 distinction). Deliberately does NOT include the bare phrase
+    # "Risks and opportunities" either -- real-corpus inspection found ACT's
+    # own value-creation-model overview page (present nearly every year)
+    # carries a small "RISKS AND \nOPPORTUNITIES" navigational label as one
+    # of several cross-reference callouts, which exact-matched and won
+    # primary over the real, much longer risk chapter in years lacking a
+    # more specific "...top risks"/"...risks and opportunities" chapter
+    # title (2017, 2020, 2021) -- a real, confirmed vocabulary-breadth
+    # false-positive risk (see the milestone doc's Section 19 safety
+    # review). Narrowing the vocabulary to the specific chapter-title
+    # phrases below (never matching the generic navigational label) avoids
+    # it without any matching-logic change.
+    NormalizedSchedule.MATERIAL_RISKS: (
+        "Material risks and opportunities",
+        "MATERIAL RISKS AND OPPORTUNITIES",
+        "Key risks and opportunities",
+        "KEY RISKS AND OPPORTUNITIES",
+        "Overview of our top risks",
+        "OVERVIEW OF OUR TOP RISKS",
+        "Strategic overview and risk management",
+        "Social and economic risks facing South Africa",
+        "SOCIAL AND ECONOMIC RISKS FACING SOUTH AFRICA",
     ),
 }
 

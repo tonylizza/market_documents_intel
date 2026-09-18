@@ -85,13 +85,13 @@ def test_multiple_matches_produce_primary_and_supporting():
 
 
 def test_unimplemented_schedule_raises_not_implemented():
-    """Track 7D.4 implemented REMUNERATION -- this now targets a schedule
-    still genuinely unimplemented (mirrors Track 7D.3's own replacement of
-    this test when CORPORATE_GOVERNANCE was implemented)."""
-    headings = [_heading(10, 0, "Material risks")]
+    """Track 7D.5 implemented MATERIAL_RISKS -- this now targets a schedule
+    still genuinely unimplemented (mirrors Track 7D.3's/7D.4's own
+    replacement of this test each time another schedule was implemented)."""
+    headings = [_heading(10, 0, "CEO's review")]
     with pytest.raises(NotImplementedError):
         sl.localize_schedule(
-            headings, last_page_number=100, schedule=NormalizedSchedule.MATERIAL_RISKS, config=CONFIG
+            headings, last_page_number=100, schedule=NormalizedSchedule.CEO_REVIEW, config=CONFIG
         )
 
 
@@ -416,3 +416,79 @@ def test_remuneration_continued_banner_does_not_terminate_schedule():
     )
 
     assert result.primary.end_page == 121
+
+
+# --------------------------------------------------------------------------
+# Track 7D.5: MATERIAL_RISKS schedule localization
+# --------------------------------------------------------------------------
+
+MATERIAL_RISKS_CONFIG = ScheduleConfig(
+    heading_vocabulary={
+        NormalizedSchedule.MATERIAL_RISKS: ("Overview of our top risks", "Material risks and opportunities")
+    }
+)
+
+
+def test_material_risks_schedule_localizes_like_other_schedules():
+    """The algorithm is schedule-agnostic; MATERIAL_RISKS must resolve
+    exactly like FINANCIAL_PERFORMANCE/CORPORATE_GOVERNANCE/REMUNERATION
+    given the same shape of evidence."""
+    headings = [
+        _heading(38, 0, "Our risks"),
+        _heading(39, 0, "Overview of our top risks"),
+        _heading(45, 0, "Audit and risk committee report"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.MATERIAL_RISKS, config=MATERIAL_RISKS_CONFIG
+    )
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 39
+    assert result.primary.end_page == 44  # page before the next section (45)
+    assert result.boundary_confidence == BoundaryConfidence.HIGH
+
+
+def test_material_risks_generic_navigational_label_is_not_configured_vocabulary():
+    """Real-corpus case (ACT): a value-creation-model overview page carries
+    a short 'Risks and \\nopportunities' navigational cross-reference label
+    in years lacking a real, bounded risk chapter. That generic phrase is
+    deliberately NOT part of the configured vocabulary (see
+    schedule_config.py's MATERIAL_RISKS comment) specifically so it cannot
+    be matched at all -- confirmed here: a heading with only that
+    navigational text produces NOT_FOUND, not a false-positive match."""
+    headings = [_heading(4, 0, "Risks and \nopportunities")]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.MATERIAL_RISKS, config=MATERIAL_RISKS_CONFIG
+    )
+
+    assert result.status == ScheduleLocalizationStatus.NOT_FOUND
+
+
+def test_material_risks_real_chapter_wins_over_navigational_label_when_both_present():
+    """Same real-corpus shape as above, but with the genuine chapter heading
+    also present later in the document (ACT 2024's real shape) -- the
+    navigational label must not be configured vocabulary at all, so only
+    the genuine chapter heading is ever a candidate."""
+    headings = [
+        _heading(8, 0, "Risks and \nopportunities"),
+        _heading(40, 0, "Overview of our top risks and related opportunities"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.MATERIAL_RISKS, config=MATERIAL_RISKS_CONFIG
+    )
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 40
+
+
+def test_material_risks_continued_banner_does_not_terminate_schedule():
+    headings = [
+        _heading(39, 0, "Overview of our top risks"),
+        _heading(41, 0, "Overview of our top risks continued"),
+        _heading(45, 0, "Audit and risk committee report"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.MATERIAL_RISKS, config=MATERIAL_RISKS_CONFIG
+    )
+
+    assert result.primary.end_page == 44
