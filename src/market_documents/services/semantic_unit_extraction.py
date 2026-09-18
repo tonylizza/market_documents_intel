@@ -133,7 +133,44 @@ logger = logging.getLogger(__name__)
 # `supporting_spans` field, no schedule- or heading-specific text), applies
 # to every existing and future NEXT_HEADING/ANCHOR_SENTENCE unit. Regression
 # test: `tests/test_semantic_unit_extraction_service.py`.
-ALGORITHM_VERSION = "1.5.0"
+# v1.6.0 = Track 7D.4a (docs/7d4a-start-heading-false-positive-hardening.md):
+# start-heading false-positive hardening, generic across every schedule.
+# Real-corpus investigation (querying the live ACT 2022/2023 CORPORATE_GOVERNANCE
+# and ACT 2024 REMUNERATION canonical blocks directly, not just the
+# documented prose summaries) found the actual mechanism behind two
+# independently-documented defects (CORPORATE_GOVERNANCE `combined_assurance`,
+# REMUNERATION `remuneration_governance`) is narrower than assumed: both are
+# caused by `_heading_run_in_match` firing on an ordinary PARAGRAPH block
+# that merely *opens* with the configured heading's words before continuing
+# the same grammatical sentence -- e.g. real ACT 2024 p.121 "Remuneration
+# governance to remain top of mind with a greater focus on approval
+# frameworks..." and real ACT 2022/2023 "Combined assurance approach\nStrong
+# Lead Independent Director..." -- rather than genuinely starting a new
+# heading followed by fresh body prose (the legitimate BEL "Gross Margin The
+# gross margin is dependent on..." pattern `_heading_run_in_match` exists
+# for). Both false matches are exact-by-construction (the regex requires the
+# exact word sequence) and sit earlier in reading order than the real,
+# standalone `HEADING_CANDIDATE` heading later in the same range, so they
+# won outright under the existing (exact, position) ranking -- no
+# HEADING_CANDIDATE exact/substring/word-order tiering was involved in
+# either real defect (the third documented case, FINANCIAL_PERFORMANCE's
+# never-configured "Capital management" candidate, was already a
+# HEADING_CANDIDATE substring match and was already fixed by 7D.2a's
+# exact/substring tiering). `_run_in_remainder_is_prose_continuation`
+# rejects a run-in match whose immediately-following text (after stripping
+# leading whitespace) starts with a lowercase letter -- a genuine run-in
+# heading is followed by a fresh sentence (capitalized, as in every
+# validated BEL case), while ordinary prose that happens to open with the
+# heading's own words continues the same clause in lowercase. A candidate
+# rejected this way is treated as no match at all (not merely demoted),
+# letting a later, genuine HEADING_CANDIDATE match win instead of never
+# resolving. Purely a text-shape check (capitalization of one character),
+# not schedule- or heading-specific, so it applies to every existing and
+# future run-in match, not just the two documented defects. Regression
+# tests: `tests/test_semantic_unit_extraction.py` (pure-algorithm) and
+# `tests/test_semantic_unit_extraction_service.py` (DB-backed, real-corpus
+# shape).
+ALGORITHM_VERSION = "1.6.0"
 
 
 # --------------------------------------------------------------------------
@@ -251,6 +288,44 @@ def _heading_run_in_match(text: str, configured_heading: str) -> re.Match | None
     return re.search(pattern, text.translate(_QUOTE_TRANSLATION), re.IGNORECASE)
 
 
+def _run_in_remainder_is_prose_continuation(text: str, match: re.Match) -> bool:
+    """Track 7D.4a: True if the text immediately following a run-in heading
+    match reads as a grammatical continuation of the *same* sentence, not
+    the start of fresh body prose -- the generic signal that distinguishes
+    real ACT corpus false positives (REMUNERATION 2024 p.121: "Remuneration
+    governance to remain top of mind with a greater focus..."; CORPORATE_GOVERNANCE
+    2022/2023: "Combined assurance approach\nStrong Lead Independent
+    Director...") from every validated genuine run-in heading (BEL: "Gross
+    Margin The gross margin is dependent on...", always followed by a fresh,
+    capitalized sentence).
+
+    Checks the capitalization of the first letter after the match -- no
+    specific wording -- so it generalizes to any configured heading. A
+    lowercase continuation is excused, however, when a line break separates
+    it from the match: real ACT 2019 corpus text shows a genuine heading
+    wrapping across a line break before its own year suffix ("Changes to
+    the remuneration and related policies \nfor the 2019 financial year",
+    the configured heading being only "Changes to the remuneration and
+    related policies"), immediately followed on its own next line by the
+    real, capitalized body paragraph -- a line break there is either the
+    same heading continuing (as in this case) or a genuine paragraph break,
+    never evidence that the match is embedded mid-sentence in ordinary
+    prose. Both real false positives above have their lowercase
+    continuation on the *same* line as the match (no line break), which is
+    what actually distinguishes them from this legitimate case. An empty
+    remainder (heading matched at the very end of the block) is never a
+    continuation."""
+    remainder = text[match.end() :]
+    stripped = remainder.lstrip()
+    if not stripped:
+        return False
+    leading_whitespace = remainder[: len(remainder) - len(stripped)]
+    if "\n" in leading_whitespace:
+        return False
+    first_char = stripped[0]
+    return first_char.isalpha() and first_char.islower()
+
+
 def _unresolved(config: UnitConfig, start_block: UnitBlock, note: str) -> SemanticUnitExtractionResult:
     return SemanticUnitExtractionResult(
         unit_key=config.unit_key,
@@ -307,7 +382,7 @@ def extract_unit(blocks: list[UnitBlock], config: UnitConfig) -> SemanticUnitExt
                 candidates.append((i, exact, b.text.strip(), len(b.text)))
         elif b.block_type == BlockType.PARAGRAPH:
             run_in_match = _heading_run_in_match(b.text, config.start_heading)
-            if run_in_match is not None:
+            if run_in_match is not None and not _run_in_remainder_is_prose_continuation(b.text, run_in_match):
                 candidates.append((i, True, run_in_match.group(1).strip(), run_in_match.end(1)))
 
     if not candidates:

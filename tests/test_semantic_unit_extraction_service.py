@@ -216,3 +216,66 @@ def test_unit_on_supporting_span_page_before_primary_is_found_after_start_wideni
     unit = next(u for u in units if u.unit_key == "remco_chairperson_report")
     assert unit.start_page == 10
     assert "pleased to present" in unit.source_text
+
+
+def test_run_in_prose_continuation_is_rejected_in_favor_of_real_heading(db_session):
+    """Track 7D.4a DB-backed regression, reproducing the real ACT 2024
+    REMUNERATION `remuneration_governance` defect shape end-to-end through
+    `run_extraction`: an ordinary PARAGRAPH block opens with the configured
+    heading's exact words ("Remuneration governance to remain top of
+    mind...") and continues the same sentence, sitting earlier in reading
+    order than the real, standalone "Remuneration governance"
+    HEADING_CANDIDATE later on the next page. Pre-7D.4a, this run-in match
+    won outright (exact-by-construction, earliest position); the
+    prose-continuation guard must reject it so the real heading resolves."""
+    company = _company(session=db_session, ticker="ACT")
+    report = _report(db_session, company)
+    extraction_run = _extraction_run(db_session, report)
+
+    remuneration_schedule = NormalizedSchedule.REMUNERATION
+
+    page121 = _page(db_session, extraction_run, report, 121)
+    _block(
+        db_session, extraction_run, page121, report, 0,
+        "Remuneration governance to remain top of mind with a greater focus on approval "
+        "frameworks given the larger Group structure the company is now part of.",
+    )
+
+    page122 = _page(db_session, extraction_run, report, 122)
+    _block(db_session, extraction_run, page122, report, 0, "Remuneration governance", BlockType.HEADING_CANDIDATE)
+    _block(
+        db_session, extraction_run, page122, report, 1,
+        "The company's remuneration policy, structures and processes are set within a "
+        "governance framework with designated levels of authority.",
+    )
+    _block(db_session, extraction_run, page122, report, 2, "Remuneration model", BlockType.HEADING_CANDIDATE)
+
+    localization_run = ScheduleLocalizationRun(
+        report_id=report.id, extraction_run_id=extraction_run.id, schedule=remuneration_schedule,
+        algorithm_version="1", configuration_hash="x",
+        status=ScheduleLocalizationRunStatus.COMPLETED, completed_at=datetime.now(UTC),
+    )
+    db_session.add(localization_run)
+    db_session.flush()
+
+    instance = ScheduleInstance(
+        schedule_localization_run_id=localization_run.id, report_id=report.id, schedule=remuneration_schedule,
+        status=ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY, heading_text="Remuneration governance",
+        start_page=121, end_page=122, boundary_confidence=BoundaryConfidence.HIGH,
+    )
+    db_session.add(instance)
+    db_session.flush()
+
+    outcome = sue.run_extraction(db_session, report, remuneration_schedule)
+
+    assert outcome.ineligible is False
+    run = outcome.run
+    assert run.status in (SemanticUnitRunStatus.COMPLETED, SemanticUnitRunStatus.COMPLETED_WITH_WARNINGS)
+
+    units = db_session.scalars(select(SemanticUnit).where(SemanticUnit.semantic_unit_run_id == run.id)).all()
+    unit = next(u for u in units if u.unit_key == "remuneration_governance")
+    assert unit.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert unit.start_page == 122
+    assert unit.source_heading == "Remuneration governance"
+    assert "top of mind" not in unit.source_text
+    assert "designated levels of authority" in unit.source_text

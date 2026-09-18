@@ -370,3 +370,181 @@ def test_start_heading_selection_still_picks_earliest_among_equal_exactness():
     assert result is not None
     assert result.start_page == 21
     assert "First occurrence content." in result.source_text
+
+
+# --------------------------------------------------------------------------
+# Track 7D.4a: start-heading false-positive hardening
+# (docs/7d4a-start-heading-false-positive-hardening.md)
+# --------------------------------------------------------------------------
+
+
+REMUNERATION_GOVERNANCE_CONFIG = UnitConfig(
+    unit_key="remuneration_governance",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="ACT",
+    start_heading="Remuneration governance",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+COMBINED_ASSURANCE_CONFIG = UnitConfig(
+    unit_key="combined_assurance",
+    schedule=NormalizedSchedule.CORPORATE_GOVERNANCE,
+    ticker="ACT",
+    start_heading="Combined assurance",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+
+def test_run_in_remainder_is_prose_continuation_rejects_same_line_lowercase():
+    match = re.match(r"Remuneration governance", "Remuneration governance to remain top of mind")
+    assert sue._run_in_remainder_is_prose_continuation(
+        "Remuneration governance to remain top of mind", match
+    ) is True
+
+
+def test_run_in_remainder_is_prose_continuation_accepts_capitalized_new_sentence():
+    match = re.match(r"Gross Margin", "Gross Margin The gross margin is dependent on the product mix.")
+    assert sue._run_in_remainder_is_prose_continuation(
+        "Gross Margin The gross margin is dependent on the product mix.", match
+    ) is False
+
+
+def test_run_in_remainder_is_prose_continuation_excuses_line_break_before_lowercase():
+    """Real ACT 2019 corpus text: a genuine heading wraps its own year
+    suffix onto the next line in lowercase ("Changes to the remuneration
+    and related policies \nfor the 2019 financial year") before the real,
+    capitalized body paragraph starts on the line after that. A line break
+    immediately after the match must not be treated as evidence of a
+    same-sentence prose continuation -- only a same-line lowercase
+    continuation is (see the two rejection tests above/below)."""
+    text = "Changes to the remuneration and related policies \nfor the 2019 financial year\nThe committee reviewed..."
+    match = re.match(r"Changes to the remuneration and related policies", text)
+    assert sue._run_in_remainder_is_prose_continuation(text, match) is False
+
+
+def test_start_heading_selection_rejects_run_in_match_that_is_mid_sentence_prose():
+    """Real ACT 2024 REMUNERATION corpus defect: p.121 has an ordinary
+    PARAGRAPH block, "Remuneration governance to remain top of mind with a
+    greater focus on approval frameworks given the larger Sanlam Group
+    structure AfroCentric is now part of.", which opens with the configured
+    heading's exact words but continues the same sentence rather than
+    starting a fresh one. `_heading_run_in_match` matched it (exact by
+    construction) and it sat earlier in reading order than the real,
+    standalone "Remuneration governance" HEADING_CANDIDATE later in the
+    range, so the old (exact, position) ranking let it win outright and the
+    real section was never reached. The prose-continuation guard must
+    reject it as a candidate at all, letting the real heading resolve."""
+    blocks = [
+        _block(
+            121, 0,
+            "Remuneration governance to remain top of mind with a greater focus on approval "
+            "frameworks given the larger Sanlam Group structure AfroCentric is now part of.",
+        ),
+        _block(122, 0, "Remuneration governance", BlockType.HEADING_CANDIDATE),
+        _block(
+            122, 1,
+            "AfroCentric's remuneration policy, structures and processes are set within a "
+            "governance framework with designated levels of authority.",
+        ),
+        _block(123, 0, "Remuneration model", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, REMUNERATION_GOVERNANCE_CONFIG)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.start_page == 122
+    assert result.source_heading == "Remuneration governance"
+    assert "top of mind" not in result.source_text
+    assert "designated levels of authority" in result.source_text
+
+
+def test_start_heading_selection_rejects_run_in_match_fused_to_unrelated_infographic():
+    """Real ACT 2022/2023 CORPORATE_GOVERNANCE corpus defect: an infographic
+    caption PARAGRAPH block, "Combined assurance approach\nStrong Lead
+    Independent Director...", opens with the configured heading's exact
+    words before continuing into unrelated board-composition content on the
+    same line (no line break between "assurance" and "approach"). It sat
+    earlier in reading order than the real, standalone "Combined assurance"
+    HEADING_CANDIDATE section further into the range and won outright under
+    the old ranking. The guard must reject it so the real section resolves."""
+    blocks = [
+        _block(88, 0, "Combined assurance approach\nStrong Lead Independent Director oversight."),
+        _block(107, 0, "Combined assurance", BlockType.HEADING_CANDIDATE),
+        _block(
+            107, 1,
+            "Our combined assurance framework is supported by the three lines of defence model "
+            "that specifies and delegates accountability for managing risks across the Group.",
+        ),
+        _block(108, 0, "Risk governance", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, COMBINED_ASSURANCE_CONFIG)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.start_page == 107
+    assert result.source_heading == "Combined assurance"
+    assert "Strong Lead Independent Director" not in result.source_text
+    assert "three lines of defence model" in result.source_text
+
+
+def test_run_in_heading_still_works_when_no_stronger_candidate_exists():
+    """A legitimate run-in match must still resolve when it is the only
+    candidate at all -- the guard must not reject every run-in match
+    unconditionally, only ones that read as mid-sentence prose."""
+    blocks = [
+        _block(37, 0, "Gross Margin The gross margin is dependent on the product mix. The margin was "
+               "18,7% compared with 19,7% in the prior year."),
+        _block(38, 0, "Financial position", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, NEXT_HEADING_CONFIG)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.source_heading == "Gross Margin"
+
+
+def test_anchor_sentence_boundary_unaffected_by_prose_continuation_guard():
+    """ANCHOR_SENTENCE resolution is downstream of start-heading selection;
+    once a genuine start heading is found the guard has no further effect
+    on how the anchor pattern locates the end boundary."""
+    blocks = [
+        _block(
+            39, 0,
+            "Gross Margin The gross margin is dependent on the product and geographic mix of sales, market "
+            "conditions and exchange rates. The average gross margin for the year was 18,4% compared with "
+            "18,5% in the prior year.",
+        ),
+        _block(40, 0, "Financial position", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, ANCHOR_CONFIG)
+
+    assert result is not None
+    assert result.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
+    assert result.source_heading == "Gross Margin"
+    assert result.source_text.endswith("in the prior year.")
+
+
+def test_heading_variation_word_order_tolerance_still_intact():
+    """Word-order-tolerant matching for a genuine heading-extraction
+    artifact (not prose) must be unaffected by the run-in prose guard,
+    which only ever applies to PARAGRAPH run-in candidates."""
+    matched, exact = sue._matches_heading("GOVERNANCE Remuneration", "Remuneration governance")
+    assert matched is True
+    assert exact is False
+
+
+def test_earliest_reading_order_still_wins_among_equal_evidence_quality():
+    """Two genuine, equally-exact HEADING_CANDIDATE matches (no run-in
+    involved) must still resolve to the earliest one in reading order."""
+    blocks = [
+        _block(120, 0, "Combined assurance", BlockType.HEADING_CANDIDATE),
+        _block(120, 1, "First occurrence content."),
+        _block(121, 0, "Risk governance", BlockType.HEADING_CANDIDATE),
+    ]
+    result = sue.extract_unit(blocks, COMBINED_ASSURANCE_CONFIG)
+
+    assert result is not None
+    assert result.start_page == 120
+    assert "First occurrence content." in result.source_text
