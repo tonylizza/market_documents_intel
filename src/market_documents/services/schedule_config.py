@@ -86,9 +86,34 @@ from market_documents.models.enums import NormalizedSchedule
 # corpus to belong to CORPORATE_GOVERNANCE-adjacent content, not this
 # schedule. Pure vocabulary addition -- no matching-logic change, does not
 # draw on this milestone's one-generic-correction parser budget.
-ALGORITHM_VERSION = "1.5.0"
+# v1.6.0 = Track 7D.6 (docs/7d6-corpus-wide-ceo-chair-review-expansion.md):
+# added CEO_REVIEW and CHAIR_REVIEW vocabulary, real-corpus verified across
+# all 6 tickers via a fresh `scripts/`-style DB inspection (not just 7D.5a's
+# screening pass). ACT's own wording changes nearly every year (2016
+# "Chief Executive Officer's Report"/"Chairperson's Report", 2017
+# "Group CEO's Report"/"Chairperson's Report", 2018 "Group CEO's Report"/
+# "Chairman's Report", 2019 "Group CEO's Strategic Review", 2020-2024
+# "CEO's Review"/"Chairman's Review") -- the same vocabulary-breadth
+# pattern CORPORATE_GOVERNANCE/REMUNERATION/MATERIAL_RISKS already handle,
+# not a structural one. BEL's and SDL's joint chapters ("Joint report by
+# the chairman and chief executive", "Chairman and CEO report") are
+# deliberately configured under BOTH schedules -- the same real source span
+# functionally serves both CEO_REVIEW and CHAIR_REVIEW (see the milestone
+# doc's normalization-design section); this needs no schema change since
+# each schedule runs its own independent `ScheduleLocalizationRun` per
+# report, so the two `ScheduleInstance` rows naturally land on the same
+# heading/page range without any duplicated source text or contradictory
+# provenance. SBP's "Chairman's letter to shareholders" is CHAIR_REVIEW
+# only -- no standalone CEO section exists in SBP's real corpus (SBP's
+# Executive Chairman and CEO are the same person; see the milestone doc).
+# SUR's separate CEO/Chair headings vary by year ("CEO's review"/
+# "Chairman's review" 2023 and 2025; "A message from our CEO"/
+# "Introduction from our Chairman" 2024). KP2 has no vocabulary entry --
+# confirmed GENUINE_ABSENCE, no CEO/Chairman/Chairperson heading-candidate
+# exists anywhere in its 6 real report years.
+ALGORITHM_VERSION = "1.6.0"
 
-HEADING_VOCABULARY_VERSION = 5
+HEADING_VOCABULARY_VERSION = 6
 
 # Canonical heading strings per schedule, matched case-insensitively as a
 # substring of a HEADING_CANDIDATE block's text (see
@@ -164,6 +189,54 @@ SCHEDULE_HEADING_VOCABULARY: dict[NormalizedSchedule, tuple[str, ...]] = {
         "Strategic overview and risk management",
         "Social and economic risks facing South Africa",
         "SOCIAL AND ECONOMIC RISKS FACING SOUTH AFRICA",
+    ),
+    # Real-corpus heading strings confirmed via docs/7d6-corpus-wide-ceo-
+    # chair-review-expansion.md's schedule-inventory section (ACT 2016-2024,
+    # SUR 2023-2025). BEL/SDL's joint chapter headings are deliberately also
+    # included here (see CHAIR_REVIEW below and the module-docstring
+    # changelog) -- the same real span functionally serves both schedules.
+    # Deliberately does NOT include bare "Chairman"/"CEO"/"Chief Executive"
+    # without a following functional word ("report"/"review"/"strategic
+    # review") -- those recur constantly as director-bio captions and
+    # org-chart labels throughout every issuer's corpus (e.g. ACT's "Group
+    # CEO and executives" remuneration-outcomes table, "Chairman: Dr Anna
+    # Mokgokong" board-composition captions) and would be a real, confirmed
+    # false-positive risk if added.
+    NormalizedSchedule.CEO_REVIEW: (
+        "Chief Executive Officer's Report",
+        "CHIEF EXECUTIVE OFFICER'S REPORT",
+        "Group CEO's report",
+        "GROUP CEO'S REPORT",
+        "Group CEO's Strategic Review",
+        "GROUP CEO'S STRATEGIC REVIEW",
+        "CEO's report",
+        "CEO'S REPORT",
+        "CEO's review",
+        "CEO'S REVIEW",
+        "A message from our CEO",
+        "Joint report by the chairman and chief executive",
+        "Chairman and CEO report",
+        "CHAIRMAN AND CEO REPORT",
+    ),
+    # Real-corpus heading strings confirmed via docs/7d6-corpus-wide-ceo-
+    # chair-review-expansion.md's schedule-inventory section (ACT 2016-2024,
+    # SBP 2023-2025, SUR 2023-2025). "Chairman and CEO report"/"Joint report
+    # by the chairman and chief executive" are the same BEL/SDL joint-chapter
+    # strings also configured under CEO_REVIEW above -- deliberate, not a
+    # duplication error (see the module-docstring changelog).
+    NormalizedSchedule.CHAIR_REVIEW: (
+        "Chairperson's report",
+        "CHAIRPERSON'S REPORT",
+        "Chairman's report",
+        "CHAIRMAN'S REPORT",
+        "Chairman's review",
+        "CHAIRMAN'S REVIEW",
+        "Chairman's letter to shareholders",
+        "CHAIRMAN'S LETTER TO SHAREHOLDERS",
+        "Introduction from our Chairman",
+        "Joint report by the chairman and chief executive",
+        "Chairman and CEO report",
+        "CHAIRMAN AND CEO REPORT",
     ),
 }
 

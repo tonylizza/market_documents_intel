@@ -73,7 +73,16 @@ logger = logging.getLogger(__name__)
 # percentages, dates) but is predominantly prose describing scheme design,
 # not a table -- routed LEXICAL_ONLY, not LEXICAL_WITH_NUMERIC_CONTEXT (no
 # engine for that mode exists in this milestone regardless).
-ALGORITHM_VERSION = "1.3.0"
+# v1.4.0 = Track 7D.6 (docs/7d6-corpus-wide-ceo-chair-review-expansion.md):
+# no routing entries added. CEO_REVIEW/CHAIR_REVIEW schedule localization
+# was implemented, but the one semantic-unit candidate investigated
+# (ACT's "Strategy in action") only resolved in 1 of 9 real ACT years once
+# actually extracted -- below the same multi-year-recurrence bar Track
+# 7D.2 already used to reject ACT's "Capital management" candidate -- so
+# no unit was configured for either schedule this milestone (see
+# semantic_unit_config.py's own changelog and the milestone doc's
+# semantic-unit-inventory section).
+ALGORITHM_VERSION = "1.4.0"
 
 # Per docs/experiments/annual-report-bel-compact-validation.md Section 3
 # and docs/7c1-schedule-localization-plan.md's original unit selection:

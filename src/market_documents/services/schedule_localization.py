@@ -25,7 +25,7 @@ carries the per-span font/geometry evidence that assessment needs.
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -160,6 +160,27 @@ def _matches_vocabulary(heading_text: str, vocabulary: tuple[str, ...]) -> tuple
     return False, False
 
 
+def _combined_with_next_same_page(ordered: list[HeadingBlock], index: int) -> str | None:
+    """Track 7D.6 (docs/7d6-corpus-wide-ceo-chair-review-expansion.md): a
+    section's own title is sometimes split across two consecutive
+    HEADING_CANDIDATE blocks on the same page by the upstream extraction
+    pipeline -- real corpus, ACT 2019 ("Group CEO's" then "STRATEGIC
+    REVIEW") and ACT 2020 ("CHAIRMAN'S" then "REVIEW", "CEO'S" then
+    "REVIEW"), each pair sharing the same font size and adjacent reading
+    order. Returns the two blocks' text concatenated in reading order when
+    the next ordered block is on the same page, else None. Generic and
+    bounded: this milestone's one allowed generic correction (see the
+    milestone doc's one-fix-budget section) -- not issuer-specific, and any
+    schedule's vocabulary can benefit from it, not only CEO_REVIEW/
+    CHAIR_REVIEW."""
+    if index + 1 >= len(ordered):
+        return None
+    heading, nxt = ordered[index], ordered[index + 1]
+    if nxt.page_number != heading.page_number:
+        return None
+    return f"{heading.text} {nxt.text}"
+
+
 def localize_schedule(
     headings: list[HeadingBlock],
     last_page_number: int,
@@ -182,10 +203,12 @@ def localize_schedule(
 
     FINANCIAL_PERFORMANCE (Track 7C.1), CORPORATE_GOVERNANCE (Track 7D.3,
     docs/7d3-corporate-governance-expansion.md), REMUNERATION (Track
-    7D.4, docs/7d4-corpus-wide-remuneration-expansion.md), and
+    7D.4, docs/7d4-corpus-wide-remuneration-expansion.md),
     MATERIAL_RISKS (Track 7D.5, docs/7d5-corpus-wide-material-risks-
-    expansion.md) are implemented -- raises NotImplementedError for any
-    other schedule (see module docstring). The algorithm itself is
+    expansion.md), and CEO_REVIEW/CHAIR_REVIEW (Track 7D.6,
+    docs/7d6-corpus-wide-ceo-chair-review-expansion.md) are implemented --
+    raises NotImplementedError for any other schedule (see module
+    docstring). The algorithm itself is
     schedule-agnostic (driven entirely by `SCHEDULE_HEADING_VOCABULARY`);
     this guard only enforces which schedules have been validated against
     the real corpus so far.
@@ -195,14 +218,17 @@ def localize_schedule(
         NormalizedSchedule.CORPORATE_GOVERNANCE,
         NormalizedSchedule.REMUNERATION,
         NormalizedSchedule.MATERIAL_RISKS,
+        NormalizedSchedule.CEO_REVIEW,
+        NormalizedSchedule.CHAIR_REVIEW,
     ):
         raise NotImplementedError(
             f"schedule_localization.localize_schedule: {schedule.value} is not implemented -- "
-            "only FINANCIAL_PERFORMANCE, CORPORATE_GOVERNANCE, REMUNERATION, and MATERIAL_RISKS "
-            "are supported. See docs/7c1-schedule-localization-plan.md Section 2, "
-            "docs/7d3-corporate-governance-expansion.md, "
-            "docs/7d4-corpus-wide-remuneration-expansion.md, and "
-            "docs/7d5-corpus-wide-material-risks-expansion.md (explicit scope boundary)."
+            "only FINANCIAL_PERFORMANCE, CORPORATE_GOVERNANCE, REMUNERATION, MATERIAL_RISKS, "
+            "CEO_REVIEW, and CHAIR_REVIEW are supported. See docs/7c1-schedule-localization-plan.md "
+            "Section 2, docs/7d3-corporate-governance-expansion.md, "
+            "docs/7d4-corpus-wide-remuneration-expansion.md, "
+            "docs/7d5-corpus-wide-material-risks-expansion.md, and "
+            "docs/7d6-corpus-wide-ceo-chair-review-expansion.md (explicit scope boundary)."
         )
 
     vocabulary = config.heading_vocabulary.get(schedule, ())
@@ -217,8 +243,14 @@ def localize_schedule(
     # so including it here is harmless: iterating tiers largest-first below
     # finds the real heading's tier first regardless.
     raw_matches: list[tuple[HeadingBlock, bool]] = []
-    for heading in ordered:
+    for index, heading in enumerate(ordered):
         matched, exact = _matches_vocabulary(heading.text, vocabulary)
+        if not matched:
+            combined_text = _combined_with_next_same_page(ordered, index)
+            if combined_text is not None:
+                matched, exact = _matches_vocabulary(combined_text, vocabulary)
+                if matched:
+                    heading = replace(heading, text=combined_text)
         if matched:
             raw_matches.append((heading, exact))
 

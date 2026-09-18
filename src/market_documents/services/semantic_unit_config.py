@@ -96,7 +96,31 @@ from market_documents.models.enums import NormalizedSchedule, SemanticUnitBounda
 # Report chapter is the most consistently structured of any issuer's real
 # corpus for this schedule. No new boundary strategy was needed for any of
 # the seven units.
-CONFIG_VERSION = "1.5.0"
+# v1.6.0 = Track 7D.6 (docs/7d6-corpus-wide-ceo-chair-review-expansion.md):
+# CEO_REVIEW/CHAIR_REVIEW schedule localization was implemented, but ZERO
+# semantic units were configured for either schedule -- a valid, documented
+# outcome (see `tests/test_material_risks_expansion.py`'s own precedent for
+# MATERIAL_RISKS). One candidate was investigated and rejected:
+# "Strategy in action" (a recap subheading inside ACT's CEO review,
+# confirmed present in the real 2019 and 2020 PDFs during this milestone's
+# own DB inspection) was configured and actually run against the full ACT
+# corpus, but only resolved in 1 of 9 years (2020) -- 2019's "Strategy in
+# action" heading turned out to be immediately followed by another
+# heading-candidate with no body text between them (UNRESOLVED, not a
+# recoverable narrative span), and it does not appear as a matchable
+# standalone heading at all in the other 7 years. Below the same
+# multi-year-recurrence bar Track 7D.2 already used to reject ACT's
+# "Capital management" candidate for the same reason. CHAIR_REVIEW's own
+# candidate internal subheading ("Outlook" 2022 vs "OUTLOOK AND
+# APPRECIATION" 2023) was found to drift in wording between adjacent years
+# during this milestone's own real-corpus inspection, not configured.
+# BEL's/SDL's joint CEO/Chair chapter has no internal recurring subheading
+# distinct from the whole joint narrative. SBP's Chairman's letter
+# schedule instance itself is not reliably bounded in 2 of its 3 real
+# report years (see the milestone doc's localization-results section) and
+# is too risky to configure a unit against. No new boundary strategy was
+# needed.
+CONFIG_VERSION = "1.6.0"
 
 # A trailing clause that names the prior-year comparison a closing sentence
 # is making, in any of the generic phrasings observed across the corpus

@@ -85,13 +85,14 @@ def test_multiple_matches_produce_primary_and_supporting():
 
 
 def test_unimplemented_schedule_raises_not_implemented():
-    """Track 7D.5 implemented MATERIAL_RISKS -- this now targets a schedule
-    still genuinely unimplemented (mirrors Track 7D.3's/7D.4's own
-    replacement of this test each time another schedule was implemented)."""
-    headings = [_heading(10, 0, "CEO's review")]
+    """Track 7D.6 implemented CEO_REVIEW/CHAIR_REVIEW -- this now targets a
+    schedule still genuinely unimplemented (mirrors Track 7D.3's/7D.4's/
+    7D.5's own replacement of this test each time another schedule was
+    implemented)."""
+    headings = [_heading(10, 0, "Strategy")]
     with pytest.raises(NotImplementedError):
         sl.localize_schedule(
-            headings, last_page_number=100, schedule=NormalizedSchedule.CEO_REVIEW, config=CONFIG
+            headings, last_page_number=100, schedule=NormalizedSchedule.STRATEGY, config=CONFIG
         )
 
 
@@ -492,3 +493,147 @@ def test_material_risks_continued_banner_does_not_terminate_schedule():
     )
 
     assert result.primary.end_page == 44
+
+
+# --------------------------------------------------------------------------
+# Track 7D.6: CEO_REVIEW / CHAIR_REVIEW schedule localization
+# --------------------------------------------------------------------------
+
+CEO_CHAIR_CONFIG = ScheduleConfig(
+    heading_vocabulary={
+        NormalizedSchedule.CEO_REVIEW: ("CEO's review", "Group CEO's report", "Joint report by the chairman and chief executive"),
+        NormalizedSchedule.CHAIR_REVIEW: ("Chairman's review", "Chairperson's report", "Joint report by the chairman and chief executive"),
+    }
+)
+
+
+def test_ceo_review_schedule_localizes_like_other_schedules():
+    """The algorithm is schedule-agnostic; CEO_REVIEW must resolve exactly
+    like FINANCIAL_PERFORMANCE/CORPORATE_GOVERNANCE/REMUNERATION/
+    MATERIAL_RISKS given the same shape of evidence."""
+    headings = [
+        _heading(10, 0, "Chairperson's report"),
+        _heading(28, 0, "CEO's review"),
+        _heading(35, 0, "Corporate governance report"),
+    ]
+    result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CEO_REVIEW, config=CEO_CHAIR_CONFIG)
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 28
+    assert result.primary.end_page == 34
+    assert result.boundary_confidence == BoundaryConfidence.HIGH
+
+
+def test_chair_review_schedule_localizes_like_other_schedules():
+    headings = [
+        _heading(10, 0, "Chairperson's report"),
+        _heading(28, 0, "CEO's review"),
+    ]
+    result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CHAIR_REVIEW, config=CEO_CHAIR_CONFIG)
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 10
+    assert result.primary.end_page == 27
+
+
+def test_joint_chapter_maps_to_both_ceo_and_chair_schedules():
+    """BEL's/SDL's real corpus shape: one joint chapter, one heading, no
+    split -- the same source span independently localizes as the primary
+    span under both CEO_REVIEW and CHAIR_REVIEW because both schedules'
+    vocabularies deliberately include the same joint-chapter phrase (see
+    schedule_config.py's changelog). No schema change: each call is a
+    fully independent, schedule-scoped run."""
+    headings = [_heading(24, 0, "Joint report by the chairman and chief executive")]
+
+    ceo_result = sl.localize_schedule(headings, last_page_number=90, schedule=NormalizedSchedule.CEO_REVIEW, config=CEO_CHAIR_CONFIG)
+    chair_result = sl.localize_schedule(headings, last_page_number=90, schedule=NormalizedSchedule.CHAIR_REVIEW, config=CEO_CHAIR_CONFIG)
+
+    assert ceo_result.primary.start_page == chair_result.primary.start_page == 24
+    assert ceo_result.primary.end_page == chair_result.primary.end_page == 90
+    assert ceo_result.primary.heading_text == chair_result.primary.heading_text
+
+
+def test_chair_only_issuer_has_no_ceo_review_match():
+    """SBP's real corpus shape: a standalone Chairman's letter, no
+    standalone CEO section at all -- CEO_REVIEW must be NOT_FOUND, not a
+    fabricated/guessed match."""
+    headings = [_heading(2, 0, "Chairman's letter to shareholders")]
+    config = ScheduleConfig(
+        heading_vocabulary={
+            NormalizedSchedule.CEO_REVIEW: ("CEO's review",),
+            NormalizedSchedule.CHAIR_REVIEW: ("Chairman's letter to shareholders",),
+        }
+    )
+    ceo_result = sl.localize_schedule(headings, last_page_number=50, schedule=NormalizedSchedule.CEO_REVIEW, config=config)
+    chair_result = sl.localize_schedule(headings, last_page_number=50, schedule=NormalizedSchedule.CHAIR_REVIEW, config=config)
+
+    assert ceo_result.status == ScheduleLocalizationStatus.NOT_FOUND
+    assert chair_result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+
+
+def test_no_clear_section_issuer_has_neither_schedule_matched():
+    """KP2's real corpus shape: no CEO/Chairman/Chairperson heading-candidate
+    at all in any of its 6 real report years -- both schedules must be
+    NOT_FOUND, never guessed from its "Review of Operations and Strategic
+    Report" chapter."""
+    headings = [_heading(5, 0, "Review of Operations and Strategic Report")]
+    ceo_result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CEO_REVIEW, config=CEO_CHAIR_CONFIG)
+    chair_result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CHAIR_REVIEW, config=CEO_CHAIR_CONFIG)
+
+    assert ceo_result.status == ScheduleLocalizationStatus.NOT_FOUND
+    assert chair_result.status == ScheduleLocalizationStatus.NOT_FOUND
+
+
+def test_toc_entry_is_not_matched_as_ceo_chair_heading():
+    """Real corpus false positive (7D.5a/7D.6 finding): page-3 table-of-
+    contents lines like 'GROUP CEO'S REPORT 47' must never be matched as
+    the schedule's own heading -- only the real chapter heading later in
+    the document counts."""
+    headings = [
+        _heading(3, 0, "GROUP CEO'S REPORT 47", font_size=10.0),
+        _heading(3, 1, "CHAIRPERSON'S REPORT 4", font_size=10.0),
+        _heading(47, 0, "GROUP CEO'S REPORT", font_size=40.0),
+        _heading(4, 0, "CHAIRPERSON'S REPORT", font_size=40.0),
+    ]
+    config = ScheduleConfig(
+        heading_vocabulary={
+            NormalizedSchedule.CEO_REVIEW: ("Group CEO's report",),
+            NormalizedSchedule.CHAIR_REVIEW: ("Chairperson's report",),
+        }
+    )
+    ceo_result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CEO_REVIEW, config=config)
+
+    assert ceo_result.primary.start_page == 47
+
+
+def test_split_heading_fragment_on_same_page_is_concatenated_and_matched():
+    """Track 7D.6's one bounded generic fix: a real corpus defect where a
+    section's own title is split across two consecutive same-page
+    HEADING_CANDIDATE blocks by the upstream extraction pipeline (ACT
+    2020's real corpus: 'CHAIRMAN'S' then 'REVIEW' as two separate blocks,
+    same font, same page). Neither fragment alone matches the vocabulary,
+    but their same-page concatenation does."""
+    headings = [
+        _heading(24, 0, "CHAIRMAN'S", font_size=62.23),
+        _heading(24, 1, "REVIEW", font_size=62.23),
+        _heading(25, 0, "DR ANNA MOKGOKONG", font_size=15.15),
+    ]
+    result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CHAIR_REVIEW, config=CEO_CHAIR_CONFIG)
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 24
+    assert result.primary.heading_text == "CHAIRMAN'S REVIEW"
+    assert result.boundary_confidence == BoundaryConfidence.HIGH  # exact match once concatenated
+
+
+def test_split_heading_fragments_on_different_pages_are_not_concatenated():
+    """The concatenation fix is scoped to same-page fragments only -- two
+    unrelated headings on different pages must never be joined into a
+    false vocabulary match."""
+    headings = [
+        _heading(24, 0, "CHAIRMAN'S", font_size=62.23),
+        _heading(25, 0, "REVIEW", font_size=62.23),
+    ]
+    result = sl.localize_schedule(headings, last_page_number=150, schedule=NormalizedSchedule.CHAIR_REVIEW, config=CEO_CHAIR_CONFIG)
+
+    assert result.status == ScheduleLocalizationStatus.NOT_FOUND
