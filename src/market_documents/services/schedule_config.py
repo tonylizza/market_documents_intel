@@ -70,9 +70,15 @@ from market_documents.models.enums import NormalizedSchedule
 # 2020-2025); added "Governance and functions of the Board" for SBP (real
 # corpus, 2023-2025). Pure vocabulary addition, no matching-logic change --
 # does not draw on the milestone's one-generic-correction parser budget.
-ALGORITHM_VERSION = "1.3.1"
+# v1.4.0 = Track 7D.4 (docs/7d4-corpus-wide-remuneration-expansion.md): added
+# REMUNERATION vocabulary. "Remuneration Committee Report" covers ACT
+# 2016-2017 and BEL 2016-2022; "Remuneration Report" covers ACT 2018-2024,
+# SUR 2023-2025, and SDL 2024-2025 ("REMUNERATION REPORT (AUDITED)", still a
+# substring match). Pure vocabulary addition -- no matching-logic change,
+# does not draw on this milestone's one-generic-correction parser budget.
+ALGORITHM_VERSION = "1.4.0"
 
-HEADING_VOCABULARY_VERSION = 3
+HEADING_VOCABULARY_VERSION = 4
 
 # Canonical heading strings per schedule, matched case-insensitively as a
 # substring of a HEADING_CANDIDATE block's text (see
@@ -101,6 +107,23 @@ SCHEDULE_HEADING_VOCABULARY: dict[NormalizedSchedule, tuple[str, ...]] = {
         "Corporate governance review",
         "CORPORATE GOVERNANCE REVIEW",
         "Governance and functions of the Board",
+    ),
+    # Real-corpus heading strings confirmed via docs/7d4-corpus-wide-
+    # remuneration-expansion.md Section 1's inventory (ACT 2016-2024, BEL
+    # 2016-2022, SUR 2023-2025, SDL 2024-2025). "Remuneration report" is a
+    # substring match, not exact, so a KP2/SDL "(CONT)"/"(AUDITED)" suffix or
+    # SUR's "REMUNERATION REPORTING AND ENGAGEMENT" (which literally contains
+    # "remuneration report" as its own substring) still match -- the existing
+    # exact-match-first primary-selection rule (v1.2.0) resolves that
+    # ambiguity in every issuer checked, since the genuine standalone
+    # "Remuneration report" heading is present, exact, and preferred as
+    # primary wherever both occur (see the milestone doc's localization
+    # section for per-issuer confirmation).
+    NormalizedSchedule.REMUNERATION: (
+        "Remuneration committee report",
+        "REMUNERATION COMMITTEE REPORT",
+        "Remuneration report",
+        "REMUNERATION REPORT",
     ),
 }
 

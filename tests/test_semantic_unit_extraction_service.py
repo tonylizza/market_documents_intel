@@ -148,3 +148,71 @@ def test_unit_on_supporting_span_page_is_found_after_range_widening_fix(db_sessi
     assert unit.boundary_status == SemanticUnitBoundaryStatus.RESOLVED
     assert unit.start_page == 12
     assert "diverse mix of skills" in unit.source_text
+
+
+def test_unit_on_supporting_span_page_before_primary_is_found_after_start_widening_fix(db_session):
+    """Regression for the real ACT 2020/2021 REMUNERATION defect (Track
+    7D.4's one allowed generic correction): the schedule's own primary span
+    anchors on a later "continued" banner page, while the genuine chapter
+    start -- including the unit's own start heading -- registers as an
+    *earlier* supporting span. The v1.4.0 fix (Track 7D.3) only widened the
+    search range's end page; it never pulled the start page earlier, so this
+    earlier supporting span was still silently excluded. `run_extraction`
+    must find the unit after the v1.5.0 start-widening fix."""
+    company = _company(session=db_session, ticker="ACT")
+    report = _report(db_session, company)
+    extraction_run = _extraction_run(db_session, report)
+
+    page10 = _page(db_session, extraction_run, report, 10)
+    _block(
+        db_session, extraction_run, page10, report, 0,
+        "Remuneration Committee Chairperson's report", BlockType.HEADING_CANDIDATE,
+    )
+    _block(db_session, extraction_run, page10, report, 1, "On behalf of the Remuneration Committee, I am pleased to present.")
+    _block(db_session, extraction_run, page10, report, 2, "Operating context and performance highlights", BlockType.HEADING_CANDIDATE)
+
+    page12 = _page(db_session, extraction_run, report, 12)
+    _block(db_session, extraction_run, page12, report, 0, "REMUNERATION REPORT (CONTINUED)", BlockType.HEADING_CANDIDATE)
+
+    remuneration_schedule = NormalizedSchedule.REMUNERATION
+    localization_run = ScheduleLocalizationRun(
+        report_id=report.id, extraction_run_id=extraction_run.id, schedule=remuneration_schedule,
+        algorithm_version="1", configuration_hash="x",
+        status=ScheduleLocalizationRunStatus.COMPLETED, completed_at=datetime.now(UTC),
+    )
+    db_session.add(localization_run)
+    db_session.flush()
+
+    # Primary span anchors on the later "(CONTINUED)" banner page (12), not
+    # the genuine chapter start (10) -- the real defect shape.
+    instance = ScheduleInstance(
+        schedule_localization_run_id=localization_run.id, report_id=report.id, schedule=remuneration_schedule,
+        status=ScheduleLocalizationStatus.FOUND_PRIMARY_AND_SUPPORTING, heading_text="REMUNERATION REPORT (CONTINUED)",
+        start_page=12, end_page=12, boundary_confidence=BoundaryConfidence.MEDIUM,
+    )
+    db_session.add(instance)
+    db_session.flush()
+    db_session.add(
+        ScheduleInstanceSupportingSpan(
+            schedule_instance_id=instance.id, heading_text="Remuneration Committee Chairperson's report",
+            start_page=10, end_page=10,
+        )
+    )
+    db_session.flush()
+
+    outcome = sue.run_extraction(db_session, report, remuneration_schedule)
+
+    assert outcome.ineligible is False
+    run = outcome.run
+    # ACT's other two configured REMUNERATION units (remuneration_policy_changes,
+    # remuneration_governance) have no matching heading in this minimal
+    # fixture, so the run legitimately COMPLETES_WITH_WARNINGS -- only
+    # remco_chairperson_report's own resolution is under test here.
+    assert run.status in (SemanticUnitRunStatus.COMPLETED, SemanticUnitRunStatus.COMPLETED_WITH_WARNINGS)
+
+    units = db_session.scalars(select(SemanticUnit).where(SemanticUnit.semantic_unit_run_id == run.id)).all()
+    unit_keys = {u.unit_key for u in units}
+    assert "remco_chairperson_report" in unit_keys
+    unit = next(u for u in units if u.unit_key == "remco_chairperson_report")
+    assert unit.start_page == 10
+    assert "pleased to present" in unit.source_text

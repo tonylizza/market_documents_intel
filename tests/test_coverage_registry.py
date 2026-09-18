@@ -72,3 +72,37 @@ def test_bel_governance_unit_is_structured_comparison_preferred_not_lexical():
 
     assert entry is not None
     assert entry.analytical_mode == AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED
+
+
+# --------------------------------------------------------------------------
+# Track 7D.4: REMUNERATION units are candidates, not enabled
+# --------------------------------------------------------------------------
+
+
+def test_new_remuneration_units_are_candidates_not_enabled_in_production():
+    """7D.4 explicitly forbids changing live production scope -- every new
+    REMUNERATION unit must show up as a candidate, never enabled, without
+    touching `cutover_config.py`."""
+    for ticker, unit_key in (
+        ("ACT", "remco_chairperson_report"),
+        ("ACT", "remuneration_policy_changes"),
+        ("ACT", "remuneration_governance"),
+        ("BEL", "variable_remuneration"),
+        ("SUR", "remuneration_policy_changes_and_focus"),
+        ("SUR", "fair_responsible_remuneration"),
+        ("SUR", "remuneration_policy_shareholder_engagement"),
+    ):
+        entry = coverage_registry.coverage_for(ticker, NormalizedSchedule.REMUNERATION, unit_key)
+        assert entry is not None
+        assert entry.production_status == "candidate"
+        assert entry.analytical_mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_existing_structured_remuneration_scope_unaffected_by_narrative_units():
+    """Track 7C.4's ACT structured remuneration table families remain
+    exactly as already configured -- 7D.4 adds narrative units only, no
+    structured-table config changed."""
+    from market_documents.services.cutover_config import NEW_PIPELINE_STRUCTURED_SCOPE
+
+    assert ("ACT", "ned_remuneration_policy_table") in NEW_PIPELINE_STRUCTURED_SCOPE
+    assert ("ACT", "total_remuneration_outcomes") in NEW_PIPELINE_STRUCTURED_SCOPE

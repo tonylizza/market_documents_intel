@@ -85,10 +85,13 @@ def test_multiple_matches_produce_primary_and_supporting():
 
 
 def test_unimplemented_schedule_raises_not_implemented():
-    headings = [_heading(10, 0, "Remuneration report")]
+    """Track 7D.4 implemented REMUNERATION -- this now targets a schedule
+    still genuinely unimplemented (mirrors Track 7D.3's own replacement of
+    this test when CORPORATE_GOVERNANCE was implemented)."""
+    headings = [_heading(10, 0, "Material risks")]
     with pytest.raises(NotImplementedError):
         sl.localize_schedule(
-            headings, last_page_number=100, schedule=NormalizedSchedule.REMUNERATION, config=CONFIG
+            headings, last_page_number=100, schedule=NormalizedSchedule.MATERIAL_RISKS, config=CONFIG
         )
 
 
@@ -349,3 +352,67 @@ def test_previously_working_schedule_unchanged_with_no_font_evidence():
 
     assert result.primary.start_page == 38
     assert result.primary.end_page == 40
+
+
+# --------------------------------------------------------------------------
+# Track 7D.4: REMUNERATION schedule localization
+# --------------------------------------------------------------------------
+
+REMUNERATION_CONFIG = ScheduleConfig(
+    heading_vocabulary={NormalizedSchedule.REMUNERATION: ("Remuneration report",)}
+)
+
+
+def test_remuneration_schedule_localizes_like_other_schedules():
+    """The algorithm is schedule-agnostic; REMUNERATION must resolve exactly
+    like FINANCIAL_PERFORMANCE/CORPORATE_GOVERNANCE given the same shape of
+    evidence."""
+    headings = [
+        _heading(43, 0, "Corporate governance report"),
+        _heading(97, 0, "Remuneration report"),
+        _heading(122, 0, "Directors' report"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.REMUNERATION, config=REMUNERATION_CONFIG
+    )
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 97
+    assert result.primary.end_page == 121  # page before the next section (122)
+    assert result.boundary_confidence == BoundaryConfidence.HIGH
+
+
+def test_remuneration_substring_match_does_not_win_over_exact_match():
+    """Real-corpus case (SUR): 'REMUNERATION REPORTING AND ENGAGEMENT' is a
+    substring match on 'Remuneration report' (a bare prefix, since
+    "reporting" starts with "report") that appears *before* the genuine
+    exact-match heading in reading order -- the existing exact-match-first
+    primary-selection rule must still pick the real heading, not the
+    coincidental substring match."""
+    headings = [
+        _heading(89, 0, "REMUNERATION REPORTING AND ENGAGEMENT:"),
+        _heading(97, 0, "REMUNERATION REPORT"),
+        _heading(122, 0, "Directors' report"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.REMUNERATION, config=REMUNERATION_CONFIG
+    )
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_AND_SUPPORTING
+    assert result.primary.start_page == 97
+    assert result.primary.exact_match is True
+    assert result.supporting[0].start_page == 89
+    assert result.supporting[0].exact_match is False
+
+
+def test_remuneration_continued_banner_does_not_terminate_schedule():
+    headings = [
+        _heading(97, 0, "Remuneration report"),
+        _heading(102, 0, "Remuneration report continued"),
+        _heading(122, 0, "Directors' report"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=150, schedule=NormalizedSchedule.REMUNERATION, config=REMUNERATION_CONFIG
+    )
+
+    assert result.primary.end_page == 121

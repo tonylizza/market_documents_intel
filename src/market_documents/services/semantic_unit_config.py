@@ -72,7 +72,31 @@ from market_documents.models.enums import NormalizedSchedule, SemanticUnitBounda
 # prose -- routed STRUCTURED_COMPARISON_PREFERRED, not LEXICAL_ONLY (see
 # docs/7d3-corporate-governance-expansion.md Section 9). No new boundary
 # strategy was needed for any of the four.
-CONFIG_VERSION = "1.4.0"
+# v1.5.0 = Track 7D.4 (docs/7d4-corpus-wide-remuneration-expansion.md):
+# first REMUNERATION units. ACT_REMCO_CHAIRPERSON_REPORT ("Remuneration
+# Committee Chairperson's report", NEXT_HEADING) recurs 2020-2024, a
+# multi-paragraph committee-chair letter (not present in 2019 under this
+# exact wording -- that year's real heading says "Chairman's report", not
+# "Chairperson's report"; EXPECTED_HEADING_VARIATION, not broadened into the
+# vocabulary to avoid over-matching). ACT_REMUNERATION_POLICY_CHANGES
+# ("Changes to the remuneration and related policies", NEXT_HEADING) recurs
+# 2018, 2020-2024, a short but real policy-change narrative (real corpus:
+# "No material changes were made..." most years). ACT_REMUNERATION_GOVERNANCE
+# ("Remuneration governance", NEXT_HEADING) recurs 2020-2024, a short
+# governance-framework intro paragraph immediately preceding an org-chart
+# diagram. BEL_VARIABLE_REMUNERATION ("Variable remuneration", NEXT_HEADING)
+# recurs 2017, 2018, 2019, 2021, 2022 -- narrative describing the group's
+# STI/LTI scheme mechanics; 2022's boundary lands on a scenario-graph chart
+# label ("4 313 ABOVE EXPECTED PERFORMANCE") rather than a genuine next
+# section, which is real but bounded content loss, not garbage -- documented
+# as a caveat, not fixed. SUR's three units (SUR_REMUNERATION_POLICY_CHANGES,
+# SUR_FAIR_RESPONSIBLE_REMUNERATION,
+# SUR_REMUNERATION_POLICY_SHAREHOLDER_ENGAGEMENT) all recur 2023-2025
+# (3 consecutive years, exact heading match every year) -- SUR's Remuneration
+# Report chapter is the most consistently structured of any issuer's real
+# corpus for this schedule. No new boundary strategy was needed for any of
+# the seven units.
+CONFIG_VERSION = "1.5.0"
 
 # A trailing clause that names the prior-year comparison a closing sentence
 # is making, in any of the generic phrasings observed across the corpus
@@ -252,6 +276,108 @@ BEL_BOARD_COMPOSITION_DIVERSITY = UnitConfig(
     anchor_pattern=None,
 )
 
+# Track 7D.4 (docs/7d4-corpus-wide-remuneration-expansion.md): first
+# REMUNERATION units. ACT's "Remuneration Committee Chairperson's report" --
+# confirmed present, verbatim, in the real ACT 2020-2024 PDFs, each time a
+# multi-paragraph committee-chair letter (LTI/STI design changes, focus
+# areas, shareholder voting commentary, appreciation) ending cleanly at the
+# next genuine heading ("Operating context and performance highlights" in
+# 2022). Not present in 2019 under this exact wording -- that year's real
+# heading says "Remuneration Committee Chairman's report", a genuine wording
+# variant, not broadened into the vocabulary (would risk over-matching an
+# unrelated "Chairman's report" elsewhere in the document).
+ACT_REMCO_CHAIRPERSON_REPORT = UnitConfig(
+    unit_key="remco_chairperson_report",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="ACT",
+    start_heading="Remuneration Committee Chairperson's report",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# ACT's "Changes to the remuneration and related policies" subsection --
+# confirmed present in the real ACT 2018, 2020-2024 PDFs (each year's heading
+# also names that year, e.g. "...for the 2022 financial year", a substring
+# match on the shorter stable phrase configured here). Short but real
+# policy-change narrative -- most years state plainly that no material
+# changes were made, which is itself a genuine, trackable disclosure content
+# (not boilerplate padding). Not present in 2019 (that year's report
+# structure around the schedule differs -- see the milestone doc's
+# extraction-coverage table).
+ACT_REMUNERATION_POLICY_CHANGES = UnitConfig(
+    unit_key="remuneration_policy_changes",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="ACT",
+    start_heading="Changes to the remuneration and related policies",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# ACT's "Remuneration governance" subsection -- confirmed present in the
+# real ACT 2020-2024 PDFs, a short governance-framework paragraph
+# immediately preceding an org-chart diagram (SHAREHOLDERS / GROUP
+# REMUNERATION COMMITTEE / BOARD OF DIRECTORS / GROUP CEO AND EXECUTIVES).
+ACT_REMUNERATION_GOVERNANCE = UnitConfig(
+    unit_key="remuneration_governance",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="ACT",
+    start_heading="Remuneration governance",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# BEL's "Variable remuneration" subsection -- confirmed present in the real
+# BEL 2017, 2018, 2019, 2021, 2022 PDFs, narrative describing the group's
+# short-/long-term incentive scheme mechanics (STIS/LTIS design, hurdles,
+# vesting). KNOWN CAVEAT: 2022's NEXT_HEADING boundary lands on a
+# scenario-graph chart label ("4 313 ABOVE EXPECTED PERFORMANCE") rather
+# than a genuine next section -- real but incomplete content, not garbage
+# (still captures the STIS and opening Cash settled LTIS paragraphs). Not
+# fixed here (see the milestone doc's parser-budget section). Not present in
+# 2016 or 2020 (2016's schedule uses different terminology, "REMUNERATION
+# POLICY AND PHILOSOPHY", with no separate "Variable remuneration" heading
+# that year; 2020's REMUNERATION schedule itself is NOT_FOUND).
+BEL_VARIABLE_REMUNERATION = UnitConfig(
+    unit_key="variable_remuneration",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="BEL",
+    start_heading="Variable remuneration",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# SUR's three REMUNERATION narrative units -- all confirmed present, exact
+# heading match, in the real SUR 2023, 2024, and 2025 PDFs. SUR's
+# Remuneration Report chapter is the most consistently structured of any
+# issuer's real corpus for this schedule (a stable numbered "PART 1/2/3"
+# framework repeated verbatim year over year).
+SUR_REMUNERATION_POLICY_CHANGES = UnitConfig(
+    unit_key="remuneration_policy_changes_and_focus",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="SUR",
+    start_heading="Remuneration policy changes",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+SUR_FAIR_RESPONSIBLE_REMUNERATION = UnitConfig(
+    unit_key="fair_responsible_remuneration",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="SUR",
+    start_heading="Fair and responsible remuneration of executives relative to overall employee remuneration",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+SUR_REMUNERATION_POLICY_SHAREHOLDER_ENGAGEMENT = UnitConfig(
+    unit_key="remuneration_policy_shareholder_engagement",
+    schedule=NormalizedSchedule.REMUNERATION,
+    ticker="SUR",
+    start_heading="Remuneration policy and shareholder engagement",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
 UNIT_CONFIGS: tuple[UnitConfig, ...] = (
     BEL_GROSS_MARGIN,
     ACT_CFO_CONCLUSION,
@@ -260,6 +386,13 @@ UNIT_CONFIGS: tuple[UnitConfig, ...] = (
     ACT_GOVERNANCE_POLICIES_PROCESSES,
     ACT_COMBINED_ASSURANCE,
     BEL_BOARD_COMPOSITION_DIVERSITY,
+    ACT_REMCO_CHAIRPERSON_REPORT,
+    ACT_REMUNERATION_POLICY_CHANGES,
+    ACT_REMUNERATION_GOVERNANCE,
+    BEL_VARIABLE_REMUNERATION,
+    SUR_REMUNERATION_POLICY_CHANGES,
+    SUR_FAIR_RESPONSIBLE_REMUNERATION,
+    SUR_REMUNERATION_POLICY_SHAREHOLDER_ENGAGEMENT,
 )
 
 

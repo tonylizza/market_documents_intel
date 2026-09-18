@@ -156,3 +156,72 @@ def test_bel_board_composition_diversity_routes_to_structured_not_lexical():
 
     assert decision is not None
     assert decision.mode == AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED
+
+
+# --------------------------------------------------------------------------
+# Track 7D.4: REMUNERATION routing
+# --------------------------------------------------------------------------
+
+
+def test_act_remco_chairperson_report_routes_to_lexical_only():
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="remco_chairperson_report",
+        later_unit_key="remco_chairperson_report",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_act_remuneration_policy_changes_routes_to_lexical_only():
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="remuneration_policy_changes",
+        later_unit_key="remuneration_policy_changes",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_act_remuneration_governance_routes_to_lexical_only():
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="remuneration_governance",
+        later_unit_key="remuneration_governance",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_bel_variable_remuneration_routes_to_lexical_only():
+    """Unlike BEL's CORPORATE_GOVERNANCE board_composition_diversity unit,
+    this is genuine narrative describing STI/LTI scheme mechanics, not a
+    table -- must route LEXICAL_ONLY."""
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="BEL",
+        earlier_unit_key="variable_remuneration",
+        later_unit_key="variable_remuneration",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_sur_remuneration_units_route_to_lexical_only():
+    for unit_key in (
+        "remuneration_policy_changes_and_focus",
+        "fair_responsible_remuneration",
+        "remuneration_policy_shareholder_engagement",
+    ):
+        decision = route_alignment(
+            status=SemanticUnitAlignmentStatus.MATCHED, ticker="SUR", earlier_unit_key=unit_key, later_unit_key=unit_key
+        )
+        assert decision is not None
+        assert decision.mode == AnalyticalMode.LEXICAL_ONLY

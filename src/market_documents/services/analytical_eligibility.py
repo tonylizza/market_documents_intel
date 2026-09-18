@@ -64,7 +64,16 @@ logger = logging.getLogger(__name__)
 # prose -- routed STRUCTURED_COMPARISON_PREFERRED (a declared routing
 # outcome only; no structured-comparison engine runs for it here, per the
 # milestone's scope).
-ALGORITHM_VERSION = "1.2.0"
+# v1.3.0 = Track 7D.4 (docs/7d4-corpus-wide-remuneration-expansion.md):
+# first REMUNERATION routing entries. All seven new units are direct
+# narrative prose (committee-chair letters, policy-change statements,
+# governance-framework intros, incentive-scheme mechanics descriptions),
+# same profile as the existing LEXICAL_ONLY units -- including
+# BEL_VARIABLE_REMUNERATION, which does contain incidental figures (hurdle
+# percentages, dates) but is predominantly prose describing scheme design,
+# not a table -- routed LEXICAL_ONLY, not LEXICAL_WITH_NUMERIC_CONTEXT (no
+# engine for that mode exists in this milestone regardless).
+ALGORITHM_VERSION = "1.3.0"
 
 # Per docs/experiments/annual-report-bel-compact-validation.md Section 3
 # and docs/7c1-schedule-localization-plan.md's original unit selection:
@@ -87,6 +96,13 @@ UNIT_ANALYTICAL_MODES: dict[tuple[str, str], AnalyticalMode] = {
     ("ACT", "governance_policies_processes"): AnalyticalMode.LEXICAL_ONLY,
     ("ACT", "combined_assurance"): AnalyticalMode.LEXICAL_ONLY,
     ("BEL", "board_composition_diversity"): AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED,
+    ("ACT", "remco_chairperson_report"): AnalyticalMode.LEXICAL_ONLY,
+    ("ACT", "remuneration_policy_changes"): AnalyticalMode.LEXICAL_ONLY,
+    ("ACT", "remuneration_governance"): AnalyticalMode.LEXICAL_ONLY,
+    ("BEL", "variable_remuneration"): AnalyticalMode.LEXICAL_ONLY,
+    ("SUR", "remuneration_policy_changes_and_focus"): AnalyticalMode.LEXICAL_ONLY,
+    ("SUR", "fair_responsible_remuneration"): AnalyticalMode.LEXICAL_ONLY,
+    ("SUR", "remuneration_policy_shareholder_engagement"): AnalyticalMode.LEXICAL_ONLY,
 }
 
 

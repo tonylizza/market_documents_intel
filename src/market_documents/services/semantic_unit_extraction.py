@@ -117,7 +117,23 @@ logger = logging.getLogger(__name__)
 # schedule- or heading-specific text), so it applies to every existing and
 # future NEXT_HEADING/ANCHOR_SENTENCE unit, not just CORPORATE_GOVERNANCE's
 # new ones.
-ALGORITHM_VERSION = "1.4.0"
+# v1.5.0 = Track 7D.4 (docs/7d4-corpus-wide-remuneration-expansion.md), the
+# milestone's one allowed generic parser/localizer correction: the v1.4.0
+# fix above widened only the search range's *end* page (`max` over
+# supporting-span end pages) -- it never pulled the *start* page earlier,
+# so a supporting span that begins *before* the primary's own start_page was
+# still silently excluded. Real bug found in ACT's real corpus: 2020's and
+# 2021's REMUNERATION primary span anchors on a "REMUNERATION REPORT
+# (CONTINUED)" banner (2020 p.96, 2021 p.108), while the real chapter start
+# -- including the "Remuneration Committee Chairperson's report" heading --
+# registers as an earlier supporting span (2020 p.94, 2021 p.107) that the
+# v1.4.0 range (`[instance.start_page, widened_end]`) never reached. Now
+# `range_start_page = min(instance.start_page, every supporting span's own
+# start_page)`, symmetric with the existing end-page widening. Generic (same
+# `supporting_spans` field, no schedule- or heading-specific text), applies
+# to every existing and future NEXT_HEADING/ANCHOR_SENTENCE unit. Regression
+# test: `tests/test_semantic_unit_extraction_service.py`.
+ALGORITHM_VERSION = "1.5.0"
 
 
 # --------------------------------------------------------------------------
@@ -537,9 +553,11 @@ def _run_extraction(
     # span, never the supporting spans (see ScheduleInstanceSupportingSpan's
     # docstring) -- widen the search range to their union so a unit heading
     # on a "continued" supporting-span page is not silently missed.
+    range_start_page = instance.start_page
     range_end_page = instance.end_page
-    if range_end_page is not None:
+    if range_start_page is not None and range_end_page is not None:
         for span in instance.supporting_spans:
+            range_start_page = min(range_start_page, span.start_page)
             range_end_page = max(range_end_page, span.end_page)
 
     canonical_run = get_current_canonical_run(session, report.id)
@@ -548,14 +566,14 @@ def _run_extraction(
         source_pages = source_adapter.load_source_pages(session, canonical_run.id)
         classified = source_adapter.classify_source_pages(source_pages)
         unit_blocks = source_adapter.build_unit_blocks(
-            classified, start_page=instance.start_page, end_page=range_end_page
+            classified, start_page=range_start_page, end_page=range_end_page
         )
     else:
         extraction_run = session.get(ExtractionRun, localization_run.extraction_run_id)
         pages = session.scalars(
             select(Page).where(
                 Page.extraction_run_id == extraction_run.id,
-                Page.page_number >= instance.start_page,
+                Page.page_number >= range_start_page,
                 Page.page_number <= range_end_page,
             )
         ).all()
