@@ -55,7 +55,16 @@ logger = logging.getLogger(__name__)
 # inspection confirmed it is direct narrative prose with no embedded
 # numeric/tabular content once excluded_from_narrative blocks are filtered
 # out, the same profile as the two existing LEXICAL_ONLY units.
-ALGORITHM_VERSION = "1.1.0"
+# v1.2.0 = Track 7D.3 (docs/7d3-corporate-governance-expansion.md): first
+# CORPORATE_GOVERNANCE routing entries. ACT's three units (information_
+# security_governance, governance_policies_processes, combined_assurance)
+# are direct narrative prose, same profile as the existing LEXICAL_ONLY
+# units -- routed LEXICAL_ONLY. BEL's board_composition_diversity is a
+# demographic composition table (director designation/age/gender/race), not
+# prose -- routed STRUCTURED_COMPARISON_PREFERRED (a declared routing
+# outcome only; no structured-comparison engine runs for it here, per the
+# milestone's scope).
+ALGORITHM_VERSION = "1.2.0"
 
 # Per docs/experiments/annual-report-bel-compact-validation.md Section 3
 # and docs/7c1-schedule-localization-plan.md's original unit selection:
@@ -74,6 +83,10 @@ UNIT_ANALYTICAL_MODES: dict[tuple[str, str], AnalyticalMode] = {
     ("BEL", "gross_margin"): AnalyticalMode.LEXICAL_ONLY,
     ("ACT", "cfo_conclusion"): AnalyticalMode.LEXICAL_ONLY,
     ("ACT", "healthcare_services_review"): AnalyticalMode.LEXICAL_ONLY,
+    ("ACT", "information_security_governance"): AnalyticalMode.LEXICAL_ONLY,
+    ("ACT", "governance_policies_processes"): AnalyticalMode.LEXICAL_ONLY,
+    ("ACT", "combined_assurance"): AnalyticalMode.LEXICAL_ONLY,
+    ("BEL", "board_composition_diversity"): AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED,
 }
 
 

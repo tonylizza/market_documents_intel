@@ -53,7 +53,26 @@ from market_documents.models.enums import NormalizedSchedule, SemanticUnitBounda
 # following it before the next section, which NEXT_HEADING cannot bound
 # without a bespoke ANCHOR_SENTENCE calibration per unit -- deferred, see
 # the milestone doc's rejected-candidates section).
-CONFIG_VERSION = "1.3.0"
+# v1.4.0 = Track 7D.3 (docs/7d3-corporate-governance-expansion.md): first
+# CORPORATE_GOVERNANCE units, added to prove the existing architecture
+# generalizes past FINANCIAL_PERFORMANCE. ACT_INFORMATION_SECURITY_GOVERNANCE
+# ("Information and security governance", NEXT_HEADING) recurs 2016,
+# 2018-2024 -- consistently a short, clean, standalone narrative subsection
+# ending at a genuine next heading every year checked (2016's "GOVERNANCE
+# OUTLOOK", 2022's page-banner "The Board of Directors continued", 2024's
+# "TAX TRANSPARENCY"). ACT_GOVERNANCE_POLICIES_PROCESSES ("Governance
+# policies, procedures and processes", NEXT_HEADING) recurs 2018-2024,
+# bounded by "Ethical behaviour" every year checked. ACT_COMBINED_ASSURANCE
+# ("Combined assurance", NEXT_HEADING) recurs 2018, 2020-2024, a short
+# framework-introduction narrative bounded by the "FIRST/SECOND/THIRD LINE
+# OF DEFENCE" diagram labels -- but see its own KNOWN DEFECT note below:
+# 2022/2023 resolve to the wrong content. BEL_BOARD_COMPOSITION_DIVERSITY
+# ("Board composition and diversity", NEXT_HEADING) recurs 2018-2021; unlike
+# the other three, its content is a demographic composition table, not
+# prose -- routed STRUCTURED_COMPARISON_PREFERRED, not LEXICAL_ONLY (see
+# docs/7d3-corporate-governance-expansion.md Section 9). No new boundary
+# strategy was needed for any of the four.
+CONFIG_VERSION = "1.4.0"
 
 # A trailing clause that names the prior-year comparison a closing sentence
 # is making, in any of the generic phrasings observed across the corpus
@@ -157,10 +176,90 @@ ACT_HEALTHCARE_SERVICES_REVIEW = UnitConfig(
     anchor_pattern=None,
 )
 
+# Track 7D.3 (docs/7d3-corporate-governance-expansion.md): first
+# CORPORATE_GOVERNANCE units. ACT's "Information and security governance"
+# subsection -- confirmed present, verbatim, in the real ACT 2016, 2018,
+# 2019, 2020, 2021, 2022, 2023, and 2024 PDFs (7D.3 real-corpus inventory),
+# each time 3-4 short paragraphs ending cleanly at a genuine next heading
+# ("GOVERNANCE OUTLOOK" in 2016, the page-banner "The Board of Directors
+# continued" in 2022 -- already excluded by the existing generic
+# boilerplate-repeat handling, "TAX TRANSPARENCY" in 2024). Not present in
+# 2017 (that year's report restructured the whole governance section around
+# a running "GOVERNANCE" page banner with no matching standalone heading --
+# GENUINE_ABSENCE, not an extraction defect; see the milestone doc's
+# extraction-coverage table).
+ACT_INFORMATION_SECURITY_GOVERNANCE = UnitConfig(
+    unit_key="information_security_governance",
+    schedule=NormalizedSchedule.CORPORATE_GOVERNANCE,
+    ticker="ACT",
+    start_heading="Information and security governance",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# ACT's "Governance policies, procedures and processes" subsection --
+# confirmed present in the real ACT 2018-2024 PDFs, each time a compliance-
+# focused narrative (group compliance universe, POPIA, ESG incidents) ending
+# cleanly at the next genuine heading, "Ethical behaviour", every year
+# checked (2022, 2024).
+ACT_GOVERNANCE_POLICIES_PROCESSES = UnitConfig(
+    unit_key="governance_policies_processes",
+    schedule=NormalizedSchedule.CORPORATE_GOVERNANCE,
+    ticker="ACT",
+    start_heading="Governance policies, procedures and processes",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# ACT's "Combined assurance" subsection -- confirmed present in the real ACT
+# 2018, 2020-2024 PDFs, a short (2-paragraph) narrative introducing the
+# three-lines-of-defence framework, ending cleanly at the "FIRST/SECOND/
+# THIRD LINE OF DEFENCE" diagram-label headings in 2020, 2021, and 2024.
+# KNOWN DEFECT, deliberately left unfixed (see
+# docs/7d3-corporate-governance-expansion.md Sections 12/15/18): in 2022 and
+# 2023, an earlier, unrelated governance-practices overview/infographic
+# heading-candidate ("Combined Assurance Approach\nStrong Lead Independent
+# Director...") wins the start-heading match instead of the real section --
+# the same false-positive-substring-match defect class Track 7D.2 already
+# documented and deliberately left unfixed for ACT "Capital management".
+# This unit is therefore NOT_READY_FOR_CUTOVER despite being configured and
+# resolving a boundary in every attempted year.
+ACT_COMBINED_ASSURANCE = UnitConfig(
+    unit_key="combined_assurance",
+    schedule=NormalizedSchedule.CORPORATE_GOVERNANCE,
+    ticker="ACT",
+    start_heading="Combined assurance",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
+# BEL's "Board composition and diversity" subsection -- confirmed present in
+# the real BEL 2018-2021 PDFs. Unlike the three ACT units above, its content
+# is a demographic composition table (director designation/age/gender/race),
+# not narrative prose -- Track 7D.3 routes it PRESENCE_STATUS_ONLY rather
+# than LEXICAL_ONLY (docs/7d3-corporate-governance-expansion.md Section 9),
+# same as every other STRUCTURED_COMPARISON_PREFERRED/PRESENCE_STATUS_ONLY
+# unit: extraction and boundary resolution still run, but no lexical
+# comparison is computed. Included specifically to give CORPORATE_GOVERNANCE
+# at least one BEL unit, proving the schedule (not just its units) localizes
+# for both issuers.
+BEL_BOARD_COMPOSITION_DIVERSITY = UnitConfig(
+    unit_key="board_composition_diversity",
+    schedule=NormalizedSchedule.CORPORATE_GOVERNANCE,
+    ticker="BEL",
+    start_heading="Board composition and diversity",
+    boundary_strategy=SemanticUnitBoundaryStrategy.NEXT_HEADING,
+    anchor_pattern=None,
+)
+
 UNIT_CONFIGS: tuple[UnitConfig, ...] = (
     BEL_GROSS_MARGIN,
     ACT_CFO_CONCLUSION,
     ACT_HEALTHCARE_SERVICES_REVIEW,
+    ACT_INFORMATION_SECURITY_GOVERNANCE,
+    ACT_GOVERNANCE_POLICIES_PROCESSES,
+    ACT_COMBINED_ASSURANCE,
+    BEL_BOARD_COMPOSITION_DIVERSITY,
 )
 
 

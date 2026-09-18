@@ -102,7 +102,22 @@ logger = logging.getLogger(__name__)
 # `TextBlock` did not mark several small chart-label fragments as
 # `excluded_from_narrative`; the canonical/7C.1a path already classifies
 # the equivalent content `NUMERIC_FRAGMENT`, excluded).
-ALGORITHM_VERSION = "1.3.0"
+# v1.4.0 = Track 7D.3 (docs/7d3-corporate-governance-expansion.md), the
+# milestone's one allowed generic parser correction: `_run_extraction`'s
+# page-range query now unions the `ScheduleInstance` primary span with every
+# `ScheduleInstanceSupportingSpan` page range, not just the primary. A
+# `FOUND_PRIMARY_AND_SUPPORTING` instance's own `start_page`/`end_page`
+# columns cover only the primary heading's own span (by design -- see
+# `ScheduleInstanceSupportingSpan`'s docstring); a schedule whose "continued"
+# occurrences each register as their own supporting span (BEL's
+# CORPORATE_GOVERNANCE 2018/2019: primary pp.38-38/40-40, supporting spans
+# extending to p.47/49) was silently searched for unit start headings only
+# on the primary's one or two pages, missing every subsection heading on the
+# "continued" pages entirely. Generic (reads `supporting_spans`, not any
+# schedule- or heading-specific text), so it applies to every existing and
+# future NEXT_HEADING/ANCHOR_SENTENCE unit, not just CORPORATE_GOVERNANCE's
+# new ones.
+ALGORITHM_VERSION = "1.4.0"
 
 
 # --------------------------------------------------------------------------
@@ -517,13 +532,23 @@ def _run_extraction(
     # extraction did not (Track 7D.2 Section 14's documented gap for `ACT
     # healthcare_services_review`). Falls back to legacy TextBlock,
     # unchanged, for a report with no canonical extraction yet.
+    # Track 7D.3's one generic parser correction: a FOUND_PRIMARY_AND_SUPPORTING
+    # instance's own start_page/end_page cover only the primary heading's
+    # span, never the supporting spans (see ScheduleInstanceSupportingSpan's
+    # docstring) -- widen the search range to their union so a unit heading
+    # on a "continued" supporting-span page is not silently missed.
+    range_end_page = instance.end_page
+    if range_end_page is not None:
+        for span in instance.supporting_spans:
+            range_end_page = max(range_end_page, span.end_page)
+
     canonical_run = get_current_canonical_run(session, report.id)
     using_canonical = canonical_run is not None
     if using_canonical:
         source_pages = source_adapter.load_source_pages(session, canonical_run.id)
         classified = source_adapter.classify_source_pages(source_pages)
         unit_blocks = source_adapter.build_unit_blocks(
-            classified, start_page=instance.start_page, end_page=instance.end_page
+            classified, start_page=instance.start_page, end_page=range_end_page
         )
     else:
         extraction_run = session.get(ExtractionRun, localization_run.extraction_run_id)
@@ -531,7 +556,7 @@ def _run_extraction(
             select(Page).where(
                 Page.extraction_run_id == extraction_run.id,
                 Page.page_number >= instance.start_page,
-                Page.page_number <= instance.end_page,
+                Page.page_number <= range_end_page,
             )
         ).all()
         page_number_by_id = {p.id: p.page_number for p in pages}

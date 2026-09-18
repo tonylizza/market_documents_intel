@@ -59,14 +59,25 @@ from market_documents.models.enums import NormalizedSchedule
 # page a vocabulary match happens to occur on -- a real section's own
 # heading can be preceded by an unrelated, coincidental substring/word-set
 # match many pages earlier.
-ALGORITHM_VERSION = "1.2.0"
+# v1.3.0 = Track 7D.3 (docs/7d3-corporate-governance-expansion.md): added
+# CORPORATE_GOVERNANCE vocabulary. Both BEL ("Corporate governance report" /
+# "corporate governance report") and ACT ("CORPORATE GOVERNANCE REPORT" /
+# "Corporate governance review") name the schedule directly every year in
+# the real corpus (2016-2022 BEL, 2016-2024 ACT) -- no new matching rule was
+# needed, only new vocabulary strings.
+# v1.3.1 = 7D.3's corpus-wide scope amendment: added "CORPORATE GOVERNANCE
+# REPORT" is already shared with ACT/BEL and matched KP2 as-is (real corpus,
+# 2020-2025); added "Governance and functions of the Board" for SBP (real
+# corpus, 2023-2025). Pure vocabulary addition, no matching-logic change --
+# does not draw on the milestone's one-generic-correction parser budget.
+ALGORITHM_VERSION = "1.3.1"
 
-HEADING_VOCABULARY_VERSION = 1
+HEADING_VOCABULARY_VERSION = 3
 
-# Canonical heading strings for FINANCIAL_PERFORMANCE, matched
-# case-insensitively as a substring of a HEADING_CANDIDATE block's text
-# (see `schedule_localization.py`). Order is not significant -- every
-# configured string is checked for every heading-candidate block.
+# Canonical heading strings per schedule, matched case-insensitively as a
+# substring of a HEADING_CANDIDATE block's text (see
+# `schedule_localization.py`). Order is not significant -- every configured
+# string is checked for every heading-candidate block.
 SCHEDULE_HEADING_VOCABULARY: dict[NormalizedSchedule, tuple[str, ...]] = {
     NormalizedSchedule.FINANCIAL_PERFORMANCE: (
         "Finance director's report",
@@ -78,6 +89,18 @@ SCHEDULE_HEADING_VOCABULARY: dict[NormalizedSchedule, tuple[str, ...]] = {
         "Financial Performance",
         "Financial review",
         "Financial Review",
+    ),
+    # Real-corpus heading strings confirmed via docs/7d3-corporate-governance-
+    # expansion.md Section 1's inventory (BEL 2016-2022, ACT 2016-2024). Both
+    # issuers' "(continued)"/"CONTINUED" running banners are already handled
+    # generically by the existing boilerplate-repeat and hierarchy-aware
+    # boundary logic below, not by this vocabulary.
+    NormalizedSchedule.CORPORATE_GOVERNANCE: (
+        "Corporate governance report",
+        "CORPORATE GOVERNANCE REPORT",
+        "Corporate governance review",
+        "CORPORATE GOVERNANCE REVIEW",
+        "Governance and functions of the Board",
     ),
 }
 

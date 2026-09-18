@@ -84,12 +84,55 @@ def test_multiple_matches_produce_primary_and_supporting():
     assert result.supporting[0].start_page == 38
 
 
-def test_non_financial_performance_schedule_raises_not_implemented():
-    headings = [_heading(10, 0, "Corporate governance report")]
+def test_unimplemented_schedule_raises_not_implemented():
+    headings = [_heading(10, 0, "Remuneration report")]
     with pytest.raises(NotImplementedError):
         sl.localize_schedule(
-            headings, last_page_number=100, schedule=NormalizedSchedule.CORPORATE_GOVERNANCE, config=CONFIG
+            headings, last_page_number=100, schedule=NormalizedSchedule.REMUNERATION, config=CONFIG
         )
+
+
+# --------------------------------------------------------------------------
+# Track 7D.3: CORPORATE_GOVERNANCE schedule localization
+# --------------------------------------------------------------------------
+
+GOVERNANCE_CONFIG = ScheduleConfig(
+    heading_vocabulary={NormalizedSchedule.CORPORATE_GOVERNANCE: ("Corporate governance report",)}
+)
+
+
+def test_corporate_governance_schedule_localizes_like_financial_performance():
+    """The algorithm is schedule-agnostic; CORPORATE_GOVERNANCE must resolve
+    exactly like FINANCIAL_PERFORMANCE given the same shape of evidence."""
+    headings = [
+        _heading(38, 0, "Finance director's report"),
+        _heading(43, 0, "Corporate governance report"),
+        _heading(56, 0, "Remuneration committee report"),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=100, schedule=NormalizedSchedule.CORPORATE_GOVERNANCE, config=GOVERNANCE_CONFIG
+    )
+
+    assert result.status == ScheduleLocalizationStatus.FOUND_PRIMARY_ONLY
+    assert result.primary.start_page == 43
+    assert result.primary.end_page == 55  # page before the next section (56)
+
+
+def test_corporate_governance_continued_banner_does_not_terminate_schedule():
+    """BEL-shaped: 'Corporate governance report continued' banners must
+    extend the schedule, not be treated as a new section boundary."""
+    headings = [
+        _heading(43, 0, "Corporate governance report", font_size=16.0, is_bold=True),
+        _heading(44, 0, "Corporate governance report continued", font_size=16.0, is_bold=True),
+        _heading(46, 0, "Corporate governance report continued", font_size=16.0, is_bold=True),
+        _heading(50, 0, "Social, ethics and transformation committee report", font_size=16.0, is_bold=True),
+    ]
+    result = sl.localize_schedule(
+        headings, last_page_number=100, schedule=NormalizedSchedule.CORPORATE_GOVERNANCE, config=GOVERNANCE_CONFIG
+    )
+
+    assert result.primary.start_page == 43
+    assert result.primary.end_page == 49  # page before the genuine next section (50)
 
 
 # --------------------------------------------------------------------------

@@ -45,3 +45,30 @@ def test_unconfigured_unit_returns_none():
 
 def test_configuration_hash_is_deterministic():
     assert coverage_registry.compute_configuration_hash() == coverage_registry.compute_configuration_hash()
+
+
+# --------------------------------------------------------------------------
+# Track 7D.3: CORPORATE_GOVERNANCE units are candidates, not enabled
+# --------------------------------------------------------------------------
+
+
+def test_new_governance_units_are_candidates_not_enabled_in_production():
+    """7D.3 explicitly forbids changing live production scope -- every new
+    CORPORATE_GOVERNANCE unit must show up as a candidate, never enabled,
+    without touching `cutover_config.py`."""
+    for ticker, unit_key in (
+        ("ACT", "information_security_governance"),
+        ("ACT", "governance_policies_processes"),
+        ("ACT", "combined_assurance"),
+        ("BEL", "board_composition_diversity"),
+    ):
+        entry = coverage_registry.coverage_for(ticker, NormalizedSchedule.CORPORATE_GOVERNANCE, unit_key)
+        assert entry is not None
+        assert entry.production_status == "candidate"
+
+
+def test_bel_governance_unit_is_structured_comparison_preferred_not_lexical():
+    entry = coverage_registry.coverage_for("BEL", NormalizedSchedule.CORPORATE_GOVERNANCE, "board_composition_diversity")
+
+    assert entry is not None
+    assert entry.analytical_mode == AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED

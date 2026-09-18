@@ -180,14 +180,19 @@ def localize_schedule(
        block in the document (of any kind, not just vocabulary matches),
        or the report's last page if it is the final heading.
 
-    Only FINANCIAL_PERFORMANCE is implemented -- raises NotImplementedError
-    for any other schedule (see module docstring).
+    FINANCIAL_PERFORMANCE (Track 7C.1) and CORPORATE_GOVERNANCE (Track 7D.3,
+    docs/7d3-corporate-governance-expansion.md) are implemented -- raises
+    NotImplementedError for any other schedule (see module docstring). The
+    algorithm itself is schedule-agnostic (driven entirely by
+    `SCHEDULE_HEADING_VOCABULARY`); this guard only enforces which schedules
+    have been validated against the real corpus so far.
     """
-    if schedule != NormalizedSchedule.FINANCIAL_PERFORMANCE:
+    if schedule not in (NormalizedSchedule.FINANCIAL_PERFORMANCE, NormalizedSchedule.CORPORATE_GOVERNANCE):
         raise NotImplementedError(
-            f"schedule_localization.localize_schedule: {schedule.value} is not implemented in "
-            "Track 7C.1 -- only FINANCIAL_PERFORMANCE is supported. See "
-            "docs/7c1-schedule-localization-plan.md Section 2 (explicit scope boundary)."
+            f"schedule_localization.localize_schedule: {schedule.value} is not implemented -- "
+            "only FINANCIAL_PERFORMANCE and CORPORATE_GOVERNANCE are supported. See "
+            "docs/7c1-schedule-localization-plan.md Section 2 and "
+            "docs/7d3-corporate-governance-expansion.md (explicit scope boundary)."
         )
 
     vocabulary = config.heading_vocabulary.get(schedule, ())

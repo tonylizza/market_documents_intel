@@ -101,3 +101,58 @@ def test_removed_routes_to_presence_status_only_not_lexical():
 
     assert decision is not None
     assert decision.mode == AnalyticalMode.PRESENCE_STATUS_ONLY
+
+
+# --------------------------------------------------------------------------
+# Track 7D.3: CORPORATE_GOVERNANCE routing
+# --------------------------------------------------------------------------
+
+
+def test_act_information_security_governance_routes_to_lexical_only():
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="information_security_governance",
+        later_unit_key="information_security_governance",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_act_governance_policies_processes_routes_to_lexical_only():
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="governance_policies_processes",
+        later_unit_key="governance_policies_processes",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_act_combined_assurance_routes_to_lexical_only():
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="ACT",
+        earlier_unit_key="combined_assurance",
+        later_unit_key="combined_assurance",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_bel_board_composition_diversity_routes_to_structured_not_lexical():
+    """Table content (demographic composition), not prose -- must not be
+    silently treated as LEXICAL_ONLY just because it's MATCHED."""
+    decision = route_alignment(
+        status=SemanticUnitAlignmentStatus.MATCHED,
+        ticker="BEL",
+        earlier_unit_key="board_composition_diversity",
+        later_unit_key="board_composition_diversity",
+    )
+
+    assert decision is not None
+    assert decision.mode == AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED
