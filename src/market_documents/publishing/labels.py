@@ -35,6 +35,32 @@ def derive_id(publication_version: str, table: str, *parts: str) -> uuid.UUID:
 
 
 # ---------------------------------------------------------------------------
+# Track 7E.1: shared corpus IDs (publication-independent)
+# ---------------------------------------------------------------------------
+
+# Reserved "publication_version" value for `derive_id` calls that must yield
+# the SAME id no matter which publication is being built -- used only for
+# `app_corpus.*` rows (passage text, passage embeddings), whose content is a
+# pure function of source data (never of publication_version). Never a real
+# publication_version -- `Publication.publication_version` is a caller
+# -supplied free-form string (see `docs/publishing.md`), and this sentinel is
+# deliberately shaped so it can never collide with one.
+CORPUS_SCOPE = "__corpus__"
+
+
+def derive_corpus_id(table: str, *parts: str) -> uuid.UUID:
+    """Deterministic id for one `app_corpus.*` row -- same `table` + `parts`
+    (always source-side identifiers, e.g. `source_passage_id`, never a
+    publication id/version) always yields the same UUID regardless of which
+    publication is being built. This is what lets two publications built
+    from the same unchanged source passage reuse the exact same corpus row
+    instead of writing a second physical copy (see `publisher.py`'s
+    Passage/PassageEmbedding construction and docs/7e1-publication-storage-
+    lifecycle-hardening.md)."""
+    return derive_id(CORPUS_SCOPE, table, *parts)
+
+
+# ---------------------------------------------------------------------------
 # Passage publication policy
 # ---------------------------------------------------------------------------
 

@@ -9,9 +9,11 @@ Embedding-text-hash caveat: the research side has no equivalent hash on
 need for one, since "current" embedding selection is governed entirely by
 `EmbeddingRun.configuration_hash` plus segmentation-run identity. This
 module's hash is therefore a forward-looking drift detector only: it lets a
-future publication notice that `app.passages.text` no longer matches what an
-already-published vector was computed from, but it cannot be cross-checked
-against anything recorded at research-embedding time.
+future publication notice that the passage text (`app_corpus.passages.text`
+as of Track 7E.1; `app.passages.text` for a publication built before it) no
+longer matches what an already-published vector was computed from, but it
+cannot be cross-checked against anything recorded at research-embedding
+time.
 """
 
 import hashlib

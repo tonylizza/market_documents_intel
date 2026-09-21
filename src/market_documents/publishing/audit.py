@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from market_documents.publishing.models import (
     APP_EMBEDDING_DIMENSION,
     Company,
+    CorpusPassageEmbedding,
     DiscoveryItem,
     LanguageMetric,
     MetricDefinition,
@@ -30,6 +31,45 @@ from market_documents.publishing.models import (
 from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
 from market_documents.publishing.models import QaChunk, QaChunkPassage
 from market_documents.publishing.retrieval_contexts import vector_norm_nonzero
+
+
+def _embeddings_by_passage_id(
+    app_session: Session, publication_id: uuid.UUID
+) -> dict[uuid.UUID, CorpusPassageEmbedding | AppPassageEmbedding]:
+    """Track 7E.1: a publication built from migration app_0010 onward has no
+    rows of its own in `app.passage_embeddings` -- its embeddings live once,
+    shared, in `app_corpus.passage_embeddings`, resolved by `source_passage_
+    id`. A publication built before app_0010 still has legacy per-
+    publication rows (also backfilled into the corpus table, so both
+    resolve). Used by every `build_publication_embedding*`/`build_
+    publication_vector_integrity*` audit function below so they report
+    correctly for either generation of publication."""
+    passages = list(app_session.scalars(select(Passage).where(Passage.publication_id == publication_id)))
+    source_passage_ids = {p.source_passage_id for p in passages}
+    corpus_by_source_id = (
+        {
+            ce.source_passage_id: ce
+            for ce in app_session.scalars(
+                select(CorpusPassageEmbedding).where(
+                    CorpusPassageEmbedding.source_passage_id.in_(source_passage_ids)
+                )
+            )
+        }
+        if source_passage_ids
+        else {}
+    )
+    legacy_by_passage_id = {
+        e.passage_id: e
+        for e in app_session.scalars(
+            select(AppPassageEmbedding).where(AppPassageEmbedding.publication_id == publication_id)
+        )
+    }
+    return {
+        p.id: corpus_by_source_id[p.source_passage_id] if p.source_passage_id in corpus_by_source_id
+        else legacy_by_passage_id[p.id]
+        for p in passages
+        if p.source_passage_id in corpus_by_source_id or p.id in legacy_by_passage_id
+    }
 
 
 def write_audit_csv(rows: list, output_path: Path) -> None:
@@ -416,17 +456,11 @@ class PublicationEmbeddingAuditRow:
 def build_publication_embedding_audit_rows(
     app_session: Session, publication_id: uuid.UUID
 ) -> list[PublicationEmbeddingAuditRow]:
-    embeddings = list(
-        app_session.scalars(
-            select(AppPassageEmbedding)
-            .where(AppPassageEmbedding.publication_id == publication_id)
-            .order_by(AppPassageEmbedding.passage_id)
-        )
-    )
+    embeddings_by_passage_id = _embeddings_by_passage_id(app_session, publication_id)
     return [
         PublicationEmbeddingAuditRow(
             publication_id=str(publication_id),
-            target_passage_id=str(e.passage_id),
+            target_passage_id=str(passage_id),
             target_embedding_id=str(e.id),
             embedding_model=e.embedding_model,
             embedding_model_revision=e.embedding_model_revision,
@@ -434,7 +468,7 @@ def build_publication_embedding_audit_rows(
             vector_norm=e.vector_norm,
             vector_is_nonzero=vector_norm_nonzero(e.embedding),
         )
-        for e in embeddings
+        for passage_id, e in sorted(embeddings_by_passage_id.items(), key=lambda kv: str(kv[0]))
     ]
 
 
@@ -450,22 +484,16 @@ class PublicationEmbeddingLineageAuditRow:
 def build_publication_embedding_lineage_audit_rows(
     app_session: Session, publication_id: uuid.UUID
 ) -> list[PublicationEmbeddingLineageAuditRow]:
-    embeddings = list(
-        app_session.scalars(
-            select(AppPassageEmbedding)
-            .where(AppPassageEmbedding.publication_id == publication_id)
-            .order_by(AppPassageEmbedding.passage_id)
-        )
-    )
+    embeddings_by_passage_id = _embeddings_by_passage_id(app_session, publication_id)
     return [
         PublicationEmbeddingLineageAuditRow(
             publication_id=str(publication_id),
-            target_passage_id=str(e.passage_id),
+            target_passage_id=str(passage_id),
             target_embedding_id=str(e.id),
             source_embedding_id=str(e.source_embedding_id),
             source_embedding_run_id=str(e.source_embedding_run_id),
         )
-        for e in embeddings
+        for passage_id, e in sorted(embeddings_by_passage_id.items(), key=lambda kv: str(kv[0]))
     ]
 
 
@@ -493,11 +521,7 @@ def build_publication_embedding_missing_audit_rows(
             .order_by(Company.ticker, Passage.passage_index)
         ).all()
     )
-    embedded_passage_ids = set(
-        app_session.scalars(
-            select(AppPassageEmbedding.passage_id).where(AppPassageEmbedding.publication_id == publication_id)
-        )
-    )
+    embedded_passage_ids = set(_embeddings_by_passage_id(app_session, publication_id).keys())
     return [
         PublicationEmbeddingMissingAuditRow(
             publication_id=str(publication_id),
@@ -523,22 +547,16 @@ class PublicationVectorIntegrityAuditRow:
 def build_publication_vector_integrity_audit_rows(
     app_session: Session, publication_id: uuid.UUID
 ) -> list[PublicationVectorIntegrityAuditRow]:
-    embeddings = list(
-        app_session.scalars(
-            select(AppPassageEmbedding)
-            .where(AppPassageEmbedding.publication_id == publication_id)
-            .order_by(AppPassageEmbedding.passage_id)
-        )
-    )
+    embeddings_by_passage_id = _embeddings_by_passage_id(app_session, publication_id)
     return [
         PublicationVectorIntegrityAuditRow(
             publication_id=str(publication_id),
             target_embedding_id=str(e.id),
-            target_passage_id=str(e.passage_id),
+            target_passage_id=str(passage_id),
             dimensions_ok=e.dimensions == APP_EMBEDDING_DIMENSION == len(e.embedding),
             vector_nonzero=vector_norm_nonzero(e.embedding),
         )
-        for e in embeddings
+        for passage_id, e in sorted(embeddings_by_passage_id.items(), key=lambda kv: str(kv[0]))
     ]
 
 

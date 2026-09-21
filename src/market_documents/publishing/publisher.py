@@ -26,6 +26,8 @@ from market_documents.publishing.models import (
     APP_EMBEDDING_DIMENSION,
     ApplicationState,
     Company,
+    CorpusPassage,
+    CorpusPassageEmbedding,
     DiscoveryItem,
     LanguageMetric,
     MetricDefinition,
@@ -36,7 +38,6 @@ from market_documents.publishing.models import (
     PassageLanguageSignal,
     StructuredTableComparison,
 )
-from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
 from market_documents.publishing.models import QaChunk as AppQaChunk
 from market_documents.publishing.models import QaChunkPassage as AppQaChunkPassage
 from market_documents.publishing.models import (
@@ -627,10 +628,50 @@ class PublicationBuilder:
 
         # --- Passages ---
         app_passages: dict[uuid.UUID, Passage] = {}
-        # Milestone 7B.1: one deduplicated vector per published passage,
-        # keyed by *source* passage id (same key space as app_passages) so
-        # the retrieval-context pass below can look both up together.
-        app_passage_embeddings: dict[uuid.UUID, AppPassageEmbedding] = {}
+        # Track 7E.1 (was Milestone 7B.1): one deduplicated vector per
+        # published passage, keyed by *source* passage id (same key space as
+        # app_passages) so the retrieval-context pass below can look both up
+        # together. The value is always a `CorpusPassageEmbedding` now --
+        # shared across every publication that includes this passage, never
+        # a fresh per-publication row (see that model's docstring in
+        # models.py and docs/7e1-publication-storage-lifecycle-
+        # hardening.md).
+        app_passage_embeddings: dict[uuid.UUID, CorpusPassageEmbedding] = {}
+
+        # Track 7E.1: bulk-load which shared corpus rows already exist for
+        # this publish's source passages -- an unchanged passage/embedding
+        # reuses its existing row instead of writing a second physical copy.
+        # Two bulk SELECTs (not a get-or-create query per row) keep this a
+        # fixed number of round trips regardless of corpus size.
+        all_source_passage_ids = {
+            pd.passage.id
+            for passage_datasets in snapshot.passages_by_report.values()
+            for pd in passage_datasets
+            if not pd.excluded_as_artifact
+        }
+        existing_corpus_passages: dict[uuid.UUID, CorpusPassage] = (
+            {
+                cp.source_passage_id: cp
+                for cp in app_session.scalars(
+                    select(CorpusPassage).where(CorpusPassage.source_passage_id.in_(all_source_passage_ids))
+                )
+            }
+            if all_source_passage_ids
+            else {}
+        )
+        existing_corpus_embeddings: dict[tuple[uuid.UUID, str, str], CorpusPassageEmbedding] = (
+            {
+                (ce.source_passage_id, ce.embedding_model, ce.embedding_model_revision): ce
+                for ce in app_session.scalars(
+                    select(CorpusPassageEmbedding).where(
+                        CorpusPassageEmbedding.source_passage_id.in_(all_source_passage_ids)
+                    )
+                )
+            }
+            if all_source_passage_ids
+            else {}
+        )
+
         for report_source_id, passage_datasets in snapshot.passages_by_report.items():
             app_report = app_reports.get(report_source_id)
             if app_report is None:
@@ -641,6 +682,18 @@ class PublicationBuilder:
                 passage = pd.passage
                 category = pd.classification.category if pd.classification is not None else None
                 app_passage_id = labels.derive_id(pv, "passages", str(passage.id))
+
+                corpus_passage = existing_corpus_passages.get(passage.id)
+                if corpus_passage is None:
+                    corpus_passage = CorpusPassage(
+                        id=labels.derive_corpus_id("passages", str(passage.id)),
+                        source_passage_id=passage.id,
+                        heading=passage.heading_text,
+                        text=passage.raw_text,
+                    )
+                    app_session.add(corpus_passage)
+                    existing_corpus_passages[passage.id] = corpus_passage
+
                 app_passage = Passage(
                     id=app_passage_id,
                     publication_id=pub_id,
@@ -653,7 +706,11 @@ class PublicationBuilder:
                     last_page_number=passage.last_page_number,
                     heading=passage.heading_text,
                     passage_type=passage.passage_type.value,
-                    text=passage.raw_text,
+                    # Track 7E.1: never populated here any more -- the real
+                    # text lives once in `corpus_passage.text` above;
+                    # `app.current_passages` resolves it via a join. See
+                    # `Passage.text`'s docstring.
+                    text=None,
                     word_count=passage.word_count,
                     structured_content_category=category,
                     primary_narrative_eligible=category not in PRIMARY_NARRATIVE_EXCLUDED_CATEGORIES,
@@ -672,22 +729,30 @@ class PublicationBuilder:
                     # unless this passage is a documented exclusion.
                     continue
                 embedding_run = source_embedding.embedding_run
-                vector = list(source_embedding.embedding)
-                app_embedding = AppPassageEmbedding(
-                    id=labels.derive_id(pv, "passage_embeddings", str(passage.id)),
-                    publication_id=pub_id,
-                    passage_id=app_passage_id,
-                    source_embedding_id=source_embedding.id,
-                    source_embedding_run_id=embedding_run.id,
-                    embedding_model=embedding_run.model_name,
-                    embedding_model_revision=embedding_run.model_revision,
-                    dimensions=len(vector),
-                    embedding_text_hash=embedding_text_hash(app_passage.text),
-                    embedding=vector,
-                    vector_norm=vector_norm(vector),
-                )
-                app_passage_embeddings[passage.id] = app_embedding
-                app_session.add(app_embedding)
+                embedding_key = (passage.id, embedding_run.model_name, embedding_run.model_revision)
+                corpus_embedding = existing_corpus_embeddings.get(embedding_key)
+                if corpus_embedding is None:
+                    vector = list(source_embedding.embedding)
+                    corpus_embedding = CorpusPassageEmbedding(
+                        id=labels.derive_corpus_id(
+                            "passage_embeddings",
+                            str(passage.id),
+                            embedding_run.model_name,
+                            embedding_run.model_revision,
+                        ),
+                        source_passage_id=passage.id,
+                        source_embedding_id=source_embedding.id,
+                        source_embedding_run_id=embedding_run.id,
+                        embedding_model=embedding_run.model_name,
+                        embedding_model_revision=embedding_run.model_revision,
+                        dimensions=len(vector),
+                        embedding_text_hash=embedding_text_hash(corpus_passage.text),
+                        embedding=vector,
+                        vector_norm=vector_norm(vector),
+                    )
+                    app_session.add(corpus_embedding)
+                    existing_corpus_embeddings[embedding_key] = corpus_embedding
+                app_passage_embeddings[passage.id] = corpus_embedding
 
         app_session.flush()
 
@@ -1094,6 +1159,12 @@ class PublicationBuilder:
                 app_passage = app_passages.get(pd.passage.id)
                 if app_passage is None:
                     continue
+                # Track 7E.1: `app_passage.text` is always None now (see
+                # `Passage.text`'s docstring) -- the real text lives in the
+                # shared corpus row looked up during the passages pass above.
+                corpus_passage = existing_corpus_passages.get(pd.passage.id)
+                if corpus_passage is None:
+                    continue
                 report_passage_rows.append(
                     QaPassageRow(
                         id=app_passage.id,
@@ -1101,7 +1172,7 @@ class PublicationBuilder:
                         company_id=app_passage.company_id,
                         passage_index=pd.passage.passage_index,
                         heading=app_passage.heading,
-                        text=app_passage.text,
+                        text=corpus_passage.text,
                         first_page_number=app_passage.first_page_number,
                         last_page_number=app_passage.last_page_number,
                     )
@@ -1282,3 +1353,60 @@ def cleanup_publications(app_session: Session, keep: int = 2, dry_run: bool = Fa
             app_session.execute(delete(Publication).where(Publication.id == p.id))
         app_session.flush()
     return to_delete
+
+
+def gc_orphaned_corpus_rows(app_session: Session, dry_run: bool = False) -> dict[str, int]:
+    """Delete shared `app_corpus.*` rows no longer referenced by any
+    existing publication -- the corpus-table counterpart to `cleanup_
+    publications`'s CASCADE delete of publication-scoped rows (Track 7E.1).
+    Deliberately a SEPARATE step, never called automatically from
+    `cleanup_publications`: a corpus row is never CASCADE-deleted just
+    because the publication that first wrote it goes away (another
+    publication may still reference the exact same content), so this only
+    ever removes a row once NOTHING references it any more, via an explicit
+    `NOT EXISTS` reference count -- not FK cascade (a single FK column can't
+    safely target a possibly-shared row; see `RetrievalContext.
+    passage_embedding_id`'s docstring in `models.py`).
+
+    An embedding row is orphaned when no `app.retrieval_contexts` row
+    references it (`passage_embedding_id`) AND no `app.passages` row shares
+    its `source_passage_id` -- the second check is belt-and-braces, catching
+    a passage published without ever gaining a retrieval context. A
+    passage-text row is orphaned when no `app.passages` row shares its
+    `source_passage_id` at all.
+
+    Safe to call any time, including with only one publication ever built
+    (finds nothing to remove) -- typically run right after `cleanup_
+    publications` in a publish runbook, once superseded publications' own
+    rows are gone and any corpus rows they alone used become genuinely
+    unreferenced. Returns counts of rows that were (or, if `dry_run`, would
+    be) deleted.
+    """
+    orphaned_embeddings = list(
+        app_session.scalars(
+            select(CorpusPassageEmbedding).where(
+                ~select(RetrievalContext.id)
+                .where(RetrievalContext.passage_embedding_id == CorpusPassageEmbedding.id)
+                .exists(),
+                ~select(Passage.id)
+                .where(Passage.source_passage_id == CorpusPassageEmbedding.source_passage_id)
+                .exists(),
+            )
+        )
+    )
+    orphaned_passages = list(
+        app_session.scalars(
+            select(CorpusPassage).where(
+                ~select(Passage.id).where(Passage.source_passage_id == CorpusPassage.source_passage_id).exists()
+            )
+        )
+    )
+
+    if not dry_run:
+        for e in orphaned_embeddings:
+            app_session.delete(e)
+        for p in orphaned_passages:
+            app_session.delete(p)
+        app_session.flush()
+
+    return {"passage_embeddings": len(orphaned_embeddings), "passages": len(orphaned_passages)}

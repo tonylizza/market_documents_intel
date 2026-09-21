@@ -20,6 +20,8 @@ from market_documents.publishing import labels
 from market_documents.publishing.models import (
     APP_EMBEDDING_DIMENSION,
     Company,
+    CorpusPassage,
+    CorpusPassageEmbedding,
     DiscoveryItem,
     MetricDefinition,
     Passage,
@@ -94,6 +96,21 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
         app_session.scalars(select(ReportComparison).where(ReportComparison.publication_id == publication_id))
     )
     passages = list(app_session.scalars(select(Passage).where(Passage.publication_id == publication_id)))
+    # Track 7E.1: fetched once, up front -- `app.passages.text`/`.search_
+    # vector` are always NULL for a publication built from app_0010 onward
+    # (see `Passage.text`'s docstring), so several checks below need the
+    # corpus-resolved value instead. Also reused by the embeddings section.
+    _source_passage_ids_for_corpus = {p.source_passage_id for p in passages}
+    corpus_passages_by_source_id: dict[uuid.UUID, CorpusPassage] = (
+        {
+            cp.source_passage_id: cp
+            for cp in app_session.scalars(
+                select(CorpusPassage).where(CorpusPassage.source_passage_id.in_(_source_passage_ids_for_corpus))
+            )
+        }
+        if _source_passage_ids_for_corpus
+        else {}
+    )
     passage_comparisons = list(
         app_session.scalars(select(PassageComparison).where(PassageComparison.publication_id == publication_id))
     )
@@ -152,9 +169,15 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
         "no_excluded_categories_published",
         all(p.structured_content_category not in labels.PUBLICATION_EXCLUDED_CATEGORIES for p in passages),
     )
+    def _search_vector_for(app_passage: Passage) -> object | None:
+        if app_passage.search_vector is not None:
+            return app_passage.search_vector
+        corpus_passage = corpus_passages_by_source_id.get(app_passage.source_passage_id)
+        return corpus_passage.search_vector if corpus_passage is not None else None
+
     check(
         "search_vectors_populated",
-        all(p.search_vector is not None for p in passages),
+        all(_search_vector_for(p) is not None for p in passages),
     )
 
     for pc in passage_comparisons:
@@ -257,19 +280,62 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             f"{item.discovery_type}:{item.report_comparison_id}",
         )
 
-    # --- Milestone 7B.1: passage embeddings ---
-    embeddings = list(
+    # --- Track 7E.1 (was Milestone 7B.1): passage embeddings ---
+    # A publication built from migration app_0010 onward never writes to
+    # `app.passage_embeddings` at all -- its embeddings live once, shared,
+    # in `app_corpus.passage_embeddings`, resolved by `source_passage_id`
+    # (see that model's docstring). A publication built *before* app_0010
+    # still has its own legacy per-publication rows in `app.passage_
+    # embeddings`; app_0010's backfill also copied the same content into the
+    # corpus table, so both id spaces resolve correctly here -- this checks
+    # whichever one this publication's rows actually use.
+    passages_by_id = {p.id: p for p in passages}
+    source_passage_ids = _source_passage_ids_for_corpus
+
+    corpus_embeddings_by_source_id: dict[uuid.UUID, CorpusPassageEmbedding] = (
+        {
+            ce.source_passage_id: ce
+            for ce in app_session.scalars(
+                select(CorpusPassageEmbedding).where(
+                    CorpusPassageEmbedding.source_passage_id.in_(source_passage_ids)
+                )
+            )
+        }
+        if source_passage_ids
+        else {}
+    )
+    legacy_embeddings = list(
         app_session.scalars(
             select(AppPassageEmbedding).where(AppPassageEmbedding.publication_id == publication_id)
         )
     )
-    embedding_by_passage_id = {e.passage_id: e for e in embeddings}
-    passages_by_id = {p.id: p for p in passages}
+    legacy_embedding_by_passage_id: dict[uuid.UUID, AppPassageEmbedding] = {
+        e.passage_id: e for e in legacy_embeddings
+    }
 
+    def _embedding_for(app_passage: Passage) -> CorpusPassageEmbedding | AppPassageEmbedding | None:
+        return corpus_embeddings_by_source_id.get(
+            app_passage.source_passage_id
+        ) or legacy_embedding_by_passage_id.get(app_passage.id)
+
+    def _embedding_text_for(app_passage: Passage) -> str | None:
+        if app_passage.text is not None:
+            return app_passage.text
+        corpus_passage = corpus_passages_by_source_id.get(app_passage.source_passage_id)
+        return corpus_passage.text if corpus_passage is not None else None
+
+    embedding_by_passage_id: dict[uuid.UUID, CorpusPassageEmbedding | AppPassageEmbedding] = {
+        p.id: e for p in passages if (e := _embedding_for(p)) is not None
+    }
+
+    embedding_identity_keys = [
+        (p.source_passage_id, embedding_by_passage_id[p.id].embedding_model, embedding_by_passage_id[p.id].embedding_model_revision)
+        for p in passages
+        if p.id in embedding_by_passage_id
+    ]
     check(
         "no_duplicate_passage_embeddings",
-        len({(e.passage_id, e.embedding_model, e.embedding_model_revision) for e in embeddings})
-        == len(embeddings),
+        len(set(embedding_identity_keys)) == len(embedding_identity_keys),
     )
     missing_embedding_count = sum(1 for p in passages if p.id not in embedding_by_passage_id)
     embedding_coverage = 1.0 - (missing_embedding_count / len(passages)) if passages else 1.0
@@ -279,23 +345,25 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
         f"{missing_embedding_count}/{len(passages)} passages missing a current source embedding "
         f"({embedding_coverage:.4f} coverage, minimum {MINIMUM_EMBEDDING_COVERAGE})",
     )
-    for e in embeddings:
-        check("passage_embedding_references_published_passage", e.passage_id in passages_by_id, str(e.id))
+    for app_passage in passages:
+        e = embedding_by_passage_id.get(app_passage.id)
+        if e is None:
+            continue
         check(
             "passage_embedding_dimensions_match_configured_column",
             e.dimensions == APP_EMBEDDING_DIMENSION == len(e.embedding),
             str(e.id),
         )
         check("passage_embedding_vector_not_zero", vector_norm_nonzero(e.embedding), str(e.id))
-        app_passage = passages_by_id.get(e.passage_id)
-        if app_passage is not None:
+        embedding_text = _embedding_text_for(app_passage)
+        if embedding_text is not None:
             check(
                 "passage_embedding_text_hash_self_consistent",
-                e.embedding_text_hash == compute_embedding_text_hash(app_passage.text),
+                e.embedding_text_hash == compute_embedding_text_hash(embedding_text),
                 str(e.id),
             )
 
-    # --- Milestone 7B.1: retrieval contexts ---
+    # --- Track 7E.1 (was Milestone 7B.1): retrieval contexts ---
     contexts = list(
         app_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == publication_id))
     )

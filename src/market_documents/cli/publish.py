@@ -13,7 +13,12 @@ from market_documents.config import get_settings
 from market_documents.db.session import get_session
 from market_documents.publishing import audit
 from market_documents.publishing.models import ApplicationState, Company, Publication, PublicationStatus
-from market_documents.publishing.publisher import PublicationBuilder, activate_publication, cleanup_publications
+from market_documents.publishing.publisher import (
+    PublicationBuilder,
+    activate_publication,
+    cleanup_publications,
+    gc_orphaned_corpus_rows,
+)
 from market_documents.publishing.retrieval_benchmark import (
     run_company_filtered_benchmark,
     run_unfiltered_benchmark,
@@ -397,3 +402,23 @@ def cleanup(
     typer.echo(f"[OK]   {verb} {len(removed)} publication(s)")
     for p in removed:
         typer.echo(f"  {p.publication_version}\t{p.id}\t{p.status}")
+
+
+@app.command("gc-corpus")
+def gc_corpus(
+    target_database_url: str = typer.Option(None, "--target-database-url", envvar="APP_DATABASE_URL"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Track 7E.1: remove shared `app_corpus.*` rows no longer referenced by
+    any existing publication. Run after `cleanup` in a publish runbook, once
+    superseded publications' own rows are gone and any corpus rows they
+    alone used become genuinely unreferenced -- never deletes a row another
+    publication still uses."""
+    url = _target_url(target_database_url)
+    with app_session_scope(url) as session:
+        removed = gc_orphaned_corpus_rows(session, dry_run=dry_run)
+    verb = "would remove" if dry_run else "removed"
+    typer.echo(
+        f"[OK]   {verb} {removed['passages']} corpus passage(s), "
+        f"{removed['passage_embeddings']} corpus embedding(s)"
+    )

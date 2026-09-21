@@ -29,6 +29,13 @@ CREATE_SCHEMAS_SQL = (
     "CREATE SCHEMA IF NOT EXISTS app_internal;",
 )
 
+# Track 7E.1: created by its own migration (app_0010), not app_0001 --
+# `app_corpus` did not exist at bootstrap time and this constant is only
+# ever referenced by app_0010 onward. Kept here (not inlined in the
+# migration) for the same single-source-of-truth reason as `CREATE_SCHEMAS_
+# SQL` above.
+CREATE_CORPUS_SCHEMA_SQL = "CREATE SCHEMA IF NOT EXISTS app_corpus;"
+
 _ACTIVE_PUBLICATION_JOIN = """
     JOIN app_internal.application_state s
         ON s.singleton_key = 'active'
@@ -184,4 +191,80 @@ CUTOVER_COMPARISON_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
 
 DROP_CUTOVER_COMPARISON_CURRENT_VIEWS_SQL = tuple(
     f"DROP VIEW IF EXISTS app.{name};" for name, _ in reversed(CUTOVER_COMPARISON_CURRENT_VIEWS)
+)
+
+# ---------------------------------------------------------------------------
+# Track 7E.1: shared-corpus-aware `current_passages`/`current_passage_
+# embeddings` view redefinitions
+# ---------------------------------------------------------------------------
+#
+# These `CREATE OR REPLACE VIEW` statements REDEFINE (never re-create from
+# scratch) the two views `app_0005`/`app_0007` already created -- deliberately
+# a separate tuple, executed only by app_0010, for the exact replay-safety
+# reason documented on `RETRIEVAL_CURRENT_VIEWS` above: `app_0005`'s own
+# replay must keep creating the pre-7E.1 `SELECT t.* ...` form (it runs
+# before `app_corpus.passages` exists), and only app_0010 -- which runs after
+# `app_corpus` is created -- upgrades them to the corpus-aware form. Column
+# names, order, and types exactly match what the original `SELECT t.*` form
+# produced (verified against the live view's `\d` output), which is required
+# for `CREATE OR REPLACE VIEW` to be legal (it may add trailing columns, but
+# may never reorder, rename, retype, or remove an existing one).
+#
+# `current_passages.text`/`.search_vector` now come from `app_corpus.
+# passages` via `COALESCE` against the per-publication column: a
+# publication built before app_0010 still has its own populated `text`
+# (COALESCE prefers it, so old publications need no backfill to keep
+# working); a publication built from app_0010 onward always has `text IS
+# NULL` on its own row and falls through to the corpus join. Benchmarked
+# locally against the semantic-search hot path (see docs/7e1-publication-
+# storage-lifecycle-hardening.md section 9): this LEFT JOIN sits after the
+# view is inlined into the caller's query, on a small already-`LIMIT`-ed
+# candidate set exactly like the existing `current_passages` join in
+# `postgres-semantic-retrieval-repository.ts` -- not the kind of
+# aggregate/correlated-subquery join that file's own comments warn defeats
+# the planner.
+#
+# `current_passage_embeddings` is redefined even more fundamentally: from
+# app_0010 onward the publisher never writes to `app.passage_embeddings` at
+# all (see `PassageEmbedding`'s docstring in `models.py`), so this view now
+# reads directly from the shared `app_corpus.passage_embeddings` table,
+# joined to `app.current_passages` (already publication-filtered) on
+# `source_passage_id`. The `id`/`created_at` columns are the retrieval-
+# context-facing embedding row's own id/timestamp (from `app_corpus`, not a
+# per-publication row) -- `RetrievalContext.passage_embedding_id` for any
+# publication built from app_0010 onward is exactly this id (see that
+# column's docstring in `models.py`). A publication built before app_0010
+# still resolves correctly here too: its own `app.passage_embeddings` rows
+# were backfilled into `app_corpus.passage_embeddings` by app_0010's
+# migration with the SAME deterministic id `labels.derive_corpus_id` would
+# produce, so the join finds them under the corpus id, not the legacy
+# per-publication id -- `RetrievalContext.passage_embedding_id` on those
+# older rows still points at the legacy id, which is why validation checks
+# both id spaces (see `publishing/validation.py`).
+CORPUS_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
+    (
+        "current_passages",
+        "CREATE OR REPLACE VIEW app.current_passages AS "
+        "SELECT t.publication_id, t.source_passage_id, t.company_id, t.report_id, "
+        "t.report_period_end, t.passage_index, t.first_page_number, t.last_page_number, "
+        "t.heading, t.passage_type, "
+        "COALESCE(t.text, cp.text) AS text, "
+        "t.word_count, t.structured_content_category, t.primary_narrative_eligible, "
+        "t.feature_eligible, "
+        "COALESCE(t.search_vector, cp.search_vector) AS search_vector, "
+        "t.id, t.created_at "
+        "FROM app.passages t "
+        "LEFT JOIN app_corpus.passages cp ON cp.source_passage_id = t.source_passage_id "
+        f"{_ACTIVE_PUBLICATION_JOIN};",
+    ),
+    (
+        "current_passage_embeddings",
+        "CREATE OR REPLACE VIEW app.current_passage_embeddings AS "
+        "SELECT p.publication_id, p.id AS passage_id, "
+        "ce.source_embedding_id, ce.source_embedding_run_id, ce.embedding_model, "
+        "ce.embedding_model_revision, ce.dimensions, ce.embedding_text_hash, "
+        "ce.embedding, ce.vector_norm, ce.id, ce.created_at "
+        "FROM app_corpus.passage_embeddings ce "
+        "JOIN app.current_passages p ON p.source_passage_id = ce.source_passage_id;",
+    ),
 )

@@ -392,7 +392,17 @@ class Passage(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     last_page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     heading: Mapped[str | None] = mapped_column(Text, nullable=True)
     passage_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Track 7E.1: nullable as of migration app_0010. A passage's `text` is a
+    # byte-for-byte copy of stable research content (verified: 100% identical
+    # across publications of unchanged source data -- see docs/7e1-
+    # publication-storage-lifecycle-hardening.md) and is now stored ONCE per
+    # `source_passage_id` in `app_corpus.passages`, never duplicated per
+    # publication. The publisher leaves this column NULL for every publish
+    # from app_0010 onward; `app.current_passages` resolves the real text via
+    # a join to `app_corpus.passages` on `source_passage_id`. Rows written by
+    # publications built before app_0010 keep their historical populated
+    # value (non-destructive migration -- never backfilled to NULL).
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
     word_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Recomputed fresh at publish time from `structured_content_audit.
@@ -791,9 +801,22 @@ class RetrievalContext(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     passage_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=False
     )
-    passage_embedding_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("app.passage_embeddings.id", ondelete="CASCADE"), nullable=False
-    )
+    # Track 7E.1: DB-level FK dropped by migration app_0010 -- not a foreign
+    # key any more. A publication built before app_0010 still holds a value
+    # pointing at a per-publication `app.passage_embeddings.id` row; a
+    # publication built from app_0010 onward holds a value pointing at the
+    # shared `app_corpus.passage_embeddings.id` row instead (never
+    # duplicated per publication -- see that table's docstring). A single FK
+    # constraint cannot target two different tables, so cross-referential
+    # integrity here is checked by `publishing.validation`, not the schema --
+    # the same pattern already used for `Company.latest_comparison_id`
+    # above. Critically, this also means deleting a superseded publication
+    # (which cascades away that publication's OWN `retrieval_contexts` rows
+    # via `publication_id`, unaffected by this change) can never cascade
+    # into deleting a shared `app_corpus.passage_embeddings` row that
+    # another, still-live publication references -- see section 7 of
+    # docs/7e1-publication-storage-lifecycle-hardening.md.
+    passage_embedding_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     passage_comparison_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.passage_comparisons.id", ondelete="CASCADE"), nullable=True
     )
@@ -984,3 +1007,113 @@ class QaChunkPassage(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
         UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=False
     )
     member_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Track 7E.1: shared, publication-independent corpus (app_corpus schema)
+# ---------------------------------------------------------------------------
+#
+# Everything above this line is scoped by `publication_id` and physically
+# duplicated per publication by design (see each table's docstring). The two
+# tables below are deliberately NOT publication-scoped: they hold the two
+# heaviest artifacts the publisher writes (passage text, passage embedding
+# vectors), both of which are pure, byte-for-byte-verified copies of stable
+# research-side content (docs/7e1-publication-storage-lifecycle-hardening.md
+# section 2) -- never a function of `publication_version`. One row exists per
+# distinct `source_passage_id` (and, for embeddings, per distinct embedding
+# model/revision too), no matter how many publications reference it.
+#
+# Rows here are immutable once written (never UPDATEd by the publisher) and
+# are never CASCADE-deleted by a publication going away -- deleting a
+# `Publication` only ever cascades its own `app.*` rows (see each table's own
+# note). A row becomes eligible for removal only once no `app.passages`/
+# `app.retrieval_contexts` row anywhere still references it; see
+# `publisher.gc_orphaned_corpus_rows`.
+#
+# IDs are derived via `labels.derive_corpus_id`, which fixes `publication_
+# version` to the reserved `labels.CORPUS_SCOPE` sentinel instead of a real
+# publication's version string -- this is what makes the id (and therefore
+# whether a publish INSERTs a new row or reuses an existing one) a pure
+# function of source identity, deliberately never of which publication is
+# being built.
+
+
+class CorpusPassage(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """The narrative text of one research passage, stored exactly once
+    regardless of how many publications include that passage. `app.passages`
+    (per-publication) keeps its own `heading`/`word_count`/page numbers/
+    `passage_type` -- small, and legitimately re-derived per publish -- but
+    leaves `text` NULL from migration app_0010 onward and resolves it here
+    via `app.current_passages` (a join on `source_passage_id`, benchmarked
+    locally at ~1ms warm-cache overhead against the semantic-search hot path
+    -- see docs/7e1-publication-storage-lifecycle-hardening.md section 9)."""
+
+    __tablename__ = "passages"
+    __table_args__ = (
+        UniqueConstraint("source_passage_id", name="uq_app_corpus_passages_source"),
+        Index("ix_app_corpus_passages_search_vector", "search_vector", postgresql_using="gin"),
+        {"schema": "app_corpus"},
+    )
+
+    source_passage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # Carried alongside `text` purely so the generated `search_vector` below
+    # reproduces the exact same weighted formula `app.passages.search_vector`
+    # used before app_0010 -- not the authoritative heading (that stays on
+    # `app.passages`, which may legitimately differ in future if a
+    # publication ever re-derives heading text independent of the corpus).
+    heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('pg_catalog.english', coalesce(heading, '')), 'A') || "
+            "setweight(to_tsvector('pg_catalog.english', text), 'B')",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
+
+class CorpusPassageEmbedding(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One embedding vector per `(source_passage_id, embedding_model,
+    embedding_model_revision)`, stored exactly once regardless of how many
+    publications reference it. Replaces per-publication `app.
+    passage_embeddings` rows for every publish from migration app_0010
+    onward -- the publisher no longer writes to `app.passage_embeddings` at
+    all; `RetrievalContext.passage_embedding_id` points directly at a row
+    here instead (see that column's docstring). The single HNSW index below
+    covers every distinct vector ever computed, never duplicated per
+    publication -- smaller and faster to build than N per-publication
+    copies of the same index."""
+
+    __tablename__ = "passage_embeddings"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_passage_id", "embedding_model", "embedding_model_revision",
+            name="uq_app_corpus_passage_embeddings_scope",
+        ),
+        Index(
+            "ix_app_corpus_passage_embeddings_hnsw_cosine",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        {"schema": "app_corpus"},
+    )
+
+    source_passage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    # Research-side lineage -- same meaning as the legacy per-publication
+    # column of the same name (never queried live from here; the research
+    # database is never reachable from the application layer).
+    source_embedding_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_embedding_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    embedding_model_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    embedding: Mapped[list[float]] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=False)
+    vector_norm: Mapped[float] = mapped_column(Float, nullable=False)

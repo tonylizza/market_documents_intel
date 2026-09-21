@@ -14,7 +14,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _feature_fixtures import build_manual_alignment_pair, build_ready_pair  # noqa: E402
@@ -34,6 +34,7 @@ from market_documents.models.enums import (
 from market_documents.models.extraction import ExtractionRun, NarrativeDocument
 from market_documents.models.passage import Passage, PassageSegmentationRun
 from market_documents.models.report import Report
+from market_documents.publishing.models import CorpusPassageEmbedding
 from market_documents.publishing.models import Passage as AppPassage
 from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
 from market_documents.publishing.models import PublicationStatus, RetrievalContext
@@ -178,8 +179,15 @@ def test_matched_comparison_produces_two_contexts(db_session, app_db_session):
     )
     assert len(app_passages) == 2  # one matched passage per side
 
+    # Track 7E.1: embeddings for a publication built by the current
+    # publisher live in the shared `app_corpus.passage_embeddings`, resolved
+    # by `source_passage_id` -- never in `app.passage_embeddings` (see
+    # `PassageEmbedding`'s docstring in models.py).
+    source_passage_ids = {p.source_passage_id for p in app_passages}
     embeddings = list(
-        app_db_session.scalars(select(AppPassageEmbedding).where(AppPassageEmbedding.publication_id == publication.id))
+        app_db_session.scalars(
+            select(CorpusPassageEmbedding).where(CorpusPassageEmbedding.source_passage_id.in_(source_passage_ids))
+        )
     )
     assert len(embeddings) == 2  # deduplicated: one vector per passage
 
@@ -259,12 +267,17 @@ def test_rebuild_same_version_embeddings_and_contexts_idempotent(db_session, app
     builder = PublicationBuilder(publication_version="ret-test-v4-idempotent")
 
     first = builder.build(db_session, app_db_session)
-    first_embedding_ids = {
-        e.id for e in app_db_session.scalars(select(AppPassageEmbedding).where(AppPassageEmbedding.publication_id == first.id))
-    }
     first_context_ids = {
         c.id for c in app_db_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == first.id))
     }
+    # Track 7E.1: the shared corpus row count is the real idempotency
+    # signal for embeddings now (there's no more per-publication `app.
+    # passage_embeddings` row to compare id-for-id) -- rebuilding the same
+    # `publication_version` must resolve to the SAME corpus rows, never
+    # create a second physical copy.
+    total_corpus_embeddings_after_first = app_db_session.scalar(
+        select(func.count()).select_from(CorpusPassageEmbedding)
+    )
 
     from market_documents.publishing.models import Publication
 
@@ -272,14 +285,15 @@ def test_rebuild_same_version_embeddings_and_contexts_idempotent(db_session, app
     app_db_session.flush()
 
     second = builder.build(db_session, app_db_session)
-    second_embedding_ids = {
-        e.id for e in app_db_session.scalars(select(AppPassageEmbedding).where(AppPassageEmbedding.publication_id == second.id))
-    }
     second_context_ids = {
         c.id for c in app_db_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == second.id))
     }
-    assert first_embedding_ids == second_embedding_ids
+    total_corpus_embeddings_after_second = app_db_session.scalar(
+        select(func.count()).select_from(CorpusPassageEmbedding)
+    )
+
     assert first_context_ids == second_context_ids
+    assert total_corpus_embeddings_after_second == total_corpus_embeddings_after_first
 
 
 def test_report_only_context_for_passage_with_no_comparison(db_session, app_db_session):
@@ -314,6 +328,18 @@ def test_cleanup_removes_embeddings_and_contexts(db_session, app_db_session):
     publication = builder.build(db_session, app_db_session)
     publication_id = publication.id
 
+    app_passages = list(
+        app_db_session.scalars(select(AppPassage).where(AppPassage.publication_id == publication_id))
+    )
+    source_passage_ids = {p.source_passage_id for p in app_passages}
+    corpus_embedding_ids_before = {
+        e.id
+        for e in app_db_session.scalars(
+            select(CorpusPassageEmbedding).where(CorpusPassageEmbedding.source_passage_id.in_(source_passage_ids))
+        )
+    }
+    assert corpus_embedding_ids_before  # sanity: fixture actually produced embeddings
+
     from market_documents.publishing.publisher import cleanup_publications
 
     removed = cleanup_publications(app_db_session, keep=0, dry_run=False)
@@ -327,6 +353,16 @@ def test_cleanup_removes_embeddings_and_contexts(db_session, app_db_session):
     )
     assert remaining_embeddings == []
     assert remaining_contexts == []
+
+    # Track 7E.1: deleting the only publication that ever referenced these
+    # shared corpus rows must NOT cascade-delete them -- they only become
+    # eligible for removal via the explicit, reference-counted `gc_
+    # orphaned_corpus_rows`, never via `cleanup_publications`'s CASCADE
+    # delete of publication-scoped rows.
+    corpus_embedding_ids_after = {
+        e.id for e in app_db_session.scalars(select(CorpusPassageEmbedding).where(CorpusPassageEmbedding.id.in_(corpus_embedding_ids_before)))
+    }
+    assert corpus_embedding_ids_after == corpus_embedding_ids_before
 
 
 def test_audit_rows_for_embeddings_and_contexts(db_session, app_db_session):
