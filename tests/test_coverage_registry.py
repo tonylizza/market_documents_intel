@@ -48,48 +48,63 @@ def test_configuration_hash_is_deterministic():
 
 
 # --------------------------------------------------------------------------
-# Track 7D.3: CORPORATE_GOVERNANCE units are candidates, not enabled
+# Track 7D.3 / 7E.2a: CORPORATE_GOVERNANCE units
 # --------------------------------------------------------------------------
 
 
-def test_new_governance_units_are_candidates_not_enabled_in_production():
-    """7D.3 explicitly forbids changing live production scope -- every new
-    CORPORATE_GOVERNANCE unit must show up as a candidate, never enabled,
-    without touching `cutover_config.py`."""
+def test_promoted_governance_units_are_enabled_in_production():
+    """7E.2a promoted these CORPORATE_GOVERNANCE units to production scope
+    (docs/7e2a-production-scope-finalization.md Section 6/13) --
+    `information_security_governance` as ENABLE_NOW; `governance_policies_
+    processes` and `combined_assurance` as ENABLE_WITH_KNOWN_CAVEAT
+    (`combined_assurance` after its 7D.4a defect fix)."""
     for ticker, unit_key in (
         ("ACT", "information_security_governance"),
         ("ACT", "governance_policies_processes"),
         ("ACT", "combined_assurance"),
-        ("BEL", "board_composition_diversity"),
     ):
         entry = coverage_registry.coverage_for(ticker, NormalizedSchedule.CORPORATE_GOVERNANCE, unit_key)
         assert entry is not None
-        assert entry.production_status == "candidate"
+        assert entry.production_status == "enabled"
 
 
-def test_bel_governance_unit_is_structured_comparison_preferred_not_lexical():
+def test_bel_board_composition_diversity_remains_shadow_only():
+    """KEEP_SHADOW_ONLY (7E.2a): STRUCTURED_COMPARISON_PREFERRED with no
+    comparison engine implemented -- never enabled in production."""
     entry = coverage_registry.coverage_for("BEL", NormalizedSchedule.CORPORATE_GOVERNANCE, "board_composition_diversity")
 
     assert entry is not None
+    assert entry.production_status == "candidate"
     assert entry.analytical_mode == AnalyticalMode.STRUCTURED_COMPARISON_PREFERRED
 
 
 # --------------------------------------------------------------------------
-# Track 7D.4: REMUNERATION units are candidates, not enabled
+# Track 7D.4 / 7E.2a: REMUNERATION units
 # --------------------------------------------------------------------------
 
 
-def test_new_remuneration_units_are_candidates_not_enabled_in_production():
-    """7D.4 explicitly forbids changing live production scope -- every new
-    REMUNERATION unit must show up as a candidate, never enabled, without
-    touching `cutover_config.py`."""
+def test_promoted_remuneration_units_are_enabled_in_production():
+    """7E.2a promoted these REMUNERATION units to production scope
+    (docs/7e2a-production-scope-finalization.md Section 6/13)."""
     for ticker, unit_key in (
         ("ACT", "remco_chairperson_report"),
         ("ACT", "remuneration_policy_changes"),
         ("ACT", "remuneration_governance"),
-        ("BEL", "variable_remuneration"),
         ("SUR", "remuneration_policy_changes_and_focus"),
         ("SUR", "fair_responsible_remuneration"),
+    ):
+        entry = coverage_registry.coverage_for(ticker, NormalizedSchedule.REMUNERATION, unit_key)
+        assert entry is not None
+        assert entry.production_status == "enabled"
+        assert entry.analytical_mode == AnalyticalMode.LEXICAL_ONLY
+
+
+def test_shadow_only_remuneration_units_remain_candidates():
+    """KEEP_SHADOW_ONLY (7E.2a): BEL `variable_remuneration` (0/6 pairs
+    ever resolve) and SUR `remuneration_policy_shareholder_engagement`
+    (0/3 years ever resolve) -- neither is promoted."""
+    for ticker, unit_key in (
+        ("BEL", "variable_remuneration"),
         ("SUR", "remuneration_policy_shareholder_engagement"),
     ):
         entry = coverage_registry.coverage_for(ticker, NormalizedSchedule.REMUNERATION, unit_key)

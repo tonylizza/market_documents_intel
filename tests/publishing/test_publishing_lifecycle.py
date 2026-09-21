@@ -222,8 +222,12 @@ def test_build_populates_cutover_comparison_rows_for_in_scope_pair(db_session, a
 def test_build_populates_both_narrative_and_structured_rows_for_act(db_session, app_db_session):
     """ACT is in scope for narrative units AND two structured table
     families at once -- these are not mutually exclusive. Since Track
-    7D.2c, ACT has two in-scope FINANCIAL_PERFORMANCE narrative units
-    (cfo_conclusion, healthcare_services_review)."""
+    7E.2a (docs/7e2a-production-scope-finalization.md), ACT has eight
+    in-scope narrative units across FINANCIAL_PERFORMANCE
+    (cfo_conclusion, healthcare_services_review), CORPORATE_GOVERNANCE
+    (information_security_governance, governance_policies_processes,
+    combined_assurance), and REMUNERATION (remco_chairperson_report,
+    remuneration_policy_changes, remuneration_governance)."""
     _build_and_feature(db_session, ticker="ACT")
 
     builder = PublicationBuilder(publication_version="test-cutover-v2")
@@ -232,7 +236,7 @@ def test_build_populates_both_narrative_and_structured_rows_for_act(db_session, 
     assert publication.status == PublicationStatus.READY.value, publication.failure_reason
     # No upstream Track 7C.1-7C.5 data was built for this pair, so every
     # in-scope row is published unresolved -- never silently omitted.
-    assert publication.narrative_comparison_count == 2
+    assert publication.narrative_comparison_count == 8
     assert publication.structured_comparison_count == 2
 
     narrative_rows = app_db_session.scalars(select(NarrativeUnitComparison)).all()
