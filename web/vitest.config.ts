@@ -19,6 +19,10 @@ export default defineConfig({
     // connection); component test files opt into jsdom individually via a
     // `// @vitest-environment jsdom` docblock at the top of the file.
     environment: "node",
+    // Runs once before the whole suite (not per file) to keep
+    // `app_readonly`'s grants on `market_documents_app_test` in sync with
+    // the schema -- see tests/fixtures/global-setup.ts.
+    globalSetup: ["./tests/fixtures/global-setup.ts"],
     setupFiles: ["./tests/setup.ts"],
     globals: true,
     include: ["tests/**/*.test.{ts,tsx}"],

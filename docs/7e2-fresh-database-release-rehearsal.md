@@ -556,48 +556,64 @@ milestone's explicit instruction.
 ## 35. Fresh-production-DB runbook draft (for 7E.3)
 
 Based on this rehearsal, the exact ordered runbook for a genuinely fresh
-Neon database, correcting the two gaps this rehearsal found:
+Neon database, correcting the two gaps this rehearsal found, plus one more
+gap Track 7E.2b found (`docs/7e2b-frontend-release-gate-hardening.md`) in
+this runbook itself:
 
 1. Create fresh Neon free-tier database (research DB equivalent is local
    only; only the **app** database needs a Neon target).
 2. Configure `APP_DATABASE_URL` securely (never commit credentials).
 3. `alembic -c alembic_app.ini upgrade head`.
-4. Load full source corpus: `reports import <manifest>`.
-5. `reports inspect-metadata`.
-6. **Regenerate the metadata-review CSV against the fresh DB**
+4. **`market-documents publish app-init-roles --target-database-url
+   $APP_DATABASE_URL --publisher-password-env ... --readonly-password-env
+   ...`** -- provisions `app_publisher`/`app_readonly` and applies every
+   grant in `scripts/sql/app_grants.sql` (included by `app_roles.sql`).
+   This step was previously missing from this runbook entirely; nothing
+   else in this list provisions `app_readonly`, and Vercel (step 24) reads
+   through it exclusively.
+5. Load full source corpus: `reports import <manifest>`.
+6. `reports inspect-metadata`.
+7. **Regenerate the metadata-review CSV against the fresh DB**
    (`reports metadata-review-export`) rather than reusing an old
    database's CSV verbatim; re-apply the same reviewer decisions by
    natural key (ticker + directory_year), then `reports
    metadata-review-import` + `reports validate`.
-7. `reports extract-all`, `reports segment-all`, `reports embed-all`.
-8. `canonical extract <TICKER>` for all 6 companies.
-9. `pairs build`, `pairs score-all`, `pairs align-all`.
-10. `units localize` for all 6 implemented schedules x 6 companies.
-11. `units extract`, `units align`, `units classify` for all 6 schedules x
+8. `reports extract-all`, `reports segment-all`, `reports embed-all`.
+9. `canonical extract <TICKER>` for all 6 companies.
+10. `pairs build`, `pairs score-all`, `pairs align-all`.
+11. `units localize` for all 6 implemented schedules x 6 companies.
+12. `units extract`, `units align`, `units classify` for all 6 schedules x
     6 companies (units only exist for 3 of the 6 schedules; the other 3
     complete as no-ops).
-12. `units structure` + `units compare-structured` for ACT's two
+13. `units structure` + `units compare-structured` for ACT's two
     remuneration table families.
-13. **`language dictionary-import`** for `loughran_mcdonald` (local CSV,
+14. **`language dictionary-import`** for `loughran_mcdonald` (local CSV,
     obtained per its license -- never committed to the repo) and
     `custom_domain_taxonomy` (`config/financial_language_custom_taxonomy.yaml`).
-14. **`pairs features-build-all`** (Milestone 5 disclosure-change
+15. **`pairs features-build-all`** (Milestone 5 disclosure-change
     features) and **`pairs language-build-all`** (Milestone 6
     financial-language signals) -- both required before `publish build`
     will produce any comparison rows; neither errors loudly if skipped.
-15. `publish build --publication-version <version>`.
-16. `publish validate --publication-id <id>`.
-17. `publish promote --publication-id <id>`.
-18. Smoke-query `app.current_*` views.
-19. Measure DB size against the 512 MB Neon free-tier limit; consider
+16. `publish build --publication-version <version>`.
+17. `publish validate --publication-id <id>`.
+18. `publish promote --publication-id <id>`.
+19. **Re-run `app-init-roles` (or just `psql $APP_DATABASE_URL -f
+    scripts/sql/app_grants.sql`) if any migration since step 4 added a new
+    `app.current_*` view or another `app_readonly`-granted table** --
+    grants do not follow schema changes automatically
+    (`docs/7e2b-frontend-release-gate-hardening.md`); the
+    grants-only form touches no password and is always safe to re-run.
+20. Smoke-query `app.current_*` views (through `app_readonly`, matching
+    what Vercel will use).
+21. Measure DB size against the 512 MB Neon free-tier limit; consider
     `--skip-qa-chunks` on the build if headroom is tight (Section 22).
-20. Switch Vercel `DATABASE_URL` (production step -- not exercised in
+22. Switch Vercel `DATABASE_URL` (production step -- not exercised in
     7E.2).
-21. Deploy.
-22. Smoke test production.
-23. Retain the old database temporarily for rollback.
+23. Deploy.
+24. Smoke test production.
+25. Retain the old database temporarily for rollback.
 
-Steps 20-23 are explicitly **not** executed in 7E.2, per the milestone's
+Steps 22-25 are explicitly **not** executed in 7E.2, per the milestone's
 hard stop.
 
 ## 36-37. Test execution
