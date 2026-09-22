@@ -42,6 +42,9 @@ export const comparisonRowSchema = z.object({
   governance_change_label: z.string().nullable(),
   financial_condition_change: z.number().nullable(),
   financial_condition_change_label: z.string().nullable(),
+  financial_condition_share_change: z.number().nullable(),
+  financial_condition_share_change_label: z.string().nullable(),
+  financial_condition_topic_mix_change: z.number().nullable(),
 
   report_side_quality: rawQuality,
   report_side_quality_label: z.string().nullable(),
@@ -129,6 +132,8 @@ export const languageMetricRowSchema = z.object({
   introduced_rate_per_1000: z.number().nullable(),
   removed_rate_per_1000: z.number().nullable(),
   retained_count: z.number().int().nullable(),
+  earlier_count: z.number().int().nullable(),
+  later_count: z.number().int().nullable(),
   quality: rawQuality,
   primary_eligible: z.boolean().nullable(),
 });

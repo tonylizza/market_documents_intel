@@ -11,7 +11,7 @@ import type { DiscoveryRepository } from "@/lib/repositories/discovery-repositor
 import type { Company, CompanyDetail, CompanyHistory } from "@/lib/domain/company";
 import type { CompanyCardSummary, DiscoveryItemSummary } from "@/lib/domain/comparison";
 import type { ApplicationDataSummary } from "@/lib/domain/metric";
-import type { DiscoveryItem } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
 import type { DiscoveryType } from "@/lib/config/discovery";
 
 function makeItem(overrides: Partial<DiscoveryItem> = {}): DiscoveryItem {
@@ -53,6 +53,7 @@ function makeDiscoveryRepository(overrides: Partial<DiscoveryRepository> = {}): 
   return {
     listAvailableDiscoveryTypes: async () => ["largest_risk_introduction", "largest_risk_removal"] as DiscoveryType[],
     getDiscoveryItems: async () => [makeItem()],
+    getFinancialConditionCompanyStatus: async () => ({ status: "no_comparisons" }) satisfies FinancialConditionCompanyStatus,
     ...overrides,
   };
 }
@@ -168,5 +169,65 @@ describe("getDiscoveryPageViewModel", () => {
       minQuality: "GOOD",
     });
     expect(viewModel.items).toEqual([]);
+  });
+
+  it("Track 7F.4 item 8: fetches financial-condition company status only for that type + a company filter + zero items", async () => {
+    let called = false;
+    const discoveryRepository = makeDiscoveryRepository({
+      listAvailableDiscoveryTypes: async () => ["largest_financial_condition_shift"],
+      getDiscoveryItems: async () => [],
+      getFinancialConditionCompanyStatus: async (ticker) => {
+        called = true;
+        expect(ticker).toBe("KP2");
+        return { status: "below_materiality", observedValue: 0.02, threshold: 0.04, reportComparisonId: "cmp-9", earlierPeriodEnd: null, laterPeriodEnd: null };
+      },
+    });
+    const viewModel = await getDiscoveryPageViewModel(discoveryRepository, makeCompanyRepository(), {
+      type: "largest_financial_condition_shift",
+      company: "KP2",
+    });
+    expect(called).toBe(true);
+    expect(viewModel.financialConditionCompanyStatus).toEqual({
+      status: "below_materiality",
+      observedValue: 0.02,
+      threshold: 0.04,
+      reportComparisonId: "cmp-9",
+      earlierPeriodEnd: null,
+      laterPeriodEnd: null,
+    });
+  });
+
+  it("never fetches financial-condition company status without a company filter", async () => {
+    let called = false;
+    const discoveryRepository = makeDiscoveryRepository({
+      listAvailableDiscoveryTypes: async () => ["largest_financial_condition_shift"],
+      getDiscoveryItems: async () => [],
+      getFinancialConditionCompanyStatus: async () => {
+        called = true;
+        return { status: "no_comparisons" };
+      },
+    });
+    const viewModel = await getDiscoveryPageViewModel(discoveryRepository, makeCompanyRepository(), {
+      type: "largest_financial_condition_shift",
+    });
+    expect(called).toBe(false);
+    expect(viewModel.financialConditionCompanyStatus).toBeNull();
+  });
+
+  it("never fetches financial-condition company status for other discovery types", async () => {
+    let called = false;
+    const discoveryRepository = makeDiscoveryRepository({
+      getDiscoveryItems: async () => [],
+      getFinancialConditionCompanyStatus: async () => {
+        called = true;
+        return { status: "no_comparisons" };
+      },
+    });
+    const viewModel = await getDiscoveryPageViewModel(discoveryRepository, makeCompanyRepository(), {
+      type: "largest_risk_introduction",
+      company: "ACT",
+    });
+    expect(called).toBe(false);
+    expect(viewModel.financialConditionCompanyStatus).toBeNull();
   });
 });

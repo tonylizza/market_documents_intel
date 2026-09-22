@@ -44,6 +44,12 @@ class ComparisonMetrics:
     risk_language_removal: float | None
     governance_language_change: float | None
     financial_condition_language_change: float | None
+    # Track 7F.4: M3 (primary Discover ranking/materiality metric for
+    # financial-condition shifts) and M6b (supporting detail only, never a
+    # ranking candidate). `financial_condition_language_change` above (M1)
+    # stays populated but is no longer used by any CandidateSpec.
+    financial_condition_share_change: float | None
+    financial_condition_topic_mix_change: float | None
     report_side_quality_ok: bool
     report_side_primary_eligible: bool
     alignment_change_quality_ok: bool
@@ -106,8 +112,13 @@ CANDIDATES: tuple[CandidateSpec, ...] = (
         lambda m: m.governance_language_change, _gate_report_side,
     ),
     CandidateSpec(
-        "largest_financial_condition_shift", "financial_condition_language_change", "rate_per_1000_words", 1.0,
-        lambda m: m.financial_condition_language_change, _gate_report_side,
+        # Track 7F.4: switched from M1 (rate difference, epsilon=1.0
+        # heuristic) to M3 (financial_condition_share_change, epsilon=0.04
+        # per docs/financial-condition-ranking-calibration-7f3.md's
+        # ADOPT_M3_WITH_THRESHOLD decision) -- M1 is structurally denominator-
+        # sensitive and produced almost no eligible findings.
+        "largest_financial_condition_shift", "financial_condition_share_change", "share", 0.04,
+        lambda m: m.financial_condition_share_change, _gate_report_side,
     ),
     CandidateSpec(
         "largest_new_disclosure_share", "new_rate_words", "share", 0.02,

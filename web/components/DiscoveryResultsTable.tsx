@@ -1,11 +1,17 @@
 import Link from "next/link";
-import type { DiscoveryItem } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
 import { formatComparisonPeriod } from "@/lib/formatting/dates";
+import { formatMetricValue } from "@/lib/formatting/numbers";
 import { EmptyState } from "./EmptyState";
 import styles from "./DiscoveryResultsTable.module.css";
 
 export interface DiscoveryResultsTableProps {
   items: readonly DiscoveryItem[];
+  /** Track 7F.4 item 8 -- when set (financial-condition shift, company
+   * filter active, zero eligible items), replaces the generic empty state
+   * with one of three distinct, explicit states instead of collapsing them
+   * all into "No results for these filters." */
+  financialConditionCompanyStatus?: FinancialConditionCompanyStatus | null;
 }
 
 /**
@@ -14,8 +20,35 @@ export interface DiscoveryResultsTableProps {
  * tie-break order). Never re-sorted client-side from rounded display
  * values.
  */
-export function DiscoveryResultsTable({ items }: DiscoveryResultsTableProps) {
+export function DiscoveryResultsTable({ items, financialConditionCompanyStatus }: DiscoveryResultsTableProps) {
   if (items.length === 0) {
+    if (financialConditionCompanyStatus?.status === "no_comparisons") {
+      return (
+        <EmptyState
+          title="No comparisons available for this company"
+          description="This company has no published report comparisons yet."
+        />
+      );
+    }
+    if (financialConditionCompanyStatus?.status === "failed_quality") {
+      return (
+        <EmptyState
+          title="This company's financial-condition results didn't clear the quality gate"
+          description="Report-side signal quality wasn't GOOD or USABLE (or wasn't primary-eligible) for any comparison, so no financial-condition value can be shown."
+        />
+      );
+    }
+    if (financialConditionCompanyStatus?.status === "below_materiality") {
+      const { observedValue, threshold, reportComparisonId, earlierPeriodEnd, laterPeriodEnd } = financialConditionCompanyStatus;
+      return (
+        <EmptyState
+          title="Below materiality threshold"
+          description={`This company's largest quality-eligible financial-condition language share change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "share")}, which does not clear the ${formatMetricValue(threshold, "share")} materiality threshold. Not ranked as an eligible Discover finding.`}
+        >
+          <Link href={`/comparisons/${reportComparisonId}`}>View this comparison →</Link>
+        </EmptyState>
+      );
+    }
     return (
       <EmptyState
         title="No results for these filters"

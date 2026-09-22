@@ -9,6 +9,7 @@ formulas can be unit tested without PostgreSQL. Database wiring (pulling
 `SignalRowInput`) lives in `financial_language_signals.py`.
 """
 
+import math
 from dataclasses import dataclass, field
 
 from market_documents.models.enums import AlignmentConfidence, AlignmentStatus, ReportSide
@@ -60,6 +61,13 @@ class SignalRowInput:
     weak_modal_count: int
     total_dictionary_hits: int
     custom_category_hits: dict[str, int] = field(default_factory=dict)
+    # Track 7F.4: subcategory-level custom-taxonomy hits, keyed
+    # (category, subcategory) -- populated from the exact same
+    # `match_passage` result as `custom_category_hits` above (no second
+    # hit-counting path), retained here only because the M6b topic-mix
+    # formula needs subcategory granularity that `custom_category_hits`
+    # collapses away.
+    custom_subcategory_hits: dict[tuple[str, str], int] = field(default_factory=dict)
     collision_flag: bool = False
     split_merge_flag: bool = False
 
@@ -225,3 +233,65 @@ def dictionary_hits_by_confidence(rows: list[SignalRowInput], confidences: tuple
     confidence is in `confidences` -- used for the high-confidence and
     high-and-medium-confidence populations."""
     return sum(r.total_dictionary_hits for r in rows if r.confidence in confidences)
+
+
+# --------------------------------------------------------------------------
+# Track 7F.4 -- M3 (financial-condition hit-share change) and M6b
+# (financial-condition topic-mix change). See docs/financial-condition-
+# ranking-calibration-7f3.md for the methodology decision
+# (ADOPT_M3_WITH_THRESHOLD, |M3| >= 0.04; M6b is supporting detail only).
+# --------------------------------------------------------------------------
+
+
+def custom_taxonomy_hit_share(side: SidePopulation, category: str) -> float | None:
+    """M3's per-side input: `category`'s share of this side's total
+    custom-taxonomy hits (risk + financial_condition + governance +
+    strategy combined). Reuses `SidePopulation.custom_category_totals` --
+    already computed by `aggregate_side` -- so this is not a second hit-
+    counting path. `None` (never a fabricated 0.0) when the side has zero
+    custom-taxonomy hits at all."""
+    total = sum(side.custom_category_totals.values())
+    return safe_ratio(side.custom_category_totals.get(category, 0), total)
+
+
+def custom_subcategory_totals(rows: list[SignalRowInput], side: ReportSide, category: str) -> dict[str, int]:
+    """Subcategory hit totals for one custom-taxonomy `category`, restricted
+    to `side`, summed from `SignalRowInput.custom_subcategory_hits` -- the
+    same matched data `custom_category_hits` is built from, just not
+    collapsed to category level. Scoped to a single category (not a generic
+    all-category breakdown) since only `financial_condition`'s M6b needs
+    subcategory granularity."""
+    totals: dict[str, int] = {}
+    for row in rows:
+        if row.report_side != side:
+            continue
+        for (hit_category, subcategory), hits in row.custom_subcategory_hits.items():
+            if hit_category != category:
+                continue
+            totals[subcategory] = totals.get(subcategory, 0) + hits
+    return totals
+
+
+def subcategory_share_vector(totals: dict[str, int], subcategories: tuple[str, ...]) -> tuple[float, ...]:
+    """Ordered share vector over `subcategories`: each entry is that
+    subcategory's share of `totals`'s combined hit count. All-zero (not
+    `None`) when the category has zero hits -- `cosine_distance` is what
+    turns an all-zero vector into `None`, not this helper."""
+    category_total = sum(totals.values())
+    if category_total <= 0:
+        return tuple(0.0 for _ in subcategories)
+    return tuple(totals.get(sub, 0) / category_total for sub in subcategories)
+
+
+def cosine_distance(a: tuple[float, ...], b: tuple[float, ...]) -> float | None:
+    """`1 - cosine_similarity(a, b)`. Explicit zero-vector rule: if either
+    vector's L2 norm is 0 (the category had zero hits on that side), cosine
+    similarity is undefined -- return `None`, never a fabricated 0.0 (no
+    change) or 1.0 (maximal distance)."""
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return None
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    similarity = dot / (norm_a * norm_b)
+    return 1.0 - similarity

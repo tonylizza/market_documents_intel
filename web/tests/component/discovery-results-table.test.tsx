@@ -43,4 +43,35 @@ describe("DiscoveryResultsTable", () => {
     render(<DiscoveryResultsTable items={[]} />);
     expect(screen.getByText(/No results for these filters/)).toBeInTheDocument();
   });
+
+  it("Track 7F.4 item 8: renders a distinct no-comparisons state, not the generic empty state", () => {
+    render(<DiscoveryResultsTable items={[]} financialConditionCompanyStatus={{ status: "no_comparisons" }} />);
+    expect(screen.getByText(/No comparisons available for this company/)).toBeInTheDocument();
+    expect(screen.queryByText(/No results for these filters/)).not.toBeInTheDocument();
+  });
+
+  it("Track 7F.4 item 8: renders a distinct failed-quality state", () => {
+    render(<DiscoveryResultsTable items={[]} financialConditionCompanyStatus={{ status: "failed_quality" }} />);
+    expect(screen.getByText(/didn't clear the quality gate/)).toBeInTheDocument();
+  });
+
+  it("Track 7F.4 item 8: renders a distinct below-materiality state with the observed value and threshold, never as an eligible finding", () => {
+    render(
+      <DiscoveryResultsTable
+        items={[]}
+        financialConditionCompanyStatus={{
+          status: "below_materiality",
+          observedValue: 0.021,
+          threshold: 0.04,
+          reportComparisonId: "cmp-below",
+          earlierPeriodEnd: "2023-06-30",
+          laterPeriodEnd: "2024-06-30",
+        }}
+      />,
+    );
+    expect(screen.getByText(/Below materiality threshold/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.1%/)).toBeInTheDocument();
+    expect(screen.getByText(/4\.0%/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View this comparison/ })).toHaveAttribute("href", "/comparisons/cmp-below");
+  });
 });

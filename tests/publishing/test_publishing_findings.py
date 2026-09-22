@@ -17,6 +17,8 @@ def _base_metrics(**overrides) -> ComparisonMetrics:
         risk_language_removal=None,
         governance_language_change=None,
         financial_condition_language_change=None,
+        financial_condition_share_change=None,
+        financial_condition_topic_mix_change=None,
         report_side_quality_ok=False,
         report_side_primary_eligible=False,
         alignment_change_quality_ok=False,
@@ -129,7 +131,7 @@ def test_top_three_selected_when_more_than_three_eligible():
         net_tone_change=-9.0,
         uncertainty_intensity_change=8.0,
         governance_language_change=7.0,
-        financial_condition_language_change=6.0,
+        financial_condition_share_change=0.06,
         report_side_quality_ok=True,
         report_side_primary_eligible=True,
     )
@@ -137,3 +139,92 @@ def test_top_three_selected_when_more_than_three_eligible():
     assert None not in (primary, secondary, tertiary)
     magnitudes = [primary.magnitude, secondary.magnitude, tertiary.magnitude]
     assert magnitudes == sorted(magnitudes, reverse=True)
+
+
+# --- Track 7F.4: M3 (financial_condition_share_change) is now the
+# `largest_financial_condition_shift` candidate, epsilon=0.04, M1
+# (financial_condition_language_change) no longer drives ranking. ---
+
+
+def test_financial_condition_candidate_uses_m3_not_m1():
+    # Large M1 alone (old metric) is not enough -- M3 absent means no finding.
+    metrics = _base_metrics(
+        financial_condition_language_change=50.0,
+        financial_condition_share_change=None,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
+    )
+    primary, _, _ = select_findings(metrics)
+    assert primary is None
+
+
+def test_financial_condition_epsilon_is_point_zero_four():
+    below = _base_metrics(
+        financial_condition_share_change=0.039,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
+    )
+    assert select_findings(below)[0] is None
+
+    at_threshold = _base_metrics(
+        financial_condition_share_change=0.04,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
+    )
+    primary, _, _ = select_findings(at_threshold)
+    assert primary is not None and primary.key == "largest_financial_condition_shift"
+
+
+def test_act_2017_2018_artifact_demoted_by_m3():
+    # ACT 2017->2018: M1 +1.0019 (old metric, would have been eligible under
+    # epsilon=1.0) but M3 +0.0182 is well below the 0.04 materiality bar --
+    # this is the flagship denominator-shrinkage artifact 7F.1 diagnosed.
+    metrics = _base_metrics(
+        financial_condition_language_change=1.0019,
+        financial_condition_share_change=0.0182,
+        financial_condition_topic_mix_change=0.0043,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
+    )
+    primary, _, _ = select_findings(metrics)
+    assert primary is None
+
+
+def test_sbp_2023_2024_positive_control_retained():
+    metrics = _base_metrics(
+        financial_condition_language_change=-1.1027,
+        financial_condition_share_change=-0.0725,
+        financial_condition_topic_mix_change=0.0126,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
+    )
+    primary, _, _ = select_findings(metrics)
+    assert primary is not None
+    assert primary.key == "largest_financial_condition_shift"
+    assert primary.value == -0.0725
+
+
+def test_financial_condition_quality_gate_unchanged():
+    # ACT 2016->2024: large M3 but quality-excluded (report-side gate fails)
+    # -- must stay excluded regardless of M3 magnitude.
+    metrics = _base_metrics(
+        financial_condition_share_change=0.5,
+        report_side_quality_ok=False,
+        report_side_primary_eligible=False,
+    )
+    primary, _, _ = select_findings(metrics)
+    assert primary is None
+
+
+def test_other_discovery_candidates_unaffected_by_m3_change():
+    metrics = _base_metrics(
+        disclosure_change_score=0.9,
+        feature_quality_ok=True,
+        feature_primary_eligible=True,
+        net_tone_change=-9.0,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
+        financial_condition_share_change=None,
+    )
+    survivors = {f.key for f in eligible_candidates(metrics)}
+    assert survivors == {"largest_overall_change", "largest_negative_tone_shift"}

@@ -409,6 +409,18 @@ class ReportPairLanguageFeatures(UUIDPkMixin, TimestampMixin, Base):
     governance_language_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     financial_condition_language_change: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # --- Track 7F.4: M3 (hit-share change) / M6b (topic-mix change) ---
+    # See docs/financial-condition-ranking-calibration-7f3.md
+    # (ADOPT_M3_WITH_THRESHOLD): M3 is the primary Discover ranking/
+    # materiality metric for financial-condition shifts (|M3| >= 0.04);
+    # M6b is supporting detail only, never given a sign. M1 above
+    # (`financial_condition_language_change`) is retained unchanged as
+    # descriptive context, not used for ranking.
+    financial_condition_share_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_share_later: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # --- Custom-taxonomy earlier/later/change (combined across subcategories) ---
     risk_rate_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
     risk_rate_later: Mapped[float | None] = mapped_column(Float, nullable=True)

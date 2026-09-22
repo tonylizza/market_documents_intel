@@ -1,6 +1,11 @@
 import type { CompanyRepository } from "@/lib/repositories/company-repository";
 import type { DiscoveryRepository } from "@/lib/repositories/discovery-repository";
-import type { DiscoveryFilterOptions, DiscoveryFilterState, DiscoveryItem } from "@/lib/domain/discovery";
+import type {
+  DiscoveryFilterOptions,
+  DiscoveryFilterState,
+  DiscoveryItem,
+  FinancialConditionCompanyStatus,
+} from "@/lib/domain/discovery";
 import {
   DISCOVERY_TYPE_CONFIG,
   isDiscoveryType,
@@ -37,6 +42,11 @@ export interface DiscoveryPageViewModel {
   filters: DiscoveryFilterState;
   filterOptions: DiscoveryFilterOptions;
   items: DiscoveryItem[];
+  /** Track 7F.4 item 8 -- only populated when `selectedType ===
+   * "largest_financial_condition_shift"`, a company filter is active, and
+   * `items` came back empty; `null` otherwise (including for every other
+   * discovery type, which keeps the generic empty state unchanged). */
+  financialConditionCompanyStatus: FinancialConditionCompanyStatus | null;
 }
 
 /** Falls back to the first available (non-empty) discovery type when the
@@ -106,6 +116,11 @@ export async function getDiscoveryPageViewModel(
   const typeConfig = selectedType ? DISCOVERY_TYPE_CONFIG[selectedType] : DISCOVERY_TYPE_CONFIG.largest_uncertainty_increase;
   const items = filterDiscoveryItemsByMinQuality(rawItems, typeConfig.qualityDimension, minQuality);
 
+  const financialConditionCompanyStatus =
+    selectedType === "largest_financial_condition_shift" && companyTicker && items.length === 0
+      ? await discoveryRepository.getFinancialConditionCompanyStatus(companyTicker)
+      : null;
+
   return {
     availableTypes,
     selectedType: selectedType ?? typeConfig.type,
@@ -118,5 +133,6 @@ export async function getDiscoveryPageViewModel(
       latestPeriodEnd: summary.latestPeriodEnd,
     },
     items,
+    financialConditionCompanyStatus,
   };
 }

@@ -290,6 +290,16 @@ class ReportComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     governance_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     financial_condition_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     financial_condition_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Track 7F.4: M3 (financial_condition_share_change) is the Discover
+    # ranking/materiality metric; M6b (financial_condition_topic_mix_change)
+    # is supporting detail only, never labeled (no positive/negative
+    # direction). `financial_condition_change` above (M1) is unchanged,
+    # retained as descriptive context -- never repurposed.
+    financial_condition_share_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_share_later: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_share_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    financial_condition_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

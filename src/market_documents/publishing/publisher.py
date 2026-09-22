@@ -148,6 +148,24 @@ METRIC_CATALOG: tuple[dict, ...] = (
         methodology_anchor="Milestone 6: ReportPairLanguageFeatures.financial_condition_language_change",
     ),
     dict(
+        metric_key="financial_condition_share_change",
+        display_name="Financial-condition language share change",
+        short_description="Change in financial-condition language's share of classified risk / financial-condition / governance / strategy language.",
+        technical_description="Change in (financial_condition hits / total custom-taxonomy hits) over the feature-eligible-primary population, earlier vs. later report.",
+        unit="share",
+        direction_interpretation="Positive means financial-condition language grew as a share of classified language; negative means it shrank.",
+        methodology_anchor="Track 7F.3/7F.4: docs/financial-condition-ranking-calibration-7f3.md (M3, ADOPT_M3_WITH_THRESHOLD), ReportPairLanguageFeatures.financial_condition_share_change",
+    ),
+    dict(
+        metric_key="financial_condition_topic_mix_change",
+        display_name="Financial-condition topic-mix change",
+        short_description="How much the mix of revenue/debt/cash-flow/etc. topics within financial-condition language changed.",
+        technical_description="1 - cosine similarity between the 12-dimension financial-condition subcategory hit-share vectors, earlier vs. later report.",
+        unit="distance_0_1",
+        direction_interpretation="Supporting detail only -- no positive/negative direction; higher means more topic-mix change.",
+        methodology_anchor="Track 7F.3/7F.4: docs/financial-condition-ranking-calibration-7f3.md (M6b, SUPPORTING_DETAIL), ReportPairLanguageFeatures.financial_condition_topic_mix_change",
+    ),
+    dict(
         metric_key="new_rate_words",
         display_name="New disclosure share",
         short_description="Share of the report (by word) that is entirely new disclosure content.",
@@ -204,6 +222,8 @@ def _comparison_metrics(comparison: ComparisonDataset) -> ComparisonMetrics:
         risk_language_removal=lf.risk_language_removal if lf else None,
         governance_language_change=lf.governance_language_change if lf else None,
         financial_condition_language_change=lf.financial_condition_language_change if lf else None,
+        financial_condition_share_change=lf.financial_condition_share_change if lf else None,
+        financial_condition_topic_mix_change=lf.financial_condition_topic_mix_change if lf else None,
         report_side_quality_ok=(lf.report_side_signal_quality.value in ("GOOD", "USABLE")) if lf else False,
         report_side_primary_eligible=lf.report_side_primary_eligible if lf else False,
         alignment_change_quality_ok=(lf.alignment_change_signal_quality.value in ("GOOD", "USABLE")) if lf else False,
@@ -367,6 +387,8 @@ class PublicationBuilder:
                     "uncertainty_intensity_change",
                     "governance_language_change",
                     "financial_condition_language_change",
+                    "financial_condition_share_change",
+                    "financial_condition_topic_mix_change",
                 ):
                     value = getattr(metrics, key)
                     if value is not None:
@@ -523,6 +545,14 @@ class PublicationBuilder:
                     lf.financial_condition_language_change if lf else None,
                     bands_by_metric["financial_condition_language_change"],
                 ),
+                financial_condition_share_earlier=lf.financial_condition_share_earlier if lf else None,
+                financial_condition_share_later=lf.financial_condition_share_later if lf else None,
+                financial_condition_share_change=lf.financial_condition_share_change if lf else None,
+                financial_condition_share_change_label=labels.label_for_signed_metric(
+                    lf.financial_condition_share_change if lf else None,
+                    bands_by_metric["financial_condition_share_change"],
+                ),
+                financial_condition_topic_mix_change=lf.financial_condition_topic_mix_change if lf else None,
                 forward_looking_change=lf.forward_looking_caution_change if lf else None,
                 forward_looking_change_label=None,
                 new_passage_count=f.new_count,
@@ -921,6 +951,13 @@ class PublicationBuilder:
                     )
                     language_metric_count += 1
 
+                # Track 7F.4: dominant financial_condition subcategory movers
+                # (item 12) -- accumulated from the same
+                # `cd.category_hits_by_signal_id` hits the passage_language_
+                # signals loop below already iterates, keyed by report side.
+                fc_subcategory_earlier: dict[str, int] = {}
+                fc_subcategory_later: dict[str, int] = {}
+
                 # --- passage_language_signals ---
                 for signal in cd.passage_language_signals:
                     app_passage = app_passages.get(signal.passage_id)
@@ -968,6 +1005,9 @@ class PublicationBuilder:
                     for hit in cd.category_hits_by_signal_id.get(signal.id, []):
                         if hit.hit_count <= 0:
                             continue
+                        if hit.category == "financial_condition" and signal.feature_eligible and signal.primary_narrative_eligible:
+                            bucket = fc_subcategory_earlier if signal.report_side == ReportSide.EARLIER else fc_subcategory_later
+                            bucket[hit.subcategory] = bucket.get(hit.subcategory, 0) + hit.hit_count
                         adjusted = max(hit.hit_count - hit.negated_hit_count, 0)
                         rate = safe_ratio(hit.hit_count * 1000, signal.passage_word_count)
                         app_session.add(
@@ -997,6 +1037,48 @@ class PublicationBuilder:
                                 category=hit.category, subcategory=hit.subcategory, adjusted_count=adjusted
                             )
                         )
+
+                # Track 7F.4: top-3 financial_condition subcategory movers by
+                # absolute change, persisted via the existing generic
+                # LanguageMetric table (never a new table) -- supporting
+                # detail for a financial-condition finding (item 12).
+                fc_all_subcategories = set(fc_subcategory_earlier) | set(fc_subcategory_later)
+                fc_movers = sorted(
+                    fc_all_subcategories,
+                    key=lambda sub: abs(fc_subcategory_later.get(sub, 0) - fc_subcategory_earlier.get(sub, 0)),
+                    reverse=True,
+                )[:3]
+                for sub in fc_movers:
+                    earlier_count = fc_subcategory_earlier.get(sub, 0)
+                    later_count = fc_subcategory_later.get(sub, 0)
+                    app_session.add(
+                        LanguageMetric(
+                            id=labels.derive_id(
+                                pv, "language_metrics", str(cd.pair.id), "report_side", "financial_condition_subcategory", sub
+                            ),
+                            publication_id=pub_id,
+                            report_comparison_id=app_comparison.id,
+                            metric_scope="report_side",
+                            population="financial_condition_subcategory",
+                            category="financial_condition",
+                            subcategory=sub,
+                            earlier_count=earlier_count,
+                            later_count=later_count,
+                            earlier_rate_per_1000=None,
+                            later_rate_per_1000=None,
+                            rate_change=None,
+                            absolute_rate_change=None,
+                            introduced_count=None,
+                            introduced_rate_per_1000=None,
+                            removed_count=None,
+                            removed_rate_per_1000=None,
+                            retained_count=None,
+                            negated_count=None,
+                            quality=lf.report_side_signal_quality.value,
+                            primary_eligible=lf.report_side_primary_eligible,
+                        )
+                    )
+                    language_metric_count += 1
 
         app_session.flush()
 

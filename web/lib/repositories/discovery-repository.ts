@@ -1,5 +1,5 @@
 import type { DiscoveryType, RankScope } from "@/lib/config/discovery";
-import type { DiscoveryItem } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
 
 export interface DiscoveryItemFilters {
   type: DiscoveryType;
@@ -19,4 +19,9 @@ export interface DiscoveryRepository {
    * assumption. */
   listAvailableDiscoveryTypes(): Promise<DiscoveryType[]>;
   getDiscoveryItems(filters: DiscoveryItemFilters): Promise<DiscoveryItem[]>;
+  /** Track 7F.4 item 8 -- only meaningful for `largest_financial_condition_
+   * shift`, called when a company-filtered query returns zero eligible
+   * items, to distinguish no-comparisons / failed-quality / below-
+   * materiality (never a collapsed generic empty state). */
+  getFinancialConditionCompanyStatus(companyTicker: string): Promise<FinancialConditionCompanyStatus>;
 }

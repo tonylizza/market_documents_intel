@@ -60,9 +60,10 @@ const FINDING_COPY: Record<DiscoveryType, FindingCopyConfig> = {
   },
   largest_financial_condition_shift: {
     key: "largest_financial_condition_shift",
-    headline: "Financial-condition language changed",
-    description: "Language describing financial condition changed notably compared with the prior report.",
-    unit: "rate_per_1000_words",
+    headline: "Largest financial-condition language shift",
+    description:
+      "Change in financial-condition language's share of classified risk / financial-condition / governance / strategy language, compared with the prior report.",
+    unit: "share",
   },
   largest_new_disclosure_share: {
     key: "largest_new_disclosure_share",

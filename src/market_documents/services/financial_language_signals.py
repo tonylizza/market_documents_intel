@@ -53,6 +53,7 @@ from market_documents.services.financial_language_config import (
     ALGORITHM_VERSION,
     CORE_CATEGORIES,
     CUSTOM_TAXONOMY_CATEGORIES,
+    FINANCIAL_CONDITION_SUBCATEGORIES,
     FINANCIAL_LANGUAGE_CONFIG,
     SIGNAL_VERSION,
     DictionaryFingerprint,
@@ -66,7 +67,10 @@ from market_documents.services.financial_language_metrics import (
     aggregate_side,
     classify_collision,
     compute_core_category_change,
+    cosine_distance,
     custom_category_rate,
+    custom_subcategory_totals,
+    custom_taxonomy_hit_share,
     dictionary_hits_by_confidence,
     dictionary_match_rate,
     forward_looking_caution_rate,
@@ -76,6 +80,7 @@ from market_documents.services.financial_language_metrics import (
     net_tone,
     rate_change,
     safe_ratio,
+    subcategory_share_vector,
 )
 from market_documents.services.financial_language_quality import (
     AlignmentChangeQualityInputs,
@@ -506,6 +511,7 @@ def _run_signal_build(
             session.flush()
 
             custom_totals_by_category: dict[str, int] = defaultdict(int)
+            custom_subcategory_hits: dict[tuple[str, str], int] = {}
             for (category, subcategory), hit_count in match_result.custom_hits.items():
                 negated = match_result.custom_hits_negated.get((category, subcategory), 0)
                 session.add(
@@ -518,6 +524,7 @@ def _run_signal_build(
                     )
                 )
                 custom_totals_by_category[category] += hit_count
+                custom_subcategory_hits[(category, subcategory)] = hit_count
 
             signal_rows.append(
                 SignalRowInput(
@@ -536,6 +543,7 @@ def _run_signal_build(
                     weak_modal_count=match_result.core_counts["weak_modal"],
                     total_dictionary_hits=match_result.total_dictionary_hits,
                     custom_category_hits=dict(custom_totals_by_category),
+                    custom_subcategory_hits=custom_subcategory_hits,
                     collision_flag=collision_flag,
                     split_merge_flag=split_merge_flag,
                 )
@@ -627,6 +635,22 @@ def _aggregate_pair_features(
 
     dict_match_rate_earlier = dictionary_match_rate(earlier_side)
     dict_match_rate_later = dictionary_match_rate(later_side)
+
+    # Track 7F.4 -- M3 (financial_condition_share_change) and M6b
+    # (financial_condition_topic_mix_change), both over the same
+    # feature_eligible_primary population as M1/net_tone/etc.
+    fc_share_earlier = custom_taxonomy_hit_share(earlier_side, "financial_condition")
+    fc_share_later = custom_taxonomy_hit_share(later_side, "financial_condition")
+    fc_subcategory_earlier = custom_subcategory_totals(
+        feature_eligible_primary, ReportSide.EARLIER, "financial_condition"
+    )
+    fc_subcategory_later = custom_subcategory_totals(
+        feature_eligible_primary, ReportSide.LATER, "financial_condition"
+    )
+    fc_topic_mix_change = cosine_distance(
+        subcategory_share_vector(fc_subcategory_earlier, FINANCIAL_CONDITION_SUBCATEGORIES),
+        subcategory_share_vector(fc_subcategory_later, FINANCIAL_CONDITION_SUBCATEGORIES),
+    )
 
     report_side_assessment = assess_report_side_quality(
         ReportSideQualityInputs(
@@ -809,6 +833,10 @@ def _aggregate_pair_features(
         financial_condition_language_change=rate_change(
             custom_category_rate(later_side, "financial_condition"), custom_category_rate(earlier_side, "financial_condition")
         ),
+        financial_condition_share_earlier=fc_share_earlier,
+        financial_condition_share_later=fc_share_later,
+        financial_condition_share_change=rate_change(fc_share_later, fc_share_earlier),
+        financial_condition_topic_mix_change=fc_topic_mix_change,
         risk_rate_earlier=custom_category_rate(earlier_side, "risk"),
         risk_rate_later=custom_category_rate(later_side, "risk"),
         financial_condition_rate_earlier=custom_category_rate(earlier_side, "financial_condition"),

@@ -94,10 +94,11 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
   },
   financial_condition_change: {
     key: "financial_condition_change",
-    displayName: "Financial-condition change",
+    displayName: "Financial-condition language density change",
     unit: "rate_per_1000_words",
     qualityDimension: "report-side",
-    explanation: "Change in language describing financial condition compared with the prior report.",
+    explanation:
+      "Change in financial-condition term density per 1,000 narrative words, compared with the prior report. Contextual detail only -- not the Discover ranking metric; see this comparison's findings for the financial-condition language share change (M3) that drives ranking.",
     value: (c) => c.financialConditionChange,
     valueLabel: (c) => c.financialConditionChangeLabel,
     quality: (c) => c.reportSideQuality,

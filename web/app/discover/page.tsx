@@ -60,7 +60,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
           <section aria-labelledby="results-heading" className={styles.section}>
             <SectionHeader id="results-heading" title={viewModel.typeConfig.title} description={viewModel.typeConfig.description} />
             <div className={styles.tableScroll}>
-              <DiscoveryResultsTable items={viewModel.items} />
+              <DiscoveryResultsTable items={viewModel.items} financialConditionCompanyStatus={viewModel.financialConditionCompanyStatus} />
             </div>
           </section>
         </>

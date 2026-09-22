@@ -67,6 +67,9 @@ export const companyCardRowSchema = z.object({
   governance_change_label: z.string().nullable(),
   financial_condition_change: z.number().nullable(),
   financial_condition_change_label: z.string().nullable(),
+  financial_condition_share_change: z.number().nullable(),
+  financial_condition_share_change_label: z.string().nullable(),
+  financial_condition_topic_mix_change: z.number().nullable(),
 
   report_side_quality: rawQuality,
   report_side_quality_label: z.string().nullable(),

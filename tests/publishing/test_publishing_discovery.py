@@ -15,6 +15,8 @@ def _metrics(**overrides) -> ComparisonMetrics:
         risk_language_removal=None,
         governance_language_change=None,
         financial_condition_language_change=None,
+        financial_condition_share_change=None,
+        financial_condition_topic_mix_change=None,
         report_side_quality_ok=False,
         report_side_primary_eligible=False,
         alignment_change_quality_ok=False,

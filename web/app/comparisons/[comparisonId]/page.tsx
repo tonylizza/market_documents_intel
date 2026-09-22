@@ -11,6 +11,7 @@ import { DisclosureChangeSummary } from "@/components/DisclosureChangeSummary";
 import { HeadlineMetricCard } from "@/components/HeadlineMetricCard";
 import { DeterministicFindingsList } from "@/components/DeterministicFindingsList";
 import { LanguageMetricsSection } from "@/components/LanguageMetricsSection";
+import { FinancialConditionSupportingDetail } from "@/components/FinancialConditionSupportingDetail";
 import { PassageCompositionSection } from "@/components/PassageCompositionSection";
 import { TechnicalDetails } from "@/components/TechnicalDetails";
 import { DefinitionList } from "@/components/DefinitionList";
@@ -66,8 +67,16 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
   }
 
   const { legacy: viewModel } = view;
-  const { comparison, findings, headlineMetrics, technicalDetails, reportSideLanguageMetrics, alignmentChangeLanguageMetrics, passageComposition } =
-    viewModel;
+  const {
+    comparison,
+    findings,
+    headlineMetrics,
+    technicalDetails,
+    reportSideLanguageMetrics,
+    alignmentChangeLanguageMetrics,
+    financialConditionSubcategoryMovers,
+    passageComposition,
+  } = viewModel;
 
   return (
     <>
@@ -155,6 +164,18 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
           description="Depends on passage-level attribution between the two reports; excludes ambiguous passages. Attribution strength is shown above under Alignment-change quality -- a Usable attribution or Attribution uncertain result should not be read as strong attribution."
         />
         <LanguageMetricsSection metrics={alignmentChangeLanguageMetrics} variant="alignment-change" />
+      </section>
+
+      <section aria-labelledby="financial-condition-supporting-heading" className={styles.section}>
+        <SectionHeader
+          id="financial-condition-supporting-heading"
+          title="Financial-condition supporting detail"
+          description="Topic-mix change and dominant subcategory movers -- supporting detail for a financial-condition finding, never the Discover ranking metric itself."
+        />
+        <FinancialConditionSupportingDetail
+          topicMixChange={comparison.financialConditionTopicMixChange}
+          subcategoryMovers={financialConditionSubcategoryMovers}
+        />
       </section>
 
       <section aria-labelledby="passage-composition-heading" className={styles.section}>

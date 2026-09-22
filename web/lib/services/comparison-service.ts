@@ -17,8 +17,20 @@ export interface ComparisonPageViewModel {
   technicalDetails: TechnicalQualityDetail;
   reportSideLanguageMetrics: LanguageMetric[];
   alignmentChangeLanguageMetrics: LanguageMetric[];
+  /** Track 7F.4 item 12 -- top financial_condition subcategory movers
+   * (population `financial_condition_subcategory`), kept out of
+   * `reportSideLanguageMetrics` since these rows carry raw hit counts, not
+   * per-1,000-word rates, and would misrender in that chart/table. */
+  financialConditionSubcategoryMovers: LanguageMetric[];
   passageComposition: PassageComposition;
 }
+
+/** Track 7F.4 item 12 -- financial_condition subcategory-mover rows persist
+ * with this dedicated `population` value (see `publisher.py`'s
+ * `LanguageMetric(population="financial_condition_subcategory", ...)`),
+ * distinguishing them from the `primary_narrative`/`custom_taxonomy`
+ * populations `reportSideLanguageMetrics` renders as rate-based rows. */
+const FINANCIAL_CONDITION_SUBCATEGORY_POPULATION = "financial_condition_subcategory";
 
 /** Derived purely from the already-fetched comparison row -- zero
  * additional queries. */
@@ -66,9 +78,14 @@ export async function getComparisonPageViewModel(
     findings: buildFindings(comparison),
     headlineMetrics: buildHeadlineMetrics(comparison),
     technicalDetails: buildTechnicalDetails(comparison),
-    reportSideLanguageMetrics: languageMetrics.filter((m) => m.scope === "report_side"),
+    reportSideLanguageMetrics: languageMetrics.filter(
+      (m) => m.scope === "report_side" && m.population !== FINANCIAL_CONDITION_SUBCATEGORY_POPULATION,
+    ),
     alignmentChangeLanguageMetrics: languageMetrics.filter(
       (m) => m.scope === "alignment_change" && m.population === ALIGNMENT_CHANGE_DEFAULT_POPULATION,
+    ),
+    financialConditionSubcategoryMovers: languageMetrics.filter(
+      (m) => m.population === FINANCIAL_CONDITION_SUBCATEGORY_POPULATION,
     ),
     passageComposition,
   };

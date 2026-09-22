@@ -72,6 +72,20 @@ describe("PostgresDiscoveryRepository against the seeded test database", () => {
     });
     expect(items).toEqual([]);
   });
+
+  it("Track 7F.4 item 8: getFinancialConditionCompanyStatus returns below_materiality for a quality-eligible company whose largest M3 is below 0.04", async () => {
+    const status = await repository.getFinancialConditionCompanyStatus("ACT");
+    expect(status.status).toBe("below_materiality");
+    if (status.status === "below_materiality") {
+      expect(Math.abs(status.observedValue)).toBeLessThan(status.threshold);
+      expect(status.threshold).toBe(0.04);
+    }
+  });
+
+  it("Track 7F.4 item 8: getFinancialConditionCompanyStatus returns no_comparisons for a company with no published comparisons", async () => {
+    const status = await repository.getFinancialConditionCompanyStatus("NOPE");
+    expect(status).toEqual({ status: "no_comparisons" });
+  });
 });
 
 describe("PostgresDiscoveryRepository source -- static query-shape checks", () => {

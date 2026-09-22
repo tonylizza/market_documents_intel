@@ -20,7 +20,13 @@ from market_documents.services.similarity_tokenization import TOKENIZER_VERSION
 from market_documents.services.structured_content_audit import STRUCTURED_CONTENT_RULE_VERSION
 
 ALGORITHM_VERSION = "1.1.0"
-SIGNAL_VERSION = "1.0.0"
+# Bumped for Track 7F.4: new persisted derived fields on
+# `ReportPairLanguageFeatures` (financial_condition_share_*, M3, and
+# financial_condition_topic_mix_change, M6b) -- no change to matching,
+# negation, or any existing rate formula. Bumping forces a fresh
+# `LanguageSignalRun` for every pair so the new columns actually get
+# populated, per `compute_configuration_hash`'s skip-check.
+SIGNAL_VERSION = "1.1.0"
 
 # Loughran-McDonald sentiment categories -- typed columns on
 # `PassageLanguageSignal`/`ReportPairLanguageFeatures` (spec item: "Core
@@ -30,6 +36,25 @@ CORE_CATEGORIES = ("positive", "negative", "uncertainty", "litigious", "constrai
 # Custom domain taxonomy top-level categories (see
 # config/financial_language_custom_taxonomy.yaml for the term lists).
 CUSTOM_TAXONOMY_CATEGORIES = ("risk", "financial_condition", "governance", "strategy")
+
+# The 12 financial_condition subcategories (see
+# config/financial_language_custom_taxonomy.yaml), fixed order -- the
+# dimension order of the M6b (`financial_condition_topic_mix_change`)
+# subcategory-share vector (Track 7F.4 / 7F.3 ADOPT_M3_WITH_THRESHOLD).
+FINANCIAL_CONDITION_SUBCATEGORIES = (
+    "revenue",
+    "cost_margin",
+    "cash_flow",
+    "debt",
+    "liquidity",
+    "capital_expenditure",
+    "impairment",
+    "working_capital",
+    "dividends",
+    "tax",
+    "restructuring",
+    "acquisitions_disposals",
+)
 
 FINANCIAL_TOKENIZATION_VERSION = 1
 PHRASE_MATCHING_VERSION = 1

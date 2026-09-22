@@ -25,6 +25,9 @@ export function formatMetricValue(value: number | null, unit: string): string | 
       return `${(value * 100).toFixed(1)}%`;
     case "rate_per_1000_words":
       return `${value >= 0 ? "+" : ""}${value.toFixed(2)} / 1,000 words`;
+    case "distance_0_1":
+      // Track 7F.4 M6b (topic-mix change) -- unsigned, never a +/- prefix.
+      return value.toFixed(3);
     default:
       return String(value);
   }

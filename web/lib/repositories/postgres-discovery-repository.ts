@@ -5,11 +5,26 @@ import { MalformedRowError } from "@/lib/db/errors";
 import { formatMetricValue } from "@/lib/formatting/numbers";
 import { isDiscoveryType, type DiscoveryType } from "@/lib/config/discovery";
 import { getFindingCopy } from "@/lib/content/finding-copy";
-import type { DiscoveryItem } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
 import { discoveryItemRowSchema } from "@/lib/schemas/discovery";
 import type { DiscoveryItemFilters, DiscoveryRepository } from "@/lib/repositories/discovery-repository";
 
 const availableTypeRowSchema = z.object({ discovery_type: z.string() });
+
+// Track 7F.4 item 9: 0.04 mirrors `findings.CandidateSpec.epsilon` for
+// `largest_financial_condition_shift` -- kept as a single named constant
+// here (not duplicated inline) since it's shown to the user, not just used
+// for a comparison.
+const FINANCIAL_CONDITION_MATERIALITY_THRESHOLD = 0.04;
+
+const financialConditionStatusRowSchema = z.object({
+  id: z.string(),
+  earlier_period_end: z.string().nullable(),
+  later_period_end: z.string().nullable(),
+  financial_condition_share_change: z.number().nullable(),
+  report_side_quality: z.string().nullable(),
+  report_side_primary_eligible: z.boolean().nullable(),
+});
 
 export class PostgresDiscoveryRepository implements DiscoveryRepository {
   async listAvailableDiscoveryTypes(): Promise<DiscoveryType[]> {
@@ -78,5 +93,53 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
         qualityLabel: data.quality_label,
       } satisfies DiscoveryItem;
     });
+  }
+
+  async getFinancialConditionCompanyStatus(companyTicker: string): Promise<FinancialConditionCompanyStatus> {
+    const rows = await query(
+      `SELECT rc.id, rc.earlier_period_end, rc.later_period_end,
+              rc.financial_condition_share_change,
+              rc.report_side_quality, rc.report_side_primary_eligible
+       FROM app.current_report_comparisons rc
+       JOIN app.current_companies c ON c.id = rc.company_id
+       WHERE lower(c.ticker) = lower($1)`,
+      [companyTicker],
+    );
+
+    if (rows.length === 0) {
+      return { status: "no_comparisons" };
+    }
+
+    const parsedRows = rows.map((row, index) => {
+      const parsed = financialConditionStatusRowSchema.safeParse(row);
+      if (!parsed.success) {
+        throw new MalformedRowError(`financial-condition-company-status[${index}]`, parsed.error.message);
+      }
+      return parsed.data;
+    });
+
+    const qualityEligible = parsedRows.filter(
+      (row) =>
+        (row.report_side_quality === "GOOD" || row.report_side_quality === "USABLE") &&
+        row.report_side_primary_eligible === true &&
+        row.financial_condition_share_change !== null,
+    );
+
+    if (qualityEligible.length === 0) {
+      return { status: "failed_quality" };
+    }
+
+    const largest = qualityEligible.reduce((max, row) =>
+      Math.abs(row.financial_condition_share_change as number) > Math.abs(max.financial_condition_share_change as number) ? row : max,
+    );
+
+    return {
+      status: "below_materiality",
+      observedValue: largest.financial_condition_share_change as number,
+      threshold: FINANCIAL_CONDITION_MATERIALITY_THRESHOLD,
+      reportComparisonId: largest.id,
+      earlierPeriodEnd: largest.earlier_period_end,
+      laterPeriodEnd: largest.later_period_end,
+    };
   }
 }

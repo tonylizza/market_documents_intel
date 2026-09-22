@@ -19,6 +19,8 @@ function makeMetric(overrides: Partial<LanguageMetric> = {}): LanguageMetric {
     introducedRatePer1000: null,
     removedRatePer1000: null,
     retainedCount: null,
+    earlierCount: null,
+    laterCount: null,
     quality: "GOOD",
     primaryEligible: true,
     ...overrides,

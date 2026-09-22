@@ -39,6 +39,12 @@ export interface ComparisonSummary {
   governanceChangeLabel: string | null;
   financialConditionChange: number | null;
   financialConditionChangeLabel: string | null;
+  /** Track 7F.4 M3 -- the Discover ranking/materiality metric (|M3| >= 0.04).
+   * `financialConditionChange` above (M1) is descriptive context only. */
+  financialConditionShareChange: number | null;
+  financialConditionShareChangeLabel: string | null;
+  /** Track 7F.4 M6b -- supporting detail only, never a signed label. */
+  financialConditionTopicMixChange: number | null;
 
   reportSideQuality: RawQuality | null;
   reportSideQualityLabel: string | null;
@@ -160,6 +166,12 @@ export interface LanguageMetric {
   introducedRatePer1000: number | null;
   removedRatePer1000: number | null;
   retainedCount: number | null;
+  /** Raw hit counts -- populated for Track 7F.4's financial_condition
+   * subcategory-mover rows (`population === "financial_condition_
+   * subcategory"`), which have no meaningful per-1000-word rate. `null` for
+   * every other report_side/alignment_change row. */
+  earlierCount: number | null;
+  laterCount: number | null;
   quality: RawQuality | null;
   primaryEligible: boolean | null;
 }

@@ -41,3 +41,24 @@ export interface DiscoveryFilterOptions {
   earliestPeriodEnd: string | null;
   latestPeriodEnd: string | null;
 }
+
+/**
+ * Track 7F.4 item 8 -- for a company filtered to `largest_financial_
+ * condition_shift` with zero eligible Discover items, distinguishes *why*:
+ * no comparisons published at all, comparisons exist but none clear the
+ * report-side quality gate, or quality-eligible comparisons exist but none
+ * clear the 0.04 materiality bar (in which case the largest observed
+ * quality-eligible pair is still shown, clearly labeled -- never ranked as
+ * an eligible finding). Never collapsed into one generic empty state.
+ */
+export type FinancialConditionCompanyStatus =
+  | { status: "no_comparisons" }
+  | { status: "failed_quality" }
+  | {
+      status: "below_materiality";
+      observedValue: number;
+      threshold: number;
+      reportComparisonId: string;
+      earlierPeriodEnd: string | null;
+      laterPeriodEnd: string | null;
+    };

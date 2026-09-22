@@ -150,7 +150,8 @@ export class PostgresComparisonRepository implements ComparisonRepository {
     const rows = await query(
       `SELECT id, metric_scope, population, category, subcategory,
               earlier_rate_per_1000, later_rate_per_1000, rate_change, absolute_rate_change,
-              introduced_rate_per_1000, removed_rate_per_1000, retained_count, quality, primary_eligible
+              introduced_rate_per_1000, removed_rate_per_1000, retained_count,
+              earlier_count, later_count, quality, primary_eligible
        FROM app.current_language_metrics
        WHERE report_comparison_id = $1
        ORDER BY metric_scope, population, category`,
@@ -176,6 +177,8 @@ export class PostgresComparisonRepository implements ComparisonRepository {
         introducedRatePer1000: data.introduced_rate_per_1000,
         removedRatePer1000: data.removed_rate_per_1000,
         retainedCount: data.retained_count,
+        earlierCount: data.earlier_count,
+        laterCount: data.later_count,
         quality: data.quality,
         primaryEligible: data.primary_eligible,
       } satisfies LanguageMetric;

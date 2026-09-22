@@ -90,6 +90,8 @@ describe("getComparisonPageViewModel", () => {
         introducedRatePer1000: null,
         removedRatePer1000: null,
         retainedCount: null,
+        earlierCount: null,
+        laterCount: null,
         quality: "GOOD",
         primaryEligible: true,
       },
@@ -106,6 +108,8 @@ describe("getComparisonPageViewModel", () => {
         introducedRatePer1000: 3,
         removedRatePer1000: 1,
         retainedCount: 5,
+        earlierCount: null,
+        laterCount: null,
         quality: "USABLE",
         primaryEligible: true,
       },
@@ -116,5 +120,52 @@ describe("getComparisonPageViewModel", () => {
     expect(viewModel?.reportSideLanguageMetrics[0].category).toBe("positive");
     expect(viewModel?.alignmentChangeLanguageMetrics).toHaveLength(1);
     expect(viewModel?.alignmentChangeLanguageMetrics[0].category).toBe("risk");
+  });
+
+  it("separates financial_condition subcategory movers (Track 7F.4 item 12) from reportSideLanguageMetrics", async () => {
+    const metrics: LanguageMetric[] = [
+      {
+        id: "m1",
+        scope: "report_side",
+        population: "primary_narrative",
+        category: "positive",
+        subcategory: null,
+        earlierRatePer1000: 1,
+        laterRatePer1000: 2,
+        rateChange: 1,
+        absoluteRateChange: 1,
+        introducedRatePer1000: null,
+        removedRatePer1000: null,
+        retainedCount: null,
+        earlierCount: null,
+        laterCount: null,
+        quality: "GOOD",
+        primaryEligible: true,
+      },
+      {
+        id: "m2",
+        scope: "report_side",
+        population: "financial_condition_subcategory",
+        category: "financial_condition",
+        subcategory: "revenue",
+        earlierRatePer1000: null,
+        laterRatePer1000: null,
+        rateChange: null,
+        absoluteRateChange: null,
+        introducedRatePer1000: null,
+        removedRatePer1000: null,
+        retainedCount: null,
+        earlierCount: 4,
+        laterCount: 9,
+        quality: "GOOD",
+        primaryEligible: true,
+      },
+    ];
+    const repository = makeFakeRepository({ getComparisonLanguageMetrics: async () => metrics });
+    const viewModel = await getComparisonPageViewModel(repository, "cmp-1");
+    expect(viewModel?.reportSideLanguageMetrics).toHaveLength(1);
+    expect(viewModel?.reportSideLanguageMetrics[0].category).toBe("positive");
+    expect(viewModel?.financialConditionSubcategoryMovers).toHaveLength(1);
+    expect(viewModel?.financialConditionSubcategoryMovers[0].subcategory).toBe("revenue");
   });
 });
