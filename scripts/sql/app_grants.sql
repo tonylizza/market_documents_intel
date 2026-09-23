@@ -88,3 +88,22 @@ GRANT SELECT ON
     app.current_narrative_unit_comparisons,
     app.current_structured_table_comparisons
 TO app_readonly;
+
+-- Track 7E.1: shared passage corpus (`app_corpus.passages`,
+-- `app_corpus.passage_embeddings`, introduced by migration `app_0010`).
+-- app_publisher reads it for the ON CONFLICT DO NOTHING dedup backfill,
+-- writes the deduplicated per-corpus rows going forward, and deletes
+-- orphaned rows via `publish gc-corpus`. This grant was missing from the
+-- file's original 7E.1 rollout (the schema has no `current_*` wrapper of
+-- its own, so it fell outside every existing GRANT block above) --
+-- discovered during Track 7F.5's production rollout when `publish build`
+-- failed with `permission denied for schema app_corpus` under
+-- `app_publisher` (it had previously only ever been built as the Neon
+-- owner role). app_readonly gets no grant here, by the same discipline as
+-- 7B.1/7B.2 above -- it reaches corpus rows only indirectly through
+-- `app.current_passage_embeddings`, which is owned by a role with direct
+-- app_corpus access, never by a raw grant on the shared schema itself.
+GRANT USAGE, CREATE ON SCHEMA app_corpus TO app_publisher;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA app_corpus TO app_publisher;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA app_corpus TO app_publisher;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app_corpus GRANT ALL ON TABLES TO app_publisher;
