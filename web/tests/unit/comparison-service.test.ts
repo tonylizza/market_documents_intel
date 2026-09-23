@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTechnicalDetails, getComparisonPageViewModel } from "@/lib/services/comparison-service";
+import { buildGovernanceSubcategoryMovers, buildTechnicalDetails, getComparisonPageViewModel } from "@/lib/services/comparison-service";
 import type { ComparisonRepository } from "@/lib/repositories/comparison-repository";
 import type { LanguageMetric, PassageComposition, ReportComparisonDetail } from "@/lib/domain/comparison";
 import { makeComparisonSummary } from "../fixtures/comparison-fixtures";
@@ -167,5 +167,55 @@ describe("getComparisonPageViewModel", () => {
     expect(viewModel?.reportSideLanguageMetrics[0].category).toBe("positive");
     expect(viewModel?.financialConditionSubcategoryMovers).toHaveLength(1);
     expect(viewModel?.financialConditionSubcategoryMovers[0].subcategory).toBe("revenue");
+  });
+
+  it("Track 7F.7a.1: separates governance subcategory movers from reportSideLanguageMetrics and computes governance-share contributions", async () => {
+    function govRow(subcategory: string, earlierCount: number, laterCount: number): LanguageMetric {
+      return {
+        id: `gov-${subcategory}`,
+        scope: "report_side",
+        population: "governance_subcategory",
+        category: "governance",
+        subcategory,
+        earlierRatePer1000: null,
+        laterRatePer1000: null,
+        rateChange: null,
+        absoluteRateChange: null,
+        introducedRatePer1000: null,
+        removedRatePer1000: null,
+        retainedCount: null,
+        earlierCount,
+        laterCount,
+        quality: "GOOD",
+        primaryEligible: true,
+      };
+    }
+    const metrics: LanguageMetric[] = [
+      govRow("board", 10, 20), // change 10
+      govRow("audit", 5, 5), // change 0
+      govRow("remuneration", 1, 9), // change 8
+      govRow("litigation", 1, 2), // change 1, low-volume subcategory
+    ];
+    const repository = makeFakeRepository({ getComparisonLanguageMetrics: async () => metrics });
+    const viewModel = await getComparisonPageViewModel(repository, "cmp-1");
+    expect(viewModel?.reportSideLanguageMetrics).toHaveLength(0);
+    // Top 3 by |change|: board (10), remuneration (8), litigation (1) -- audit (0) excluded.
+    const movers = viewModel?.governanceSubcategoryMovers ?? [];
+    expect(movers).toHaveLength(3);
+    expect(movers.map((m) => m.subcategory)).toEqual(["board", "remuneration", "litigation"]);
+    // Earlier total across all 4 rows = 10+5+1+1 = 17; board earlier share = 10/17.
+    const board = movers.find((m) => m.subcategory === "board")!;
+    expect(board.earlierShareContribution).toBeCloseTo(10 / 17, 6);
+    // Later total = 20+5+9+2 = 36; board later share = 20/36.
+    expect(board.laterShareContribution).toBeCloseTo(20 / 36, 6);
+    expect(board.lowVolume).toBe(false);
+    const litigation = movers.find((m) => m.subcategory === "litigation")!;
+    expect(litigation.lowVolume).toBe(true);
+  });
+});
+
+describe("buildGovernanceSubcategoryMovers", () => {
+  it("returns an empty list when there are no governance_subcategory rows", () => {
+    expect(buildGovernanceSubcategoryMovers([])).toEqual([]);
   });
 });

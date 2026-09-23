@@ -62,3 +62,23 @@ export type FinancialConditionCompanyStatus =
       earlierPeriodEnd: string | null;
       laterPeriodEnd: string | null;
     };
+
+/**
+ * Track 7F.7a.1 -- exact mirror of `FinancialConditionCompanyStatus` above,
+ * applied to `largest_governance_shift` (M3-G, threshold 0.05 rather than
+ * financial-condition's 0.04). Same four-state discipline: no comparisons
+ * published, quality-gate failure, quality-eligible but below materiality
+ * (largest observed pair still surfaced, clearly labeled, never promoted to
+ * an eligible finding), or an actual eligible `DiscoveryItem`.
+ */
+export type GovernanceCompanyStatus =
+  | { status: "no_comparisons" }
+  | { status: "failed_quality" }
+  | {
+      status: "below_materiality";
+      observedValue: number;
+      threshold: number;
+      reportComparisonId: string;
+      earlierPeriodEnd: string | null;
+      laterPeriodEnd: string | null;
+    };

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus, GovernanceCompanyStatus } from "@/lib/domain/discovery";
 import { formatComparisonPeriod } from "@/lib/formatting/dates";
 import { formatMetricValue } from "@/lib/formatting/numbers";
 import { EmptyState } from "./EmptyState";
@@ -12,6 +12,9 @@ export interface DiscoveryResultsTableProps {
    * with one of three distinct, explicit states instead of collapsing them
    * all into "No results for these filters." */
   financialConditionCompanyStatus?: FinancialConditionCompanyStatus | null;
+  /** Track 7F.7a.1 -- exact mirror of `financialConditionCompanyStatus`
+   * above, for `largest_governance_shift` (M3-G). */
+  governanceCompanyStatus?: GovernanceCompanyStatus | null;
 }
 
 /**
@@ -20,9 +23,13 @@ export interface DiscoveryResultsTableProps {
  * tie-break order). Never re-sorted client-side from rounded display
  * values.
  */
-export function DiscoveryResultsTable({ items, financialConditionCompanyStatus }: DiscoveryResultsTableProps) {
+export function DiscoveryResultsTable({
+  items,
+  financialConditionCompanyStatus,
+  governanceCompanyStatus,
+}: DiscoveryResultsTableProps) {
   if (items.length === 0) {
-    if (financialConditionCompanyStatus?.status === "no_comparisons") {
+    if (financialConditionCompanyStatus?.status === "no_comparisons" || governanceCompanyStatus?.status === "no_comparisons") {
       return (
         <EmptyState
           title="No comparisons available for this company"
@@ -38,12 +45,31 @@ export function DiscoveryResultsTable({ items, financialConditionCompanyStatus }
         />
       );
     }
+    if (governanceCompanyStatus?.status === "failed_quality") {
+      return (
+        <EmptyState
+          title="This company's governance results didn't clear the quality gate"
+          description="Report-side signal quality wasn't GOOD or USABLE (or wasn't primary-eligible) for any comparison, so no governance language share value can be shown."
+        />
+      );
+    }
     if (financialConditionCompanyStatus?.status === "below_materiality") {
       const { observedValue, threshold, reportComparisonId, earlierPeriodEnd, laterPeriodEnd } = financialConditionCompanyStatus;
       return (
         <EmptyState
           title="Below materiality threshold"
           description={`This company's largest quality-eligible financial-condition language share change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "share")}, which does not clear the ${formatMetricValue(threshold, "share")} materiality threshold. Not ranked as an eligible Discover finding.`}
+        >
+          <Link href={`/comparisons/${reportComparisonId}`}>View this comparison →</Link>
+        </EmptyState>
+      );
+    }
+    if (governanceCompanyStatus?.status === "below_materiality") {
+      const { observedValue, threshold, reportComparisonId, earlierPeriodEnd, laterPeriodEnd } = governanceCompanyStatus;
+      return (
+        <EmptyState
+          title="Below materiality threshold"
+          description={`This company's largest quality-eligible governance language share change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "share")}, which does not clear the ${formatMetricValue(threshold, "share")} materiality threshold. Not ranked as an eligible Discover finding.`}
         >
           <Link href={`/comparisons/${reportComparisonId}`}>View this comparison →</Link>
         </EmptyState>

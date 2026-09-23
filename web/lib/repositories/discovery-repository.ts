@@ -1,5 +1,5 @@
 import type { DiscoveryType, RankScope } from "@/lib/config/discovery";
-import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus, GovernanceCompanyStatus } from "@/lib/domain/discovery";
 
 export interface DiscoveryItemFilters {
   type: DiscoveryType;
@@ -24,4 +24,7 @@ export interface DiscoveryRepository {
    * items, to distinguish no-comparisons / failed-quality / below-
    * materiality (never a collapsed generic empty state). */
   getFinancialConditionCompanyStatus(companyTicker: string): Promise<FinancialConditionCompanyStatus>;
+  /** Track 7F.7a.1 -- exact mirror of `getFinancialConditionCompanyStatus`
+   * above, for `largest_governance_shift` (M3-G, threshold 0.05). */
+  getGovernanceCompanyStatus(companyTicker: string): Promise<GovernanceCompanyStatus>;
 }

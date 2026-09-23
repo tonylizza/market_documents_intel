@@ -82,10 +82,11 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
   },
   governance_change: {
     key: "governance_change",
-    displayName: "Governance-language change",
+    displayName: "Governance-language density change",
     unit: "rate_per_1000_words",
     qualityDimension: "report-side",
-    explanation: "Change in governance-related language rate compared with the prior report.",
+    explanation:
+      "Change in governance-related term density per 1,000 narrative words, compared with the prior report. Contextual detail only -- not the Discover ranking metric; see this comparison's findings for the governance language share change (M3-G) that drives ranking.",
     value: (c) => c.governanceChange,
     valueLabel: (c) => c.governanceChangeLabel,
     quality: (c) => c.reportSideQuality,

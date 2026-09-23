@@ -80,7 +80,8 @@ export const DISCOVERY_TYPE_CONFIG: Record<DiscoveryType, DiscoveryTypeConfig> =
     title: "Largest governance-language shift",
     shortLabel: "Governance shift",
     qualityDimension: "report-side",
-    description: "Comparisons with the largest change in governance-related language, gated on report-side quality.",
+    description:
+      "Comparisons with the largest change in governance language's share of classified risk / financial-condition / governance / strategy language, gated on report-side quality.",
   },
   largest_financial_condition_shift: {
     type: "largest_financial_condition_shift",

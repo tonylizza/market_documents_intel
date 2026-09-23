@@ -166,6 +166,24 @@ METRIC_CATALOG: tuple[dict, ...] = (
         methodology_anchor="Track 7F.3/7F.4: docs/financial-condition-ranking-calibration-7f3.md (M6b, SUPPORTING_DETAIL), ReportPairLanguageFeatures.financial_condition_topic_mix_change",
     ),
     dict(
+        metric_key="governance_share_change",
+        display_name="Governance language share change",
+        short_description="Change in governance language's share of classified risk / financial-condition / governance / strategy language.",
+        technical_description="Change in (governance hits / total custom-taxonomy hits) over the feature-eligible-primary population, earlier vs. later report.",
+        unit="share",
+        direction_interpretation="Positive means governance language grew as a share of classified language; negative means it shrank.",
+        methodology_anchor="Track 7F.7a/7F.7a.1: docs/governance-metric-redesign-7f7a.md (M3-G, ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD), ReportPairLanguageFeatures.governance_share_change",
+    ),
+    dict(
+        metric_key="governance_topic_mix_change",
+        display_name="Governance topic-mix change",
+        short_description="How much the mix of board/audit/remuneration/etc. topics within governance language changed.",
+        technical_description="1 - cosine similarity between the 9-dimension governance subcategory hit-share vectors, earlier vs. later report.",
+        unit="distance_0_1",
+        direction_interpretation="Supporting detail only -- no positive/negative direction; higher means more topic-mix change.",
+        methodology_anchor="Track 7F.7a/7F.7a.1: docs/governance-metric-redesign-7f7a.md (M6-G, SUPPORTING_DETAIL), ReportPairLanguageFeatures.governance_topic_mix_change",
+    ),
+    dict(
         metric_key="new_rate_words",
         display_name="New disclosure share",
         short_description="Share of the report (by word) that is entirely new disclosure content.",
@@ -224,6 +242,8 @@ def _comparison_metrics(comparison: ComparisonDataset) -> ComparisonMetrics:
         financial_condition_language_change=lf.financial_condition_language_change if lf else None,
         financial_condition_share_change=lf.financial_condition_share_change if lf else None,
         financial_condition_topic_mix_change=lf.financial_condition_topic_mix_change if lf else None,
+        governance_share_change=lf.governance_share_change if lf else None,
+        governance_topic_mix_change=lf.governance_topic_mix_change if lf else None,
         report_side_quality_ok=(lf.report_side_signal_quality.value in ("GOOD", "USABLE")) if lf else False,
         report_side_primary_eligible=lf.report_side_primary_eligible if lf else False,
         alignment_change_quality_ok=(lf.alignment_change_signal_quality.value in ("GOOD", "USABLE")) if lf else False,
@@ -389,6 +409,8 @@ class PublicationBuilder:
                     "financial_condition_language_change",
                     "financial_condition_share_change",
                     "financial_condition_topic_mix_change",
+                    "governance_share_change",
+                    "governance_topic_mix_change",
                 ):
                     value = getattr(metrics, key)
                     if value is not None:
@@ -540,6 +562,14 @@ class PublicationBuilder:
                 governance_change_label=labels.label_for_signed_metric(
                     lf.governance_language_change if lf else None, bands_by_metric["governance_language_change"]
                 ),
+                governance_share_earlier=lf.governance_share_earlier if lf else None,
+                governance_share_later=lf.governance_share_later if lf else None,
+                governance_share_change=lf.governance_share_change if lf else None,
+                governance_share_change_label=labels.label_for_signed_metric(
+                    lf.governance_share_change if lf else None,
+                    bands_by_metric["governance_share_change"],
+                ),
+                governance_topic_mix_change=lf.governance_topic_mix_change if lf else None,
                 financial_condition_change=lf.financial_condition_language_change if lf else None,
                 financial_condition_change_label=labels.label_for_signed_metric(
                     lf.financial_condition_language_change if lf else None,
@@ -957,6 +987,11 @@ class PublicationBuilder:
                 # signals loop below already iterates, keyed by report side.
                 fc_subcategory_earlier: dict[str, int] = {}
                 fc_subcategory_later: dict[str, int] = {}
+                # Track 7F.7a.1: dominant governance subcategory movers,
+                # exact mirror of the financial_condition accumulation
+                # above.
+                gov_subcategory_earlier: dict[str, int] = {}
+                gov_subcategory_later: dict[str, int] = {}
 
                 # --- passage_language_signals ---
                 for signal in cd.passage_language_signals:
@@ -1008,6 +1043,9 @@ class PublicationBuilder:
                         if hit.category == "financial_condition" and signal.feature_eligible and signal.primary_narrative_eligible:
                             bucket = fc_subcategory_earlier if signal.report_side == ReportSide.EARLIER else fc_subcategory_later
                             bucket[hit.subcategory] = bucket.get(hit.subcategory, 0) + hit.hit_count
+                        if hit.category == "governance" and signal.feature_eligible and signal.primary_narrative_eligible:
+                            gov_bucket = gov_subcategory_earlier if signal.report_side == ReportSide.EARLIER else gov_subcategory_later
+                            gov_bucket[hit.subcategory] = gov_bucket.get(hit.subcategory, 0) + hit.hit_count
                         adjusted = max(hit.hit_count - hit.negated_hit_count, 0)
                         rate = safe_ratio(hit.hit_count * 1000, signal.passage_word_count)
                         app_session.add(
@@ -1061,6 +1099,53 @@ class PublicationBuilder:
                             metric_scope="report_side",
                             population="financial_condition_subcategory",
                             category="financial_condition",
+                            subcategory=sub,
+                            earlier_count=earlier_count,
+                            later_count=later_count,
+                            earlier_rate_per_1000=None,
+                            later_rate_per_1000=None,
+                            rate_change=None,
+                            absolute_rate_change=None,
+                            introduced_count=None,
+                            introduced_rate_per_1000=None,
+                            removed_count=None,
+                            removed_rate_per_1000=None,
+                            retained_count=None,
+                            negated_count=None,
+                            quality=lf.report_side_signal_quality.value,
+                            primary_eligible=lf.report_side_primary_eligible,
+                        )
+                    )
+                    language_metric_count += 1
+
+                # Track 7F.7a.1: governance subcategory movers, same
+                # `LanguageMetric(population="governance_subcategory", ...)`
+                # mechanism as financial_condition's top-3-only block above,
+                # but persisting *all* subcategories with any hits (not just
+                # the top 3) -- item 12 also asks for each mover's earlier/
+                # later governance-share *contribution* (this subcategory's
+                # share of that side's total governance hits), which needs
+                # the full per-side subcategory total to compute correctly.
+                # The frontend still displays only the top 3 by |change|.
+                gov_all_subcategories = set(gov_subcategory_earlier) | set(gov_subcategory_later)
+                gov_movers = sorted(
+                    gov_all_subcategories,
+                    key=lambda sub: abs(gov_subcategory_later.get(sub, 0) - gov_subcategory_earlier.get(sub, 0)),
+                    reverse=True,
+                )
+                for sub in gov_movers:
+                    earlier_count = gov_subcategory_earlier.get(sub, 0)
+                    later_count = gov_subcategory_later.get(sub, 0)
+                    app_session.add(
+                        LanguageMetric(
+                            id=labels.derive_id(
+                                pv, "language_metrics", str(cd.pair.id), "report_side", "governance_subcategory", sub
+                            ),
+                            publication_id=pub_id,
+                            report_comparison_id=app_comparison.id,
+                            metric_scope="report_side",
+                            population="governance_subcategory",
+                            category="governance",
                             subcategory=sub,
                             earlier_count=earlier_count,
                             later_count=later_count,

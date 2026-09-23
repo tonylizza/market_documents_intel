@@ -12,6 +12,7 @@ import { HeadlineMetricCard } from "@/components/HeadlineMetricCard";
 import { DeterministicFindingsList } from "@/components/DeterministicFindingsList";
 import { LanguageMetricsSection } from "@/components/LanguageMetricsSection";
 import { FinancialConditionSupportingDetail } from "@/components/FinancialConditionSupportingDetail";
+import { GovernanceSupportingDetail } from "@/components/GovernanceSupportingDetail";
 import { PassageCompositionSection } from "@/components/PassageCompositionSection";
 import { TechnicalDetails } from "@/components/TechnicalDetails";
 import { DefinitionList } from "@/components/DefinitionList";
@@ -75,6 +76,7 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
     reportSideLanguageMetrics,
     alignmentChangeLanguageMetrics,
     financialConditionSubcategoryMovers,
+    governanceSubcategoryMovers,
     passageComposition,
   } = viewModel;
 
@@ -175,6 +177,20 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
         <FinancialConditionSupportingDetail
           topicMixChange={comparison.financialConditionTopicMixChange}
           subcategoryMovers={financialConditionSubcategoryMovers}
+        />
+      </section>
+
+      <section aria-labelledby="governance-supporting-heading" className={styles.section}>
+        <SectionHeader
+          id="governance-supporting-heading"
+          title="Governance supporting detail"
+          description="Language density, topic-mix change, and dominant subcategory movers -- supporting detail for a governance finding, never the Discover ranking metric itself."
+        />
+        <GovernanceSupportingDetail
+          languageDensityChange={comparison.governanceChange}
+          shareChange={comparison.governanceShareChange}
+          topicMixChange={comparison.governanceTopicMixChange}
+          subcategoryMovers={governanceSubcategoryMovers}
         />
       </section>
 

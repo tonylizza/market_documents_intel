@@ -45,6 +45,13 @@ export interface ComparisonSummary {
   financialConditionShareChangeLabel: string | null;
   /** Track 7F.4 M6b -- supporting detail only, never a signed label. */
   financialConditionTopicMixChange: number | null;
+  /** Track 7F.7a.1 M3-G -- the Discover ranking/materiality metric
+   * (|M3-G| >= 0.05). `governanceChange` above (M1-G) is descriptive
+   * context only. */
+  governanceShareChange: number | null;
+  governanceShareChangeLabel: string | null;
+  /** Track 7F.7a.1 M6-G -- supporting detail only, never a signed label. */
+  governanceTopicMixChange: number | null;
 
   reportSideQuality: RawQuality | null;
   reportSideQualityLabel: string | null;

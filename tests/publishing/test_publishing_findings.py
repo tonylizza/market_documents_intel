@@ -19,6 +19,8 @@ def _base_metrics(**overrides) -> ComparisonMetrics:
         financial_condition_language_change=None,
         financial_condition_share_change=None,
         financial_condition_topic_mix_change=None,
+        governance_share_change=None,
+        governance_topic_mix_change=None,
         report_side_quality_ok=False,
         report_side_primary_eligible=False,
         alignment_change_quality_ok=False,
@@ -105,9 +107,13 @@ def test_risk_introduction_gated_by_alignment_change_not_report_side():
 
 
 def test_fixed_order_tiebreak_on_exact_ties():
+    # governance_share_change (M3-G, epsilon 0.05) magnitude 5.0/0.05=100 vs
+    # net_tone_change (epsilon 1.0) magnitude 5.0/1.0=5 would not tie -- use
+    # a governance_share_change value whose /epsilon magnitude exactly
+    # matches net_tone_change's (5.0/1.0=5 -> 0.25/0.05=5).
     metrics = _base_metrics(
         net_tone_change=-5.0,
-        governance_language_change=5.0,
+        governance_share_change=0.25,
         report_side_quality_ok=True,
         report_side_primary_eligible=True,
     )
@@ -115,7 +121,7 @@ def test_fixed_order_tiebreak_on_exact_ties():
     magnitudes = {s.key: s.magnitude for s in survivors}
     assert magnitudes["largest_negative_tone_shift"] == magnitudes["largest_governance_shift"]
     primary, secondary, _ = select_findings(metrics)
-    # net_tone_change appears before governance_language_change in CANDIDATE_KEY_ORDER
+    # net_tone_change appears before governance_share_change in CANDIDATE_KEY_ORDER
     assert CANDIDATE_KEY_ORDER.index("largest_negative_tone_shift") < CANDIDATE_KEY_ORDER.index(
         "largest_governance_shift"
     )

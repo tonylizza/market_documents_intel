@@ -74,4 +74,35 @@ describe("DiscoveryResultsTable", () => {
     expect(screen.getByText(/4\.0%/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View this comparison/ })).toHaveAttribute("href", "/comparisons/cmp-below");
   });
+
+  it("Track 7F.7a.1: renders a distinct governance no-comparisons state, not the generic empty state", () => {
+    render(<DiscoveryResultsTable items={[]} governanceCompanyStatus={{ status: "no_comparisons" }} />);
+    expect(screen.getByText(/No comparisons available for this company/)).toBeInTheDocument();
+    expect(screen.queryByText(/No results for these filters/)).not.toBeInTheDocument();
+  });
+
+  it("Track 7F.7a.1: renders a distinct governance failed-quality state", () => {
+    render(<DiscoveryResultsTable items={[]} governanceCompanyStatus={{ status: "failed_quality" }} />);
+    expect(screen.getByText(/governance results didn't clear the quality gate/)).toBeInTheDocument();
+  });
+
+  it("Track 7F.7a.1: renders a distinct governance below-materiality state with the observed value and threshold (0.05), never as an eligible finding", () => {
+    render(
+      <DiscoveryResultsTable
+        items={[]}
+        governanceCompanyStatus={{
+          status: "below_materiality",
+          observedValue: 0.021,
+          threshold: 0.05,
+          reportComparisonId: "cmp-gov-below",
+          earlierPeriodEnd: "2023-06-30",
+          laterPeriodEnd: "2024-06-30",
+        }}
+      />,
+    );
+    expect(screen.getByText(/Below materiality threshold/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.1%/)).toBeInTheDocument();
+    expect(screen.getByText(/5\.0%/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View this comparison/ })).toHaveAttribute("href", "/comparisons/cmp-gov-below");
+  });
 });

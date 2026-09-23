@@ -50,6 +50,12 @@ class ComparisonMetrics:
     # stays populated but is no longer used by any CandidateSpec.
     financial_condition_share_change: float | None
     financial_condition_topic_mix_change: float | None
+    # Track 7F.7a.1: M3-G (primary Discover ranking/materiality metric for
+    # governance shifts) and M6-G (supporting detail only, never a ranking
+    # candidate). `governance_language_change` above (M1-G) stays populated
+    # but is no longer used by any CandidateSpec.
+    governance_share_change: float | None
+    governance_topic_mix_change: float | None
     report_side_quality_ok: bool
     report_side_primary_eligible: bool
     alignment_change_quality_ok: bool
@@ -108,8 +114,13 @@ CANDIDATES: tuple[CandidateSpec, ...] = (
         lambda m: m.risk_language_removal, _gate_alignment_change,
     ),
     CandidateSpec(
-        "largest_governance_shift", "governance_language_change", "rate_per_1000_words", 1.0,
-        lambda m: m.governance_language_change, _gate_report_side,
+        # Track 7F.7a.1: switched from M1-G (rate difference, epsilon=1.0
+        # heuristic) to M3-G (governance_share_change, epsilon=0.05 per
+        # docs/governance-metric-redesign-7f7a.md's
+        # ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD decision) -- exact mirror of
+        # the financial-condition M1->M3 switch in Track 7F.4.
+        "largest_governance_shift", "governance_share_change", "share", 0.05,
+        lambda m: m.governance_share_change, _gate_report_side,
     ),
     CandidateSpec(
         # Track 7F.4: switched from M1 (rate difference, epsilon=1.0

@@ -421,6 +421,20 @@ class ReportPairLanguageFeatures(UUIDPkMixin, TimestampMixin, Base):
     financial_condition_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     financial_condition_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # --- Track 7F.7a.1: M3-G (governance hit-share change) / M6-G
+    # (governance topic-mix change) ---
+    # See docs/governance-metric-redesign-7f7a.md
+    # (ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD): M3-G is the primary Discover
+    # ranking/materiality metric for governance shifts (|M3-G| >= 0.05);
+    # M6-G is supporting detail only, never given a sign. M1-G above
+    # (`governance_language_change`) is retained unchanged as descriptive
+    # context, not used for ranking. Exact mirror of the financial_condition
+    # M3/M6b block above.
+    governance_share_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_share_later: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # --- Custom-taxonomy earlier/later/change (combined across subcategories) ---
     risk_rate_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
     risk_rate_later: Mapped[float | None] = mapped_column(Float, nullable=True)

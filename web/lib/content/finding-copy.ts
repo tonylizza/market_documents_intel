@@ -54,9 +54,10 @@ const FINDING_COPY: Record<DiscoveryType, FindingCopyConfig> = {
   },
   largest_governance_shift: {
     key: "largest_governance_shift",
-    headline: "Governance language changed",
-    description: "Governance-related language changed notably compared with the prior report.",
-    unit: "rate_per_1000_words",
+    headline: "Largest governance-language shift",
+    description:
+      "Change in governance language's share of classified risk / financial-condition / governance / strategy language, compared with the prior report.",
+    unit: "share",
   },
   largest_financial_condition_shift: {
     key: "largest_financial_condition_shift",

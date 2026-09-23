@@ -5,7 +5,7 @@ import { MalformedRowError } from "@/lib/db/errors";
 import { formatMetricValue } from "@/lib/formatting/numbers";
 import { isDiscoveryType, type DiscoveryType } from "@/lib/config/discovery";
 import { getFindingCopy } from "@/lib/content/finding-copy";
-import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus, GovernanceCompanyStatus } from "@/lib/domain/discovery";
 import { discoveryItemRowSchema } from "@/lib/schemas/discovery";
 import type { DiscoveryItemFilters, DiscoveryRepository } from "@/lib/repositories/discovery-repository";
 
@@ -22,6 +22,20 @@ const financialConditionStatusRowSchema = z.object({
   earlier_period_end: z.string().nullable(),
   later_period_end: z.string().nullable(),
   financial_condition_share_change: z.number().nullable(),
+  report_side_quality: z.string().nullable(),
+  report_side_primary_eligible: z.boolean().nullable(),
+});
+
+// Track 7F.7a.1: 0.05 mirrors `findings.CandidateSpec.epsilon` for
+// `largest_governance_shift` -- exact mirror of the financial-condition
+// materiality constant above.
+const GOVERNANCE_MATERIALITY_THRESHOLD = 0.05;
+
+const governanceStatusRowSchema = z.object({
+  id: z.string(),
+  earlier_period_end: z.string().nullable(),
+  later_period_end: z.string().nullable(),
+  governance_share_change: z.number().nullable(),
   report_side_quality: z.string().nullable(),
   report_side_primary_eligible: z.boolean().nullable(),
 });
@@ -137,6 +151,54 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
       status: "below_materiality",
       observedValue: largest.financial_condition_share_change as number,
       threshold: FINANCIAL_CONDITION_MATERIALITY_THRESHOLD,
+      reportComparisonId: largest.id,
+      earlierPeriodEnd: largest.earlier_period_end,
+      laterPeriodEnd: largest.later_period_end,
+    };
+  }
+
+  async getGovernanceCompanyStatus(companyTicker: string): Promise<GovernanceCompanyStatus> {
+    const rows = await query(
+      `SELECT rc.id, rc.earlier_period_end, rc.later_period_end,
+              rc.governance_share_change,
+              rc.report_side_quality, rc.report_side_primary_eligible
+       FROM app.current_report_comparisons rc
+       JOIN app.current_companies c ON c.id = rc.company_id
+       WHERE lower(c.ticker) = lower($1)`,
+      [companyTicker],
+    );
+
+    if (rows.length === 0) {
+      return { status: "no_comparisons" };
+    }
+
+    const parsedRows = rows.map((row, index) => {
+      const parsed = governanceStatusRowSchema.safeParse(row);
+      if (!parsed.success) {
+        throw new MalformedRowError(`governance-company-status[${index}]`, parsed.error.message);
+      }
+      return parsed.data;
+    });
+
+    const qualityEligible = parsedRows.filter(
+      (row) =>
+        (row.report_side_quality === "GOOD" || row.report_side_quality === "USABLE") &&
+        row.report_side_primary_eligible === true &&
+        row.governance_share_change !== null,
+    );
+
+    if (qualityEligible.length === 0) {
+      return { status: "failed_quality" };
+    }
+
+    const largest = qualityEligible.reduce((max, row) =>
+      Math.abs(row.governance_share_change as number) > Math.abs(max.governance_share_change as number) ? row : max,
+    );
+
+    return {
+      status: "below_materiality",
+      observedValue: largest.governance_share_change as number,
+      threshold: GOVERNANCE_MATERIALITY_THRESHOLD,
       reportComparisonId: largest.id,
       earlierPeriodEnd: largest.earlier_period_end,
       laterPeriodEnd: largest.later_period_end,

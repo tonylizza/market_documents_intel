@@ -300,6 +300,17 @@ class ReportComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     financial_condition_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     financial_condition_share_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     financial_condition_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Track 7F.7a.1: M3-G (governance_share_change) is the Discover
+    # ranking/materiality metric; M6-G (governance_topic_mix_change) is
+    # supporting detail only, never labeled (no positive/negative
+    # direction). `governance_change` above (M1-G) is unchanged, retained
+    # as descriptive context -- never repurposed. Exact mirror of the
+    # financial_condition M3/M6b block above.
+    governance_share_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_share_later: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_share_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    governance_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

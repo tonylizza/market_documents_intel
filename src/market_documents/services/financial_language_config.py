@@ -19,14 +19,20 @@ from dataclasses import asdict, dataclass
 from market_documents.services.similarity_tokenization import TOKENIZER_VERSION
 from market_documents.services.structured_content_audit import STRUCTURED_CONTENT_RULE_VERSION
 
-ALGORITHM_VERSION = "1.1.0"
+ALGORITHM_VERSION = "1.2.0"
 # Bumped for Track 7F.4: new persisted derived fields on
 # `ReportPairLanguageFeatures` (financial_condition_share_*, M3, and
 # financial_condition_topic_mix_change, M6b) -- no change to matching,
 # negation, or any existing rate formula. Bumping forces a fresh
 # `LanguageSignalRun` for every pair so the new columns actually get
 # populated, per `compute_configuration_hash`'s skip-check.
-SIGNAL_VERSION = "1.1.0"
+# Bumped again for Track 7F.7a.1: new persisted derived fields on
+# `ReportPairLanguageFeatures` (governance_share_*, M3-G, and
+# governance_topic_mix_change, M6-G) -- reuses the exact same
+# `custom_taxonomy_hit_share`/`cosine_distance` machinery introduced for
+# financial_condition in 7F.4, applied to the "governance" category. No
+# change to matching, negation, or any existing rate/share formula.
+SIGNAL_VERSION = "1.2.0"
 
 # Loughran-McDonald sentiment categories -- typed columns on
 # `PassageLanguageSignal`/`ReportPairLanguageFeatures` (spec item: "Core
@@ -54,6 +60,22 @@ FINANCIAL_CONDITION_SUBCATEGORIES = (
     "tax",
     "restructuring",
     "acquisitions_disposals",
+)
+
+# The 9 governance subcategories (see
+# config/financial_language_custom_taxonomy.yaml), fixed order -- the
+# dimension order of the M6-G (`governance_topic_mix_change`) subcategory-
+# share vector (Track 7F.7a / 7F.7a.1 ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD).
+GOVERNANCE_SUBCATEGORIES = (
+    "board",
+    "audit",
+    "internal_controls",
+    "remuneration",
+    "ethics",
+    "regulatory_compliance",
+    "litigation",
+    "shareholder_rights",
+    "related_party",
 )
 
 FINANCIAL_TOKENIZATION_VERSION = 1

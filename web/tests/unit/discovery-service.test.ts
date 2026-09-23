@@ -11,7 +11,7 @@ import type { DiscoveryRepository } from "@/lib/repositories/discovery-repositor
 import type { Company, CompanyDetail, CompanyHistory } from "@/lib/domain/company";
 import type { CompanyCardSummary, DiscoveryItemSummary } from "@/lib/domain/comparison";
 import type { ApplicationDataSummary } from "@/lib/domain/metric";
-import type { DiscoveryItem, FinancialConditionCompanyStatus } from "@/lib/domain/discovery";
+import type { DiscoveryItem, FinancialConditionCompanyStatus, GovernanceCompanyStatus } from "@/lib/domain/discovery";
 import type { DiscoveryType } from "@/lib/config/discovery";
 
 function makeItem(overrides: Partial<DiscoveryItem> = {}): DiscoveryItem {
@@ -54,6 +54,7 @@ function makeDiscoveryRepository(overrides: Partial<DiscoveryRepository> = {}): 
     listAvailableDiscoveryTypes: async () => ["largest_risk_introduction", "largest_risk_removal"] as DiscoveryType[],
     getDiscoveryItems: async () => [makeItem()],
     getFinancialConditionCompanyStatus: async () => ({ status: "no_comparisons" }) satisfies FinancialConditionCompanyStatus,
+    getGovernanceCompanyStatus: async () => ({ status: "no_comparisons" }) satisfies GovernanceCompanyStatus,
     ...overrides,
   };
 }

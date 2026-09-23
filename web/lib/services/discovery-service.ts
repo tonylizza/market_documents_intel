@@ -5,6 +5,7 @@ import type {
   DiscoveryFilterState,
   DiscoveryItem,
   FinancialConditionCompanyStatus,
+  GovernanceCompanyStatus,
 } from "@/lib/domain/discovery";
 import {
   DISCOVERY_TYPE_CONFIG,
@@ -47,6 +48,10 @@ export interface DiscoveryPageViewModel {
    * `items` came back empty; `null` otherwise (including for every other
    * discovery type, which keeps the generic empty state unchanged). */
   financialConditionCompanyStatus: FinancialConditionCompanyStatus | null;
+  /** Track 7F.7a.1 -- exact mirror of `financialConditionCompanyStatus`
+   * above, only populated when `selectedType === "largest_governance_
+   * shift"`. */
+  governanceCompanyStatus: GovernanceCompanyStatus | null;
 }
 
 /** Falls back to the first available (non-empty) discovery type when the
@@ -121,6 +126,11 @@ export async function getDiscoveryPageViewModel(
       ? await discoveryRepository.getFinancialConditionCompanyStatus(companyTicker)
       : null;
 
+  const governanceCompanyStatus =
+    selectedType === "largest_governance_shift" && companyTicker && items.length === 0
+      ? await discoveryRepository.getGovernanceCompanyStatus(companyTicker)
+      : null;
+
   return {
     availableTypes,
     selectedType: selectedType ?? typeConfig.type,
@@ -134,5 +144,6 @@ export async function getDiscoveryPageViewModel(
     },
     items,
     financialConditionCompanyStatus,
+    governanceCompanyStatus,
   };
 }

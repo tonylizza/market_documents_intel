@@ -54,6 +54,7 @@ from market_documents.services.financial_language_config import (
     CORE_CATEGORIES,
     CUSTOM_TAXONOMY_CATEGORIES,
     FINANCIAL_CONDITION_SUBCATEGORIES,
+    GOVERNANCE_SUBCATEGORIES,
     FINANCIAL_LANGUAGE_CONFIG,
     SIGNAL_VERSION,
     DictionaryFingerprint,
@@ -652,6 +653,18 @@ def _aggregate_pair_features(
         subcategory_share_vector(fc_subcategory_later, FINANCIAL_CONDITION_SUBCATEGORIES),
     )
 
+    # Track 7F.7a.1 -- M3-G (governance_share_change) and M6-G
+    # (governance_topic_mix_change), same population/machinery as
+    # financial_condition's M3/M6b above, applied to "governance".
+    gov_share_earlier = custom_taxonomy_hit_share(earlier_side, "governance")
+    gov_share_later = custom_taxonomy_hit_share(later_side, "governance")
+    gov_subcategory_earlier = custom_subcategory_totals(feature_eligible_primary, ReportSide.EARLIER, "governance")
+    gov_subcategory_later = custom_subcategory_totals(feature_eligible_primary, ReportSide.LATER, "governance")
+    gov_topic_mix_change = cosine_distance(
+        subcategory_share_vector(gov_subcategory_earlier, GOVERNANCE_SUBCATEGORIES),
+        subcategory_share_vector(gov_subcategory_later, GOVERNANCE_SUBCATEGORIES),
+    )
+
     report_side_assessment = assess_report_side_quality(
         ReportSideQualityInputs(
             is_transition=pair.is_transition,
@@ -837,6 +850,10 @@ def _aggregate_pair_features(
         financial_condition_share_later=fc_share_later,
         financial_condition_share_change=rate_change(fc_share_later, fc_share_earlier),
         financial_condition_topic_mix_change=fc_topic_mix_change,
+        governance_share_earlier=gov_share_earlier,
+        governance_share_later=gov_share_later,
+        governance_share_change=rate_change(gov_share_later, gov_share_earlier),
+        governance_topic_mix_change=gov_topic_mix_change,
         risk_rate_earlier=custom_category_rate(earlier_side, "risk"),
         risk_rate_later=custom_category_rate(later_side, "risk"),
         financial_condition_rate_earlier=custom_category_rate(earlier_side, "financial_condition"),
