@@ -23,8 +23,13 @@ describe("GovernanceSupportingDetail", () => {
     render(
       <GovernanceSupportingDetail
         languageDensityChange={1.736}
-        shareChange={0.0865}
         topicMixChange={0.0193}
+        shareEarlier={0.29}
+        shareLater={0.38}
+        hitsEarlier={40}
+        hitsLater={53}
+        customTaxonomyHitsEarlier={138}
+        customTaxonomyHitsLater={139}
         subcategoryMovers={[]}
       />,
     );
@@ -34,7 +39,19 @@ describe("GovernanceSupportingDetail", () => {
   });
 
   it("renders an empty state when there are no subcategory movers", () => {
-    render(<GovernanceSupportingDetail languageDensityChange={null} shareChange={null} topicMixChange={null} subcategoryMovers={[]} />);
+    render(
+      <GovernanceSupportingDetail
+        languageDensityChange={null}
+        topicMixChange={null}
+        shareEarlier={null}
+        shareLater={null}
+        hitsEarlier={null}
+        hitsLater={null}
+        customTaxonomyHitsEarlier={null}
+        customTaxonomyHitsLater={null}
+        subcategoryMovers={[]}
+      />,
+    );
     expect(screen.getByText(/No subcategory detail available/)).toBeInTheDocument();
   });
 
@@ -42,8 +59,13 @@ describe("GovernanceSupportingDetail", () => {
     render(
       <GovernanceSupportingDetail
         languageDensityChange={1.736}
-        shareChange={0.0865}
         topicMixChange={0.0193}
+        shareEarlier={0.29}
+        shareLater={0.38}
+        hitsEarlier={40}
+        hitsLater={53}
+        customTaxonomyHitsEarlier={138}
+        customTaxonomyHitsLater={139}
         subcategoryMovers={[makeMover()]}
       />,
     );
@@ -57,35 +79,76 @@ describe("GovernanceSupportingDetail", () => {
     render(
       <GovernanceSupportingDetail
         languageDensityChange={0.1}
-        shareChange={0.06}
         topicMixChange={0.02}
+        shareEarlier={0.3}
+        shareLater={0.36}
+        hitsEarlier={30}
+        hitsLater={36}
+        customTaxonomyHitsEarlier={100}
+        customTaxonomyHitsLater={100}
         subcategoryMovers={[makeMover({ id: "gov-litigation", subcategory: "litigation", lowVolume: true })]}
       />,
     );
     expect(screen.getByText(/low corpus-wide volume/)).toBeInTheDocument();
   });
 
-  it("Track 7F.7a.1 item 9: shows the share-relative interpretation when M3-G is material but M1-G is small (share-relative movement)", () => {
+  it("Track 7F.7a.1a: states the factual share/count decomposition (no 'changed little'/'own-volume' classification)", () => {
     render(
-      <GovernanceSupportingDetail languageDensityChange={0.1} shareChange={-0.09} topicMixChange={0.03} subcategoryMovers={[]} />,
+      <GovernanceSupportingDetail
+        languageDensityChange={0.1}
+        topicMixChange={0.03}
+        shareEarlier={0.4037940379403794}
+        shareLater={0.29444444444444445}
+        hitsEarlier={131}
+        hitsLater={106}
+        customTaxonomyHitsEarlier={324}
+        customTaxonomyHitsLater={360}
+        subcategoryMovers={[]}
+      />,
     );
     expect(
-      screen.getByText(/Governance language itself changed little, but its share of classified disclosure moved/),
+      screen.getByText(
+        /Governance language represented 40\.4% of classified disclosure in the earlier report and 29\.4% in the later report\. Governance hits changed from 131 to 106, while total classified-language hits changed from 324 to 360\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/changed little/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/own-volume/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/share-relative/)).not.toBeInTheDocument();
+  });
+
+  it("Track 7F.7a.1a: when governance hits are exactly unchanged, attributes the share movement to other classified categories factually", () => {
+    render(
+      <GovernanceSupportingDetail
+        languageDensityChange={0}
+        topicMixChange={0.01}
+        shareEarlier={0.4141791044776119}
+        shareLater={0.5135135135135135}
+        hitsEarlier={56}
+        hitsLater={56}
+        customTaxonomyHitsEarlier={135}
+        customTaxonomyHitsLater={109}
+        subcategoryMovers={[]}
+      />,
+    );
+    expect(
+      screen.getByText(/Governance hits did not change, so the share movement came from changes in other classified categories\./),
     ).toBeInTheDocument();
   });
 
-  it("Track 7F.7a.1 item 9: shows the own-volume interpretation when M1-G is large and consistent with M3-G", () => {
+  it("renders no decomposition text when share/hit-count data is unavailable", () => {
     render(
-      <GovernanceSupportingDetail languageDensityChange={1.7} shareChange={0.09} topicMixChange={0.03} subcategoryMovers={[]} />,
+      <GovernanceSupportingDetail
+        languageDensityChange={0.1}
+        topicMixChange={0.03}
+        shareEarlier={null}
+        shareLater={null}
+        hitsEarlier={null}
+        hitsLater={null}
+        customTaxonomyHitsEarlier={null}
+        customTaxonomyHitsLater={null}
+        subcategoryMovers={[]}
+      />,
     );
-    expect(screen.getByText(/own volume moved in a direction consistent with its share change/)).toBeInTheDocument();
-  });
-
-  it("shows no interpretation text when M3-G is below materiality", () => {
-    render(
-      <GovernanceSupportingDetail languageDensityChange={0.1} shareChange={0.02} topicMixChange={0.03} subcategoryMovers={[]} />,
-    );
-    expect(screen.queryByText(/Governance language itself changed little/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/own volume moved in a direction consistent/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Governance language represented/)).not.toBeInTheDocument();
   });
 });

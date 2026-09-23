@@ -87,6 +87,14 @@ function mapComparisonFromCardRow(row: CompanyCardRow): ComparisonSummary | null
     governanceShareChange: row.governance_share_change,
     governanceShareChangeLabel: row.governance_share_change_label,
     governanceTopicMixChange: row.governance_topic_mix_change,
+    // Not selected by the home-page card query (governance supporting
+    // detail isn't rendered there) -- `null` is a genuine "not fetched".
+    governanceShareEarlier: null,
+    governanceShareLater: null,
+    governanceHitsEarlier: null,
+    governanceHitsLater: null,
+    customTaxonomyHitsEarlier: null,
+    customTaxonomyHitsLater: null,
     reportSideQuality: row.report_side_quality,
     reportSideQualityLabel: row.report_side_quality_label,
     reportSidePrimaryEligible: row.report_side_primary_eligible,

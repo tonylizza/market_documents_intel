@@ -435,6 +435,20 @@ class ReportPairLanguageFeatures(UUIDPkMixin, TimestampMixin, Base):
     governance_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     governance_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # --- Track 7F.7a.1a: raw governance hit counts and total custom-taxonomy
+    # hit counts (H) earlier/later, so a governance finding's supporting
+    # detail can state the factual count/share decomposition behind M3-G
+    # (`governance_share_change = governance_hits / H`) instead of relying on
+    # the undocumented `|M1-G| < 1.0` "changed little" heuristic that 7F.6
+    # flagged and 7F.7a never validated as a semantic classifier. Never
+    # fabricated: 0 is a real count (unlike the share/topic-mix fields above,
+    # these are not ratios, so there is no "undefined" case to guard with
+    # `None`).
+    governance_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    governance_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_taxonomy_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_taxonomy_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # --- Custom-taxonomy earlier/later/change (combined across subcategories) ---
     risk_rate_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
     risk_rate_later: Mapped[float | None] = mapped_column(Float, nullable=True)

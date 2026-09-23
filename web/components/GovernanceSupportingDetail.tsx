@@ -1,5 +1,5 @@
 import type { GovernanceSubcategoryMover } from "@/lib/services/comparison-service";
-import { formatMetricValue } from "@/lib/formatting/numbers";
+import { formatCount, formatMetricValue } from "@/lib/formatting/numbers";
 import { formatCategoryLabel } from "@/lib/formatting/labels";
 import { DefinitionList } from "./DefinitionList";
 import { EmptyState } from "./EmptyState";
@@ -10,32 +10,57 @@ export interface GovernanceSupportingDetailProps {
    * words. Descriptive context only; never the Discover ranking metric
    * (that's M3-G, `governanceShareChange`, shown via the finding itself). */
   languageDensityChange: number | null;
-  /** M3-G -- the Discover ranking/materiality metric, shown here again so
-   * the share-relative interpretation below can reference it directly. */
-  shareChange: number | null;
   /** M6-G -- topic-mix change, unsigned. */
   topicMixChange: number | null;
+  /** Track 7F.7a.1a -- governance's share of classified disclosure, each
+   * side (`shareEarlier = hitsEarlier / customTaxonomyHitsEarlier`). */
+  shareEarlier: number | null;
+  shareLater: number | null;
+  /** Track 7F.7a.1a -- raw governance hit counts, each side. */
+  hitsEarlier: number | null;
+  hitsLater: number | null;
+  /** Track 7F.7a.1a -- total custom-taxonomy (risk + financial-condition +
+   * governance + strategy) hit counts, each side -- "H" in the M3-G
+   * formula (`governanceShare = governanceHits / customTaxonomyHits`). */
+  customTaxonomyHitsEarlier: number | null;
+  customTaxonomyHitsLater: number | null;
   subcategoryMovers: readonly GovernanceSubcategoryMover[];
 }
 
 /**
- * Track 7F.7a.1 items 9/10/11/12: M1-G (supporting density context), M6-G
- * (topic-mix change, unsigned, never given a +/- direction), the top
- * governance subcategory movers with hit counts and share contributions,
- * and a share-relative interpretation branch distinguishing governance's
- * own-volume movement (M1-G moved in the same direction and magnitude as
- * M3-G would suggest) from share-relative movement (M1-G is flat/small
- * while M3-G moved because other custom-taxonomy categories changed more).
- * Purely supporting detail for a governance finding -- never the Discover
- * ranking metric itself (that's M3-G, shown via the finding itself).
+ * Track 7F.7a.1 items 9/10/11/12, corrected by 7F.7a.1a: M1-G (supporting
+ * density context), M6-G (topic-mix change, unsigned, never given a +/-
+ * direction), the top governance subcategory movers with hit counts and
+ * share contributions, and a factual count/share decomposition of the
+ * governance share movement (governance's share of classified disclosure,
+ * governance hit counts, and total classified-language hit counts H, each
+ * side). The decomposition states observed counts/shares only -- it never
+ * classifies the movement as "changed little", "own-volume", or
+ * "share-relative" (the `|M1-G| < 1.0` heuristic previously used for that
+ * was an undocumented threshold 7F.6 flagged and 7F.7a never validated for
+ * this purpose; removed in 7F.7a.1a). Purely supporting detail for a
+ * governance finding -- never the Discover ranking metric itself (that's
+ * M3-G, shown via the finding itself).
  */
 export function GovernanceSupportingDetail({
   languageDensityChange,
-  shareChange,
   topicMixChange,
+  shareEarlier,
+  shareLater,
+  hitsEarlier,
+  hitsLater,
+  customTaxonomyHitsEarlier,
+  customTaxonomyHitsLater,
   subcategoryMovers,
 }: GovernanceSupportingDetailProps) {
-  const interpretation = buildShareRelativeInterpretation(languageDensityChange, shareChange);
+  const decomposition = buildShareDecomposition(
+    shareEarlier,
+    shareLater,
+    hitsEarlier,
+    hitsLater,
+    customTaxonomyHitsEarlier,
+    customTaxonomyHitsLater,
+  );
 
   return (
     <div className={styles.wrapper}>
@@ -56,7 +81,7 @@ export function GovernanceSupportingDetail({
         ]}
       />
 
-      {interpretation && <p className={styles.caution}>{interpretation}</p>}
+      {decomposition && <p>{decomposition}</p>}
 
       {subcategoryMovers.length === 0 ? (
         <EmptyState
@@ -100,22 +125,43 @@ export function GovernanceSupportingDetail({
 }
 
 /**
- * Track 7F.7a.1 item 9 (mandatory): distinguishes governance-own-volume
- * movement from share-relative movement caused primarily by changes in
- * other custom-taxonomy categories. Heuristic (not a new severity system):
- * if M3-G is materially large while M1-G is small/flat, the share moved
- * mostly because other categories changed, not because governance language
- * itself changed much -- surfaced as descriptive text, never a claim of
- * causality beyond the observed counts.
+ * Track 7F.7a.1a: factual count/share decomposition of the governance share
+ * movement, replacing the removed `|M1-G| < 1.0` heuristic (7F.6 flagged it
+ * as undocumented; 7F.7a never validated it as a semantic "changed little"
+ * classifier). States the observed governance share/hit counts and total
+ * classified-language hit counts H on each side, with no interpretation and
+ * no new numeric threshold -- the one narrative exception (per spec) is
+ * when governance hits are exactly unchanged, where it is factually
+ * accurate (not a classification) to say the share movement came from other
+ * classified categories.
  */
-function buildShareRelativeInterpretation(languageDensityChange: number | null, shareChange: number | null): string | null {
-  if (shareChange === null) return null;
-  const shareMagnitude = Math.abs(shareChange);
-  if (shareMagnitude < 0.05) return null; // below materiality -- no interpretation needed here
-  const densityMagnitude = languageDensityChange === null ? null : Math.abs(languageDensityChange);
-  const isShareRelative = densityMagnitude === null || densityMagnitude < 1.0;
-  if (isShareRelative) {
-    return "Governance language itself changed little, but its share of classified disclosure moved because other disclosure topics grew or shrank more.";
+function buildShareDecomposition(
+  shareEarlier: number | null,
+  shareLater: number | null,
+  hitsEarlier: number | null,
+  hitsLater: number | null,
+  taxonomyHitsEarlier: number | null,
+  taxonomyHitsLater: number | null,
+): string | null {
+  if (
+    shareEarlier === null ||
+    shareLater === null ||
+    hitsEarlier === null ||
+    hitsLater === null ||
+    taxonomyHitsEarlier === null ||
+    taxonomyHitsLater === null
+  ) {
+    return null;
   }
-  return "Governance language's own volume moved in a direction consistent with its share change.";
+  const earlierSharePct = formatMetricValue(shareEarlier, "share");
+  const laterSharePct = formatMetricValue(shareLater, "share");
+  const base =
+    `Governance language represented ${earlierSharePct} of classified disclosure in the earlier report and ` +
+    `${laterSharePct} in the later report. Governance hits changed from ${formatCount(hitsEarlier)} to ` +
+    `${formatCount(hitsLater)}, while total classified-language hits changed from ${formatCount(taxonomyHitsEarlier)} ` +
+    `to ${formatCount(taxonomyHitsLater)}.`;
+  if (hitsEarlier === hitsLater) {
+    return `${base} Governance hits did not change, so the share movement came from changes in other classified categories.`;
+  }
+  return base;
 }

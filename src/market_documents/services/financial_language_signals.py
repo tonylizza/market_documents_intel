@@ -664,6 +664,15 @@ def _aggregate_pair_features(
         subcategory_share_vector(gov_subcategory_earlier, GOVERNANCE_SUBCATEGORIES),
         subcategory_share_vector(gov_subcategory_later, GOVERNANCE_SUBCATEGORIES),
     )
+    # Track 7F.7a.1a: raw counts behind `gov_share_earlier`/`_later` above
+    # (`governance_share(side) = governance_hits(side) / total_custom_
+    # taxonomy_hits(side)`), persisted so supporting-detail UI can state the
+    # factual count/share decomposition instead of the removed |M1-G| < 1.0
+    # heuristic.
+    gov_hits_earlier = earlier_side.custom_category_totals.get("governance", 0)
+    gov_hits_later = later_side.custom_category_totals.get("governance", 0)
+    custom_taxonomy_hits_earlier = sum(earlier_side.custom_category_totals.values())
+    custom_taxonomy_hits_later = sum(later_side.custom_category_totals.values())
 
     report_side_assessment = assess_report_side_quality(
         ReportSideQualityInputs(
@@ -854,6 +863,10 @@ def _aggregate_pair_features(
         governance_share_later=gov_share_later,
         governance_share_change=rate_change(gov_share_later, gov_share_earlier),
         governance_topic_mix_change=gov_topic_mix_change,
+        governance_hits_earlier=gov_hits_earlier,
+        governance_hits_later=gov_hits_later,
+        custom_taxonomy_hits_earlier=custom_taxonomy_hits_earlier,
+        custom_taxonomy_hits_later=custom_taxonomy_hits_later,
         risk_rate_earlier=custom_category_rate(earlier_side, "risk"),
         risk_rate_later=custom_category_rate(later_side, "risk"),
         financial_condition_rate_earlier=custom_category_rate(earlier_side, "financial_condition"),

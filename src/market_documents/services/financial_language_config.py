@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass
 from market_documents.services.similarity_tokenization import TOKENIZER_VERSION
 from market_documents.services.structured_content_audit import STRUCTURED_CONTENT_RULE_VERSION
 
-ALGORITHM_VERSION = "1.2.0"
+ALGORITHM_VERSION = "1.3.0"
 # Bumped for Track 7F.4: new persisted derived fields on
 # `ReportPairLanguageFeatures` (financial_condition_share_*, M3, and
 # financial_condition_topic_mix_change, M6b) -- no change to matching,
@@ -32,7 +32,14 @@ ALGORITHM_VERSION = "1.2.0"
 # `custom_taxonomy_hit_share`/`cosine_distance` machinery introduced for
 # financial_condition in 7F.4, applied to the "governance" category. No
 # change to matching, negation, or any existing rate/share formula.
-SIGNAL_VERSION = "1.2.0"
+# Bumped again for Track 7F.7a.1a: new persisted derived fields on
+# `ReportPairLanguageFeatures` (governance_hits_earlier/_later,
+# custom_taxonomy_hits_earlier/_later) -- raw counts already computed by
+# `aggregate_side`/`SidePopulation.custom_category_totals`, now persisted
+# so supporting-detail UI can state the factual count/share decomposition
+# instead of the removed |M1-G| < 1.0 heuristic. No change to matching,
+# negation, or any existing rate/share formula.
+SIGNAL_VERSION = "1.3.0"
 
 # Loughran-McDonald sentiment categories -- typed columns on
 # `PassageLanguageSignal`/`ReportPairLanguageFeatures` (spec item: "Core

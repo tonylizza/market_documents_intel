@@ -188,8 +188,13 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
         />
         <GovernanceSupportingDetail
           languageDensityChange={comparison.governanceChange}
-          shareChange={comparison.governanceShareChange}
           topicMixChange={comparison.governanceTopicMixChange}
+          shareEarlier={comparison.governanceShareEarlier}
+          shareLater={comparison.governanceShareLater}
+          hitsEarlier={comparison.governanceHitsEarlier}
+          hitsLater={comparison.governanceHitsLater}
+          customTaxonomyHitsEarlier={comparison.customTaxonomyHitsEarlier}
+          customTaxonomyHitsLater={comparison.customTaxonomyHitsLater}
           subcategoryMovers={governanceSubcategoryMovers}
         />
       </section>

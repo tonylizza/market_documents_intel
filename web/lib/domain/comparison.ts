@@ -50,8 +50,22 @@ export interface ComparisonSummary {
    * context only. */
   governanceShareChange: number | null;
   governanceShareChangeLabel: string | null;
+  /** Track 7F.7a.1a -- governance's share of classified disclosure, each
+   * side, for the factual count/share decomposition (`governanceShareEarlier
+   * = governanceHitsEarlier / customTaxonomyHitsEarlier`). */
+  governanceShareEarlier: number | null;
+  governanceShareLater: number | null;
   /** Track 7F.7a.1 M6-G -- supporting detail only, never a signed label. */
   governanceTopicMixChange: number | null;
+  /** Track 7F.7a.1a -- raw counts behind M3-G's share ratio
+   * (`governanceShareChange = governanceHits / customTaxonomyHits`), for
+   * the factual count/share decomposition in governance supporting detail.
+   * Never a fabricated 0 -- `null` only when not computed (no language
+   * signal run for this side). */
+  governanceHitsEarlier: number | null;
+  governanceHitsLater: number | null;
+  customTaxonomyHitsEarlier: number | null;
+  customTaxonomyHitsLater: number | null;
 
   reportSideQuality: RawQuality | null;
   reportSideQualityLabel: string | null;

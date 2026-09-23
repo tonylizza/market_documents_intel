@@ -311,6 +311,14 @@ class ReportComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     governance_share_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     governance_share_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     governance_topic_mix_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Track 7F.7a.1a: raw counts behind M3-G's share ratio, so the
+    # comparison/evidence UI can state the factual count/share decomposition
+    # for a governance finding instead of the removed |M1-G| < 1.0
+    # heuristic. See `ReportPairLanguageFeatures.governance_hits_earlier`.
+    governance_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    governance_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_taxonomy_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_taxonomy_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
     forward_looking_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

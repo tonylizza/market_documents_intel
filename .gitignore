@@ -29,3 +29,5 @@ data/reference/financial_language/loughran_mcdonald/*
 # Hugging Face model cache -- never commit model weights.
 .cache/
 .vercel
+node_modules
+.pnpm-store/

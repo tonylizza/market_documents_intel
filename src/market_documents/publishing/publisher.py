@@ -570,6 +570,10 @@ class PublicationBuilder:
                     bands_by_metric["governance_share_change"],
                 ),
                 governance_topic_mix_change=lf.governance_topic_mix_change if lf else None,
+                governance_hits_earlier=lf.governance_hits_earlier if lf else None,
+                governance_hits_later=lf.governance_hits_later if lf else None,
+                custom_taxonomy_hits_earlier=lf.custom_taxonomy_hits_earlier if lf else None,
+                custom_taxonomy_hits_later=lf.custom_taxonomy_hits_later if lf else None,
                 financial_condition_change=lf.financial_condition_language_change if lf else None,
                 financial_condition_change_label=labels.label_for_signed_metric(
                     lf.financial_condition_language_change if lf else None,

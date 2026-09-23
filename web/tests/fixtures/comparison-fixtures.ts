@@ -41,7 +41,13 @@ export function makeComparisonSummary(overrides: Partial<ComparisonSummary> = {}
     financialConditionTopicMixChange: 0.05,
     governanceShareChange: 0.02,
     governanceShareChangeLabel: "Minimal increase",
+    governanceShareEarlier: 0.3,
+    governanceShareLater: 0.32,
     governanceTopicMixChange: 0.03,
+    governanceHitsEarlier: 30,
+    governanceHitsLater: 32,
+    customTaxonomyHitsEarlier: 100,
+    customTaxonomyHitsLater: 100,
 
     reportSideQuality: "GOOD",
     reportSideQualityLabel: "Analysis ready",
