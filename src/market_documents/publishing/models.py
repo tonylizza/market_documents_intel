@@ -31,6 +31,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -1052,6 +1053,11 @@ class QaChunk(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
         Index("ix_app_qa_chunks_publication_id", "publication_id"),
         Index("ix_app_qa_chunks_report_id", "report_id"),
         Index("ix_app_qa_chunks_company_id", "company_id"),
+        # Track 7F.10: lets the artifact-first QA vector search (HNSW scan
+        # on `app_artifacts.qa_chunks`, see `postgres-qa-chunk-repository.
+        # ts`) resolve each candidate to the active publication's thin row
+        # by nested-loop index lookup, preserving the HNSW ordering.
+        Index("ix_app_qa_chunks_artifact_publication", "qa_chunking_artifact_id", "publication_id"),
         Index(
             "ix_app_qa_chunks_hnsw_cosine",
             "embedding",
@@ -1407,21 +1413,49 @@ class ArtifactRetrievalContextRiskSubcategory(AppUUIDPkMixin, AppCreatedAtMixin,
 class ArtifactPassageLanguageSignal(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     """One passage/category/subcategory language-signal count, shared across
     every publication whose signal-extraction logic (and therefore
-    `labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION`) is unchanged for this
-    `source_signal_id`."""
+    `labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION`) is unchanged.
+
+    Track 7F.10: identity is (`source_passage_alignment_id`, `report_side`,
+    `category`, `subcategory`, version) from signals_v2 onward -- a research
+    alignment row is stable across every `LanguageSignalRun` pinned to the
+    same `AlignmentRun`, unlike the research `PassageLanguageSignal.id` each
+    run mints afresh. signals_v1 rows (app_0014/app_0015 builds) keep their
+    original `source_signal_id` identity and NULL alignment id; the two
+    partial unique indexes below each cover exactly one scheme, and
+    `ck_..._identity` guarantees every row carries one of them."""
 
     __tablename__ = "passage_language_signals"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_app_artifacts_passage_language_signals_scope",
             "source_signal_id", "report_side", "category", "subcategory", "language_signal_artifact_version",
-            name="uq_app_artifacts_passage_language_signals_scope",
+            unique=True,
             postgresql_nulls_not_distinct=True,
+            postgresql_where=text("source_signal_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_app_artifacts_passage_language_signals_alignment_scope",
+            "source_passage_alignment_id", "report_side", "category", "subcategory",
+            "language_signal_artifact_version",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+            postgresql_where=text("source_passage_alignment_id IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "source_signal_id IS NOT NULL OR source_passage_alignment_id IS NOT NULL",
+            name="ck_app_artifacts_passage_language_signals_identity",
         ),
         Index("ix_app_artifacts_passage_language_signals_source", "source_signal_id"),
         {"schema": "app_artifacts"},
     )
 
-    source_signal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # signals_v1 identity only (NULL from signals_v2 onward).
+    source_signal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # signals_v2+ identity (NULL on signals_v1 rows). `source_passage_id` is
+    # lineage, determined by (alignment, side) -- also folded into the
+    # content hash as a defensive check.
+    source_passage_alignment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_passage_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     report_side: Mapped[str] = mapped_column(String(16), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     subcategory: Mapped[str | None] = mapped_column(String(64), nullable=True)

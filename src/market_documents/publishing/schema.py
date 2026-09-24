@@ -384,3 +384,49 @@ ARTIFACT_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
 DROP_ARTIFACT_CURRENT_VIEWS_SQL = tuple(
     f"DROP VIEW IF EXISTS app.{name};" for name, _ in reversed(ARTIFACT_CURRENT_VIEWS)
 )
+
+# ---------------------------------------------------------------------------
+# Track 7F.10: index-usable QA chunk vector view
+# ---------------------------------------------------------------------------
+#
+# `app.current_qa_chunks` orders by `COALESCE(t.embedding, art.embedding)`,
+# an expression no vector index covers, so every nearest-neighbour query
+# through it is a full scan + top-N sort. This view exposes the shared-
+# artifact embedding column itself, so `ORDER BY embedding <=> $1 LIMIT k`
+# drives an HNSW scan on `app_artifacts.qa_chunks` (`ix_app_artifacts_qa_
+# chunks_hnsw_cosine`), then resolves each candidate to the ACTIVE
+# publication's thin row with a nested-loop lookup on `ix_app_qa_chunks_
+# artifact_publication` (added by app_0016).
+#
+# Two plan-shape details are deliberate, both measured on the real corpus:
+# - The active publication is a scalar subquery (one InitPlan), not a join
+#   against `application_state`. With the join form, the planner adds a
+#   join filter after the index lookup.
+# - There is one branch only. A UNION ALL with the legacy inline branch stops
+#   the planner pushing the ORDER BY into the branches (a full scan again).
+#
+# Legacy publications (embedding inline on the thin row, built before
+# 7F.7a.5) are therefore not in this view. `t.embedding IS NULL` keeps it
+# consistent with the COALESCE view's precedence for every row it does
+# return. The web repository falls back to the exact `current_qa_chunks`
+# query when this view is empty, which is the only time a legacy
+# publication can be active.
+QA_CHUNK_VECTOR_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
+    (
+        "current_qa_chunk_vectors",
+        "CREATE OR REPLACE VIEW app.current_qa_chunk_vectors AS "
+        "SELECT t.id, t.publication_id, t.report_id, t.company_id, t.chunk_index, "
+        "art.embedding, art.text, art.section_heading, art.page_start, art.page_end, art.token_count, "
+        "t.qa_chunking_artifact_id "
+        "FROM app_artifacts.qa_chunks art "
+        "JOIN app.qa_chunks t ON t.qa_chunking_artifact_id = art.id "
+        "WHERE t.embedding IS NULL "
+        "AND t.publication_id = ("
+        "SELECT s.active_publication_id FROM app_internal.application_state s "
+        "WHERE s.singleton_key = 'active');",
+    ),
+)
+
+DROP_QA_CHUNK_VECTOR_CURRENT_VIEWS_SQL = tuple(
+    f"DROP VIEW IF EXISTS app.{name};" for name, _ in reversed(QA_CHUNK_VECTOR_CURRENT_VIEWS)
+)

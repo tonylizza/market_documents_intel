@@ -38,6 +38,38 @@ def assert_distinct_databases(source_url: str, target_url: str, allow_same_datab
         )
 
 
+# `alembic_app.ini`'s literal placeholder -- never a real target.
+ALEMBIC_PLACEHOLDER_URL = "driver://user:pass@localhost/dbname"
+
+# Key under which `cli/publish.py` hands an explicit target URL to
+# `migrations_app/env.py` via `alembic.config.Config.attributes` (never via
+# `sqlalchemy.url`, whose ConfigParser interpolation mangles `%` in
+# passwords).
+TARGET_URL_ATTRIBUTE = "target_database_url"
+
+
+def resolve_app_migration_url(explicit_url: str | None, ini_url: str | None, settings_url: str) -> str:
+    """Track 7F.10: the application-migration target, in strict precedence:
+    an explicit caller-supplied target (`app-init --target-database-url`,
+    or a programmatic `Config.attributes` entry) > a real (non-placeholder)
+    `sqlalchemy.url` set on the Alembic config > `Settings.app_database_url`
+    (`APP_DATABASE_URL`). `migrations_app/env.py` previously overwrote
+    `sqlalchemy.url` with the settings value unconditionally, so an explicit
+    target was silently ignored and the dev database was migrated instead."""
+    if explicit_url:
+        return explicit_url
+    if ini_url and ini_url != ALEMBIC_PLACEHOLDER_URL:
+        return ini_url
+    return settings_url
+
+
+def describe_database_target(url: str) -> str:
+    """`host:port/database` for operator confirmation -- never the user,
+    password, or query string."""
+    host, port, database = _normalized_target(url)
+    return f"{host or 'localhost'}:{port or 5432}/{database}"
+
+
 def create_app_engine(database_url: str):
     return create_engine(database_url, future=True)
 

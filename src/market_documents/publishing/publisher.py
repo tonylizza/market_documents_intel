@@ -280,6 +280,32 @@ def _check_content_hash(existing_hash: str, computed_hash: str, table: str, iden
         )
 
 
+def _signal_artifact_id(signal, category: str, subcategory: str | None) -> uuid.UUID:
+    """Track 7F.10: stable `app_artifacts.passage_language_signals` identity
+    (signals_v2+). The research `passage_alignment_id` + `report_side` pair
+    is unique per `LanguageSignalRun` (research constraint `uq_passage_
+    language_signals_run_alignment_side`) and identical across every run
+    pinned to the same `AlignmentRun`, so a metric-only `SIGNAL_VERSION`
+    rerun resolves to the SAME ids. A new alignment run mints new alignment
+    ids, so re-alignment can never falsely reuse. Extraction semantics
+    (taxonomy, dictionary, normalization, negation, structured-content
+    rules) are deliberately NOT identity parts: they are covered by the
+    `LANGUAGE_SIGNAL_ARTIFACT_VERSION` bump rule, and `_check_content_hash`
+    fails loudly if they change content without that bump."""
+    return labels.derive_id(
+        labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
+        str(signal.passage_alignment_id), signal.report_side.value, category, subcategory or "",
+    )
+
+
+def _signal_content_hash(signal, content: dict) -> str:
+    return _content_hash(
+        signal.passage_id,
+        content["raw_count"], content["negated_count"], content["adjusted_count"], content["rate_per_1000"],
+        content["is_introduced"], content["is_removed"], content["is_retained"],
+    )
+
+
 def _new_rate_words(features) -> float | None:
     denom = (
         features.eligible_unchanged_words
@@ -979,10 +1005,8 @@ class PublicationBuilder:
         # `passage_language_signals`, precomputed here (before this data is
         # otherwise available, inside the signals loop further below) so one
         # SELECT covers every signal/category/subcategory in this snapshot.
-        # Identity parts deliberately mirror the thin table's own original id
-        # scheme exactly (`signal.id`, `category`, `subcategory`) -- `report_
-        # side` is not a separate discriminator because a research `signal.id`
-        # already belongs to exactly one side.
+        # Track 7F.10: identity is `_signal_artifact_id` (stable research
+        # alignment row + side), never the transient research `signal.id`.
         all_signal_artifact_ids: set[uuid.UUID] = set()
         for cd in snapshot.comparisons:
             if cd.language_features is None or cd.language_lineage_mismatch:
@@ -991,21 +1015,11 @@ class PublicationBuilder:
                 for category in CORE_CATEGORIES:
                     if getattr(signal, f"{category}_count") == 0:
                         continue
-                    all_signal_artifact_ids.add(
-                        labels.derive_id(
-                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
-                            str(signal.id), category, "",
-                        )
-                    )
+                    all_signal_artifact_ids.add(_signal_artifact_id(signal, category, None))
                 for hit in cd.category_hits_by_signal_id.get(signal.id, []):
                     if hit.hit_count <= 0:
                         continue
-                    all_signal_artifact_ids.add(
-                        labels.derive_id(
-                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
-                            str(signal.id), hit.category, hit.subcategory,
-                        )
-                    )
+                    all_signal_artifact_ids.add(_signal_artifact_id(signal, hit.category, hit.subcategory))
         existing_signal_artifacts: dict[uuid.UUID, ArtifactPassageLanguageSignal] = (
             {
                 a.id: a
@@ -1243,26 +1257,20 @@ class PublicationBuilder:
                             is_removed=is_removed,
                             is_retained=is_retained,
                         )
-                        signal_artifact_id = labels.derive_id(
-                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
-                            str(signal.id), category, "",
-                        )
-                        signal_computed_hash = _content_hash(
-                            signal_content["raw_count"], signal_content["negated_count"],
-                            signal_content["adjusted_count"], signal_content["rate_per_1000"],
-                            signal_content["is_introduced"], signal_content["is_removed"],
-                            signal_content["is_retained"],
-                        )
+                        signal_artifact_id = _signal_artifact_id(signal, category, None)
+                        signal_computed_hash = _signal_content_hash(signal, signal_content)
                         signal_artifact = existing_signal_artifacts.get(signal_artifact_id)
                         if signal_artifact is not None:
                             _check_content_hash(
                                 signal_artifact.content_hash, signal_computed_hash,
-                                "passage_language_signals", f"{signal.id}:{category}",
+                                "passage_language_signals",
+                                f"{signal.passage_alignment_id}:{signal.report_side.value}:{category}",
                             )
                         else:
                             signal_artifact = ArtifactPassageLanguageSignal(
                                 id=signal_artifact_id,
-                                source_signal_id=signal.id,
+                                source_passage_alignment_id=signal.passage_alignment_id,
+                                source_passage_id=signal.passage_id,
                                 report_side=signal.report_side.value,
                                 category=category,
                                 subcategory=None,
@@ -1312,25 +1320,21 @@ class PublicationBuilder:
                             is_removed=is_removed,
                             is_retained=is_retained,
                         )
-                        hit_artifact_id = labels.derive_id(
-                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
-                            str(signal.id), hit.category, hit.subcategory,
-                        )
-                        hit_computed_hash = _content_hash(
-                            hit_content["raw_count"], hit_content["negated_count"],
-                            hit_content["adjusted_count"], hit_content["rate_per_1000"],
-                            hit_content["is_introduced"], hit_content["is_removed"], hit_content["is_retained"],
-                        )
+                        hit_artifact_id = _signal_artifact_id(signal, hit.category, hit.subcategory)
+                        hit_computed_hash = _signal_content_hash(signal, hit_content)
                         hit_artifact = existing_signal_artifacts.get(hit_artifact_id)
                         if hit_artifact is not None:
                             _check_content_hash(
                                 hit_artifact.content_hash, hit_computed_hash,
-                                "passage_language_signals", f"{signal.id}:{hit.category}:{hit.subcategory}",
+                                "passage_language_signals",
+                                f"{signal.passage_alignment_id}:{signal.report_side.value}:"
+                                f"{hit.category}:{hit.subcategory}",
                             )
                         else:
                             hit_artifact = ArtifactPassageLanguageSignal(
                                 id=hit_artifact_id,
-                                source_signal_id=signal.id,
+                                source_passage_alignment_id=signal.passage_alignment_id,
+                                source_passage_id=signal.passage_id,
                                 report_side=signal.report_side.value,
                                 category=hit.category,
                                 subcategory=hit.subcategory,

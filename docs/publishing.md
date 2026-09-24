@@ -85,6 +85,18 @@ with `script_location` pointed at `migrations_app`:
 ```
 
 (`market-documents publish app-init` wraps `upgrade head` for convenience.)
+
+**Migration target precedence (Track 7F.10).** The target is chosen in this order:
+
+1. `app-init --target-database-url` (or an explicit `Config.attributes["target_database_url"]`);
+2. a real `sqlalchemy.url` set on the Alembic config;
+3. `APP_DATABASE_URL`.
+
+`app-init` prints the target it actually migrated (`host:port/database`, never credentials) and the
+source it came from, then reads back the revision from that database. Before 7F.10,
+`migrations_app/env.py` always replaced the URL with `APP_DATABASE_URL`, so `--target-database-url`
+was silently ignored. A plain `alembic -c alembic_app.ini …` (placeholder URL in the ini) still uses
+`APP_DATABASE_URL`.
 Migration order: `app_0001` (publications, application_state, companies,
 metric_definitions, metric_label_thresholds) → `app_0002` (reports) →
 `app_0003` (passages, report_comparisons) → `app_0004` (language_metrics,

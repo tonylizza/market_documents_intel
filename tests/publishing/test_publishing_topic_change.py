@@ -1,6 +1,6 @@
 """Track 7F.9: publication of the unified topic-change metric fields, the
-updated metric catalog, disabled-type validation, and the measured
-shared-artifact behaviour of a language-signal-run regeneration."""
+updated metric catalog, disabled-type validation, and the shared-artifact
+behaviour of a language-signal-run regeneration (reuse since 7F.10)."""
 
 import sys
 from pathlib import Path
@@ -88,14 +88,12 @@ def test_catalog_and_validation_reflect_frozen_methodology(db_session, app_db_se
     assert summary.passed, summary.failures
 
 
-def test_signal_run_regeneration_creates_new_signal_artifact_generation_only(db_session, app_db_session, tmp_path):
-    """Pins the measured 7F.9 behaviour (docs/discover-metrics-unified-
-    implementation-7f9.md Section 14): `passage_language_signals` artifact
-    identity includes the research `PassageLanguageSignal.id`, so a fresh
-    LanguageSignalRun -- even with byte-identical per-passage content and no
-    LANGUAGE_SIGNAL_ARTIFACT_VERSION bump -- yields a new signal-artifact
-    generation. Alignment-axis families (passage comparisons, retrieval
-    contexts) are reused unchanged."""
+def test_signal_run_regeneration_reuses_signal_artifact_generation(db_session, app_db_session, tmp_path):
+    """7F.9 measured a duplicate signal-artifact generation here, because the
+    identity included the research `PassageLanguageSignal.id`. Since Track
+    7F.10 (signals_v2, stable alignment-row identity) a fresh LanguageSignalRun
+    with byte-identical per-passage content reuses every family, signals
+    included (more cases: test_signal_artifact_identity.py)."""
     pair, _run, _signals = _build_and_feature(db_session, tmp_path, ticker="TC3")
     first = PublicationBuilder(publication_version="tc-v3a", include_qa_chunks=False).build(db_session, app_db_session)
     assert first.status == PublicationStatus.READY.value, first.failure_reason
@@ -110,4 +108,4 @@ def test_signal_run_regeneration_creates_new_signal_artifact_generation_only(db_
     assert after[ArtifactPassageComparison.__tablename__] == before[ArtifactPassageComparison.__tablename__]
     assert after[ArtifactRetrievalContext.__tablename__] == before[ArtifactRetrievalContext.__tablename__]
     signals = ArtifactPassageLanguageSignal.__tablename__
-    assert after[signals] == 2 * before[signals] > 0
+    assert after[signals] == before[signals] > 0

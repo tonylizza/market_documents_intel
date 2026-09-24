@@ -24,7 +24,13 @@ from market_documents.publishing.retrieval_benchmark import (
     run_company_filtered_benchmark,
     run_unfiltered_benchmark,
 )
-from market_documents.publishing.session import app_session_scope, assert_distinct_databases
+from market_documents.publishing.session import (
+    TARGET_URL_ATTRIBUTE,
+    app_session_scope,
+    assert_distinct_databases,
+    create_app_engine,
+    describe_database_target,
+)
 from market_documents.publishing.validation import validate_persisted
 
 app = typer.Typer(help="Application/publication-layer commands (Milestone 7A.1).")
@@ -39,21 +45,37 @@ def _target_url(target_database_url: str | None) -> str:
 def _app_alembic_config(target_database_url: str) -> AlembicConfig:
     cfg = AlembicConfig(str(_REPO_ROOT / "alembic_app.ini"))
     cfg.set_main_option("script_location", str(_REPO_ROOT / "migrations_app"))
-    cfg.set_main_option("sqlalchemy.url", target_database_url)
+    # Track 7F.10: handed over as an explicit attribute, which
+    # `migrations_app/env.py` honours ahead of `APP_DATABASE_URL`.
+    cfg.attributes[TARGET_URL_ATTRIBUTE] = target_database_url
     return cfg
 
 
 @app.command("app-init")
 def app_init(
-    target_database_url: str = typer.Option(None, "--target-database-url", envvar="APP_DATABASE_URL"),
+    target_database_url: str = typer.Option(
+        None, "--target-database-url", help="Explicit target; takes precedence over APP_DATABASE_URL."
+    ),
 ) -> None:
     """Initialize (or upgrade) a blank application database to the current schema head."""
-    url = _target_url(target_database_url)
     settings = get_settings()
+    if target_database_url:
+        url, source = target_database_url, "--target-database-url"
+    else:
+        url, source = settings.app_database_url, "APP_DATABASE_URL"
     assert_distinct_databases(settings.database_url, url, settings.allow_same_database_dev_mode)
+    typer.echo(f"[INFO] migration target: {describe_database_target(url)} (from {source})")
     cfg = _app_alembic_config(url)
     command.upgrade(cfg, "head")
-    typer.echo("[OK]   application schema initialized/upgraded to head")
+    engine = create_app_engine(url)
+    try:
+        with engine.connect() as conn:
+            revision = MigrationContext.configure(
+                conn, opts={"version_table_schema": "app_internal"}
+            ).get_current_revision()
+    finally:
+        engine.dispose()
+    typer.echo(f"[OK]   application schema at {revision} on {describe_database_target(url)}")
 
 
 @app.command("app-status")
@@ -62,8 +84,6 @@ def app_status(
 ) -> None:
     """Verify application-database connectivity, migration status, and active publication."""
     url = _target_url(target_database_url)
-    from market_documents.publishing.session import create_app_engine
-
     engine = create_app_engine(url)
 
     connectivity_ok = False

@@ -69,6 +69,11 @@ GRANT SELECT ON
     app.current_qa_chunk_passages
 TO app_readonly;
 
+-- Track 7F.10: the index-usable QA vector view (migration app_0016). Same
+-- current-view-only discipline. It exposes exactly the active publication's
+-- shared-artifact chunks, never raw app_artifacts.qa_chunks.
+GRANT SELECT ON app.current_qa_chunk_vectors TO app_readonly;
+
 -- Milestone 7A.2: metric_definitions/metric_label_thresholds have no
 -- current_* view wrapper (7A.1 only defined the eight views above), but the
 -- application needs their display metadata (name/unit/description,

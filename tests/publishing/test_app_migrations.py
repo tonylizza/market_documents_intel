@@ -19,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _app_alembic_config(app_engine) -> Config:
     cfg = Config(str(REPO_ROOT / "alembic_app.ini"))
     cfg.set_main_option("script_location", str(REPO_ROOT / "migrations_app"))
-    cfg.set_main_option("sqlalchemy.url", str(app_engine.url))
+    cfg.set_main_option("sqlalchemy.url", app_engine.url.render_as_string(hide_password=False))
     return cfg
 
 
@@ -80,6 +80,7 @@ def test_expected_views_present_at_head(app_engine):
         "current_retrieval_context_risk_subcategories",
         "current_qa_chunks",
         "current_qa_chunk_passages",
+        "current_qa_chunk_vectors",
     } <= views
 
 
@@ -293,3 +294,83 @@ def test_downgrade_to_base_and_reupgrade_to_head(app_engine):
         # Always leave the shared session-scoped engine at head for any
         # other test module using the app_engine/app_db_session fixtures.
         command.upgrade(cfg, "head")
+
+
+def test_app_0016_downgrade_to_app_0015_and_reupgrade(app_engine):
+    cfg = _app_alembic_config(app_engine)
+    try:
+        command.downgrade(cfg, "app_0015")
+
+        inspector = inspect(app_engine)
+        columns = {
+            c["name"]: c for c in inspector.get_columns("passage_language_signals", schema="app_artifacts")
+        }
+        assert "source_passage_alignment_id" not in columns
+        assert columns["source_signal_id"]["nullable"] is False
+        qa_indexes = {i["name"] for i in inspector.get_indexes("qa_chunks", schema="app")}
+        assert "ix_app_qa_chunks_artifact_publication" not in qa_indexes
+        assert "current_qa_chunk_vectors" not in set(inspector.get_view_names(schema="app"))
+
+        command.upgrade(cfg, "head")
+
+        inspector = inspect(app_engine)
+        columns = {
+            c["name"]: c for c in inspector.get_columns("passage_language_signals", schema="app_artifacts")
+        }
+        assert {"source_passage_alignment_id", "source_passage_id"} <= set(columns)
+        assert columns["source_signal_id"]["nullable"] is True
+        signal_indexes = {
+            i["name"]: i for i in inspector.get_indexes("passage_language_signals", schema="app_artifacts")
+        }
+        assert signal_indexes["uq_app_artifacts_passage_language_signals_alignment_scope"]["unique"]
+        assert signal_indexes["uq_app_artifacts_passage_language_signals_scope"]["unique"]
+        qa_indexes = {i["name"] for i in inspect(app_engine).get_indexes("qa_chunks", schema="app")}
+        assert "ix_app_qa_chunks_artifact_publication" in qa_indexes
+        assert "current_qa_chunk_vectors" in set(inspect(app_engine).get_view_names(schema="app"))
+    finally:
+        command.upgrade(cfg, "head")
+
+
+def test_app_0016_downgrade_refuses_while_signals_v2_rows_exist(app_engine):
+    import uuid
+
+    import pytest
+
+    cfg = _app_alembic_config(app_engine)
+    row_id = uuid.uuid4()
+    with app_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO app_artifacts.passage_language_signals (id, source_passage_alignment_id, "
+                "report_side, category, subcategory, language_signal_artifact_version, raw_count, "
+                "adjusted_count, is_introduced, is_removed, is_retained, content_hash) VALUES "
+                "(:id, :aid, 'EARLIER', 'uncertainty', NULL, 'signals_v2', 1, 1, false, false, true, 'h')"
+            ),
+            {"id": row_id, "aid": uuid.uuid4()},
+        )
+    try:
+        with pytest.raises(RuntimeError, match="app_0016 downgrade refused"):
+            command.downgrade(cfg, "app_0015")
+    finally:
+        with app_engine.begin() as conn:
+            conn.execute(text("DELETE FROM app_artifacts.passage_language_signals WHERE id = :id"), {"id": row_id})
+        command.upgrade(cfg, "head")
+
+
+def test_signal_artifact_identity_check_constraint(app_engine):
+    import uuid
+
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError, match="ck_app_artifacts_passage_language_signals_identity"):
+        with app_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO app_artifacts.passage_language_signals (id, report_side, category, "
+                    "language_signal_artifact_version, raw_count, adjusted_count, is_introduced, is_removed, "
+                    "is_retained, content_hash) VALUES "
+                    "(:id, 'EARLIER', 'uncertainty', 'signals_v2', 1, 1, false, false, true, 'h')"
+                ),
+                {"id": uuid.uuid4()},
+            )

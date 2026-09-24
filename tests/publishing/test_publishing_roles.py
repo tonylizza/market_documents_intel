@@ -61,3 +61,22 @@ def test_app_readonly_denied_on_base_table(readonly_dsn):
             conn.execute("SELECT count(*) FROM app.report_comparisons")
     finally:
         conn.close()
+
+
+def test_app_readonly_can_select_qa_chunk_vector_view(readonly_dsn):
+    """Track 7F.10: the HNSW QA path reads `app.current_qa_chunk_vectors`
+    (granted by scripts/sql/app_grants.sql), never raw app_artifacts."""
+    conn = psycopg.connect(readonly_dsn)
+    try:
+        conn.execute("SELECT count(*) FROM app.current_qa_chunk_vectors")
+    finally:
+        conn.close()
+
+
+def test_app_readonly_denied_on_raw_qa_chunk_artifacts(readonly_dsn):
+    conn = psycopg.connect(readonly_dsn)
+    try:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT count(*) FROM app_artifacts.qa_chunks")
+    finally:
+        conn.close()

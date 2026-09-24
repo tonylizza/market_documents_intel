@@ -18,7 +18,11 @@ export async function queryVector<T>(
   sql: string,
   params: ReadonlyArray<unknown>,
   vectorSearchMode: "exact" | "hnsw",
+  efSearch: number = HNSW_EF_SEARCH,
 ): Promise<T[]> {
+  if (!Number.isInteger(efSearch) || efSearch < 1 || efSearch > 1000) {
+    throw new Error(`invalid hnsw.ef_search ${efSearch}`);
+  }
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -26,7 +30,7 @@ export async function queryVector<T>(
       await client.query("BEGIN");
       try {
         await client.query("SET LOCAL hnsw.iterative_scan = relaxed_order");
-        await client.query(`SET LOCAL hnsw.ef_search = ${HNSW_EF_SEARCH}`);
+        await client.query(`SET LOCAL hnsw.ef_search = ${efSearch}`);
         const result = await client.query(sql, params as unknown[]);
         await client.query("COMMIT");
         return result.rows as T[];

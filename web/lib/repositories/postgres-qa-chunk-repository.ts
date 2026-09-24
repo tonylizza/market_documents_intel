@@ -17,6 +17,56 @@ function vectorLiteral(vector: readonly number[]): string {
 }
 
 /**
+ * Track 7F.10: unscoped HNSW nearest-neighbour search over the active
+ * publication's QA chunks, through `app.current_qa_chunk_vectors` (migration
+ * app_0016). That view exposes the shared-artifact embedding column itself,
+ * so the planner drives an HNSW scan on `app_artifacts.qa_chunks` and keeps
+ * only candidates the active publication references. Publication scoping
+ * and rollback behave exactly as they do for `app.current_qa_chunks`.
+ * `hnsw.iterative_scan` (set by `queryVector`) keeps scanning past
+ * candidates from other generations or non-active publications until
+ * `limit` rows are found.
+ *
+ * `relaxed_order` iterative scans can return rows slightly out of order, so
+ * the candidate set is MATERIALIZED and re-sorted by exact distance.
+ */
+/**
+ * `hnsw.ef_search` for the QA vector path only (passage retrieval keeps
+ * `vector-query.ts`'s default of 40). With k = 25 candidates, 40 left too
+ * little headroom. On the 6,088-chunk corpus
+ * (scripts/benchmark_7f10_qa_vector_search.py, 20 queries), the top-25
+ * recall against exact search was:
+ * - ef 40: mean 0.970, worst query 0.60;
+ * - ef 100: mean 0.998;
+ * - ef 200: 1.000 on every query, at ~6 ms median.
+ */
+const QA_HNSW_EF_SEARCH = 200;
+
+const VECTOR_VIEW_SEMANTIC_SQL = `
+  WITH nn AS MATERIALIZED (
+    SELECT v.id, v.report_id, v.company_id, v.chunk_index,
+           v.embedding <=> $1::vector AS distance,
+           v.text, v.section_heading, v.page_start, v.page_end, v.token_count
+    FROM app.current_qa_chunk_vectors v
+    ORDER BY v.embedding <=> $1::vector
+    LIMIT $2
+  )
+  SELECT
+    nn.id AS chunk_id,
+    nn.report_id AS report_id,
+    nn.company_id AS company_id,
+    nn.chunk_index AS chunk_index,
+    (1 - nn.distance) AS similarity,
+    nn.text AS text,
+    nn.section_heading AS section_heading,
+    nn.page_start AS page_start,
+    nn.page_end AS page_end,
+    nn.token_count AS token_count
+  FROM nn
+  ORDER BY nn.distance, nn.id
+`;
+
+/**
  * Production repository for `app.current_qa_chunks` /
  * `app.current_qa_chunk_passages` (Milestone 7B.2) -- the real, published,
  * `app_readonly`-servable corpus. Uses the same production pool
@@ -31,6 +81,25 @@ export class PostgresQaChunkRepository implements QaChunkRepository {
     mode: "exact" | "hnsw",
     companyTicker: string | null = null,
   ): Promise<QaChunkCandidate[]> {
+    // Track 7F.10: an unscoped HNSW search uses `app.current_qa_chunk_vectors`,
+    // not `app.current_qa_chunks`. The latter orders by `COALESCE(t.embedding,
+    // art.embedding)`, an expression no vector index covers, so every query
+    // through it is a full scan + top-N sort (exact, but linear in corpus
+    // size). Exact mode and company-scoped searches deliberately stay on
+    // `current_qa_chunks`: exact mode must stay exact by definition, and a
+    // company scope already bounds the scan to one company's chunks, where
+    // exact search is cheap and a filtered ANN scan could only lose recall
+    // (see `qa-chunk-config.ts`'s note on company-scoped similarity).
+    if (mode === "hnsw" && !companyTicker) {
+      const rows = await queryVector(
+        VECTOR_VIEW_SEMANTIC_SQL, [vectorLiteral(vector), limit], mode, QA_HNSW_EF_SEARCH,
+      );
+      // Empty only when there are no chunks at all, or when the active
+      // publication predates shared artifacts (7F.7a.5) and stores its
+      // embeddings inline. The exact query below serves both correctly.
+      if (rows.length > 0) return this.parseCandidateRows(rows, /* semantic */ true);
+    }
+
     const companyJoin = companyTicker ? "JOIN app.current_companies c ON c.id = qc.company_id" : "";
     const companyFilter = companyTicker ? "WHERE c.ticker = $3" : "";
     const params: unknown[] = [vectorLiteral(vector), limit];

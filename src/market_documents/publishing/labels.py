@@ -90,6 +90,15 @@ def derive_corpus_id(table: str, *parts: str) -> uuid.UUID:
 #     extraction (category/subcategory counting, taxonomy, negation
 #     handling) changes in a way that would change any `app_artifacts.
 #     passage_language_signals` row's content for unchanged source data.
+#     A metric-only research `SIGNAL_VERSION` bump (new pair-level derived
+#     fields, no per-passage change) must NOT bump this: since signals_v2
+#     the identity is the stable (research `passage_alignment_id`,
+#     `report_side`, category, subcategory) tuple, never the transient
+#     research `PassageLanguageSignal.id` a fresh `LanguageSignalRun` mints,
+#     so such a rerun reuses the existing generation 100% (the content-hash
+#     guard still fails loudly if per-passage content actually changed).
+#     signals_v1 -> signals_v2 (Track 7F.10) was that identity-scheme change
+#     itself -- see docs/fresh-neon-cutover-prep-7f10.md section 1.
 #   QA_CHUNKING_ARTIFACT_VERSION -- bump when the QA chunk-window builder
 #     (`qa_chunking.build_qa_chunks`) changes in a way that would change
 #     chunk boundaries, membership, or text for unchanged source data. Chunk
@@ -98,7 +107,7 @@ def derive_corpus_id(table: str, *parts: str) -> uuid.UUID:
 #     version with `embedding_model`/`embedding_model_revision` rather than
 #     relying on this constant alone (see `ArtifactQaChunk` in `models.py`).
 ALIGNMENT_ARTIFACT_VERSION = "alignment_v1"
-LANGUAGE_SIGNAL_ARTIFACT_VERSION = "signals_v1"
+LANGUAGE_SIGNAL_ARTIFACT_VERSION = "signals_v2"
 QA_CHUNKING_ARTIFACT_VERSION = "qa_chunk_v1"
 
 
