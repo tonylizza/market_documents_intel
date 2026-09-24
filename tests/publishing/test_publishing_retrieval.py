@@ -34,10 +34,24 @@ from market_documents.models.enums import (
 from market_documents.models.extraction import ExtractionRun, NarrativeDocument
 from market_documents.models.passage import Passage, PassageSegmentationRun
 from market_documents.models.report import Report
-from market_documents.publishing.models import CorpusPassageEmbedding
+from market_documents.publishing.models import ArtifactRetrievalContext, CorpusPassageEmbedding
 from market_documents.publishing.models import Passage as AppPassage
 from market_documents.publishing.models import PassageEmbedding as AppPassageEmbedding
 from market_documents.publishing.models import PublicationStatus, RetrievalContext
+
+
+def _resolved_alignment_status(app_db_session, ctx: RetrievalContext) -> str | None:
+    """Track 7F.7a.5: `ctx.alignment_status` is NULL for a context built
+    from migration app_0014 onward -- resolve it the same way `app.
+    current_retrieval_contexts` does at read time (COALESCE against
+    `app_artifacts.retrieval_contexts`), since these tests query the raw
+    ORM table directly rather than the view."""
+    if ctx.alignment_status is not None:
+        return ctx.alignment_status
+    if ctx.alignment_artifact_id is None:
+        return None
+    artifact = app_db_session.get(ArtifactRetrievalContext, ctx.alignment_artifact_id)
+    return artifact.alignment_status if artifact is not None else None
 from market_documents.publishing.publisher import PublicationBuilder
 from market_documents.services.feature_extraction import build_features
 from market_documents.services.narrative_construction import compute_content_hash
@@ -230,7 +244,7 @@ def test_new_status_produces_later_side_context_only(db_session, app_db_session)
     contexts = list(
         app_db_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == publication.id))
     )
-    new_contexts = [c for c in contexts if c.alignment_status == "NEW"]
+    new_contexts = [c for c in contexts if _resolved_alignment_status(app_db_session, c) == "NEW"]
     assert len(new_contexts) == 1
     assert new_contexts[0].report_side == "LATER"
 
@@ -257,7 +271,7 @@ def test_removed_status_produces_earlier_side_context_only(db_session, app_db_se
     contexts = list(
         app_db_session.scalars(select(RetrievalContext).where(RetrievalContext.publication_id == publication.id))
     )
-    removed_contexts = [c for c in contexts if c.alignment_status == "REMOVED"]
+    removed_contexts = [c for c in contexts if _resolved_alignment_status(app_db_session, c) == "REMOVED"]
     assert len(removed_contexts) == 1
     assert removed_contexts[0].report_side == "EARLIER"
 

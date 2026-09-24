@@ -61,6 +61,48 @@ def derive_corpus_id(table: str, *parts: str) -> uuid.UUID:
 
 
 # ---------------------------------------------------------------------------
+# Track 7F.7a.5: versioned shared artifact identities (publication-
+# independent, like `CORPUS_SCOPE` above, but one axis per artifact family
+# instead of one global sentinel -- a release that only changes, say, QA
+# chunking must not force a new `passage_comparisons`/`retrieval_contexts`
+# generation, and vice versa). Each constant is a real, bumpable version
+# string (not a fixed sentinel like `CORPUS_SCOPE`): `derive_id(<this
+# version>, table, *parts)` is called directly by the publisher wherever an
+# `app_artifacts.*` row is constructed -- there is no `derive_artifact_id`
+# wrapper, since the caller must supply the correct one of the three
+# constants below for the family it's building, and a wrapper would make it
+# too easy to default to the wrong one.
+#
+# Bump rules (docs/versioned-shared-artifacts-implementation-7f7a5.md has
+# the full rationale):
+#
+#   ALIGNMENT_ARTIFACT_VERSION -- bump when passage-alignment logic, passage-
+#     comparison scoring (semantic/lexical/heading similarity, content
+#     score), or retrieval-context derivation/classification changes in a
+#     way that would change any `app_artifacts.passage_comparisons` or
+#     `app_artifacts.retrieval_contexts`(+children) row's content for
+#     unchanged source data. Covers all four tables in that family (see
+#     `models.py`'s `ArtifactRetrievalContext*` classes) -- retrieval-context
+#     classification does not get its own axis because it is derived
+#     entirely from the same alignment/passage-comparison inputs and has
+#     never needed to change independently of them.
+#   LANGUAGE_SIGNAL_ARTIFACT_VERSION -- bump when financial-language signal
+#     extraction (category/subcategory counting, taxonomy, negation
+#     handling) changes in a way that would change any `app_artifacts.
+#     passage_language_signals` row's content for unchanged source data.
+#   QA_CHUNKING_ARTIFACT_VERSION -- bump when the QA chunk-window builder
+#     (`qa_chunking.build_qa_chunks`) changes in a way that would change
+#     chunk boundaries, membership, or text for unchanged source data. Chunk
+#     *embeddings* additionally depend on the embedding model/revision,
+#     which is why every `app_artifacts.qa_chunks` identity combines this
+#     version with `embedding_model`/`embedding_model_revision` rather than
+#     relying on this constant alone (see `ArtifactQaChunk` in `models.py`).
+ALIGNMENT_ARTIFACT_VERSION = "alignment_v1"
+LANGUAGE_SIGNAL_ARTIFACT_VERSION = "signals_v1"
+QA_CHUNKING_ARTIFACT_VERSION = "qa_chunk_v1"
+
+
+# ---------------------------------------------------------------------------
 # Passage publication policy
 # ---------------------------------------------------------------------------
 

@@ -31,6 +31,7 @@ from test_cutover_comparison import (  # noqa: E402
 from market_documents.models.enums import SemanticUnitAlignmentStatus
 from market_documents.publishing.models import (
     ApplicationState,
+    ArtifactPassageLanguageSignal,
     Company as AppCompany,
     NarrativeUnitComparison,
     PassageComparison,
@@ -149,7 +150,16 @@ def test_build_omits_zero_count_core_language_signals(db_session, app_db_session
         )
     ).all()
 
-    assert all(s.raw_count != 0 for s in core_signals)
+    # Track 7F.7a.5: `s.raw_count` is NULL for a signal built from migration
+    # app_0014 onward -- resolve it the same way `app.current_passage_
+    # language_signals` does at read time.
+    def _resolved_raw_count(s: PassageLanguageSignal) -> int:
+        if s.raw_count is not None:
+            return s.raw_count
+        artifact = app_db_session.get(ArtifactPassageLanguageSignal, s.language_signal_artifact_id)
+        return artifact.raw_count
+
+    assert all(_resolved_raw_count(s) != 0 for s in core_signals)
     assert len(core_signals) < dense_count
 
 

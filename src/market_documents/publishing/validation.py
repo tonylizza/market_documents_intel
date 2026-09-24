@@ -19,6 +19,9 @@ from sqlalchemy.orm import Session
 from market_documents.publishing import labels
 from market_documents.publishing.models import (
     APP_EMBEDDING_DIMENSION,
+    ArtifactPassageComparison,
+    ArtifactPassageLanguageSignal,
+    ArtifactQaChunk,
     Company,
     CorpusPassage,
     CorpusPassageEmbedding,
@@ -39,6 +42,24 @@ from market_documents.publishing.models import (
 )
 from market_documents.publishing.retrieval_contexts import embedding_text_hash as compute_embedding_text_hash
 from market_documents.publishing.retrieval_contexts import vector_norm_nonzero
+
+
+def _coalesce_attr(thin, artifact, name: str):
+    """Same COALESCE precedence `app.current_*` views apply at read time
+    (thin row's own value if populated, else the shared `app_artifacts.*`
+    row's value) -- applied here in Python rather than by querying through
+    the view, since `validate_persisted` needs typed ORM objects (passage
+    ids, comparison ids, ...) to cross-check relationships, not just the
+    view's flattened output. Deliberately never mutates `thin` itself: doing
+    so would leave the loaded ORM object "dirty," and the `app_session.
+    flush()` `PublicationBuilder.build()` issues right after `validate_
+    persisted` returns would silently write the resolved value back into
+    the thin table's own column -- exactly the duplication Track 7F.7a.5
+    exists to avoid."""
+    value = getattr(thin, name)
+    if value is not None:
+        return value
+    return getattr(artifact, name) if artifact is not None else None
 
 
 @dataclass(frozen=True)
@@ -114,6 +135,28 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
     passage_comparisons = list(
         app_session.scalars(select(PassageComparison).where(PassageComparison.publication_id == publication_id))
     )
+    # Track 7F.7a.5: `pc.alignment_status` (etc.) is NULL for any
+    # `passage_comparisons` row built from migration app_0014 onward -- its
+    # content lives in `app_artifacts.passage_comparisons` instead, resolved
+    # here via `_coalesce_attr` exactly as `app.current_passage_comparisons`
+    # resolves it at read time. `pc_alignment_status` is the only field this
+    # module's checks actually branch on (see `_MATCHED_STATUSES` usage
+    # below); the other moved columns aren't referenced by any check.
+    _pc_artifact_ids = {pc.alignment_artifact_id for pc in passage_comparisons if pc.alignment_artifact_id}
+    _pc_artifacts_by_id: dict[uuid.UUID, ArtifactPassageComparison] = (
+        {
+            a.id: a
+            for a in app_session.scalars(
+                select(ArtifactPassageComparison).where(ArtifactPassageComparison.id.in_(_pc_artifact_ids))
+            )
+        }
+        if _pc_artifact_ids
+        else {}
+    )
+    pc_alignment_status: dict[uuid.UUID, str] = {
+        pc.id: _coalesce_attr(pc, _pc_artifacts_by_id.get(pc.alignment_artifact_id), "alignment_status")
+        for pc in passage_comparisons
+    }
     discovery_items = list(
         app_session.scalars(select(DiscoveryItem).where(DiscoveryItem.publication_id == publication_id))
     )
@@ -186,11 +229,11 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             pc.earlier_passage_id is not None or pc.later_passage_id is not None,
             str(pc.id),
         )
-        if pc.alignment_status == "NEW":
+        if pc_alignment_status[pc.id] == "NEW":
             check("new_has_no_earlier_passage", pc.earlier_passage_id is None, str(pc.id))
-        elif pc.alignment_status == "REMOVED":
+        elif pc_alignment_status[pc.id] == "REMOVED":
             check("removed_has_no_later_passage", pc.later_passage_id is None, str(pc.id))
-        elif pc.alignment_status in _MATCHED_STATUSES:
+        elif pc_alignment_status[pc.id] in _MATCHED_STATUSES:
             check(
                 "matched_status_has_both_sides",
                 pc.earlier_passage_id is not None and pc.later_passage_id is not None,
@@ -411,9 +454,9 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             ctx.passage_id == side_passage_id,
             str(ctx.id),
         )
-        if pc.alignment_status == "NEW":
+        if pc_alignment_status[pc.id] == "NEW":
             check("new_context_is_later_side", ctx.report_side == "LATER", str(ctx.id))
-        elif pc.alignment_status == "REMOVED":
+        elif pc_alignment_status[pc.id] == "REMOVED":
             check("removed_context_is_earlier_side", ctx.report_side == "EARLIER", str(ctx.id))
         comp = comparisons_by_id.get(ctx.report_comparison_id)
         check(
@@ -432,10 +475,32 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             select(PassageLanguageSignal).where(PassageLanguageSignal.publication_id == publication_id)
         )
     )
+    # Track 7F.7a.5: `s.adjusted_count` is NULL from migration app_0014
+    # onward (moved to `app_artifacts.passage_language_signals`) -- same
+    # `_coalesce_attr` resolution as `pc_alignment_status` above. `category`/
+    # `subcategory` are never moved (see `PassageLanguageSignal`'s
+    # `language_signal_artifact_id` docstring in `models.py`), so they're
+    # read directly from `s` unchanged.
+    _signal_artifact_ids = {s.language_signal_artifact_id for s in signals if s.language_signal_artifact_id}
+    _signal_artifacts_by_id: dict[uuid.UUID, ArtifactPassageLanguageSignal] = (
+        {
+            a.id: a
+            for a in app_session.scalars(
+                select(ArtifactPassageLanguageSignal).where(
+                    ArtifactPassageLanguageSignal.id.in_(_signal_artifact_ids)
+                )
+            )
+        }
+        if _signal_artifact_ids
+        else {}
+    )
     nonzero_categories_by_scope: dict[tuple, set[str]] = defaultdict(set)
     nonzero_risk_subcats_by_scope: dict[tuple, set[str]] = defaultdict(set)
     for s in signals:
-        if s.adjusted_count <= 0:
+        adjusted_count = _coalesce_attr(
+            s, _signal_artifacts_by_id.get(s.language_signal_artifact_id), "adjusted_count"
+        )
+        if adjusted_count <= 0:
             continue
         scope = (s.passage_comparison_id, s.report_side)
         nonzero_categories_by_scope[scope].add(s.category)
@@ -490,6 +555,21 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
     qa_chunk_passages = list(
         app_session.scalars(select(QaChunkPassage).where(QaChunkPassage.publication_id == publication_id))
     )
+    # Track 7F.7a.5: `c.text`/`.page_start`/`.page_end`/`.dimensions`/
+    # `.embedding`/`.embedding_text_hash` are all NULL from migration
+    # app_0014 onward -- same `_coalesce_attr` resolution as above.
+    _qa_artifact_ids = {c.qa_chunking_artifact_id for c in qa_chunks if c.qa_chunking_artifact_id}
+    _qa_artifacts_by_id: dict[uuid.UUID, ArtifactQaChunk] = (
+        {
+            a.id: a
+            for a in app_session.scalars(select(ArtifactQaChunk).where(ArtifactQaChunk.id.in_(_qa_artifact_ids)))
+        }
+        if _qa_artifact_ids
+        else {}
+    )
+
+    def _qa(chunk: QaChunk, field: str):
+        return _coalesce_attr(chunk, _qa_artifacts_by_id.get(chunk.qa_chunking_artifact_id), field)
     qa_chunks_by_id = {c.id: c for c in qa_chunks}
 
     check(
@@ -506,24 +586,25 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             # report's passages per call, so any mismatch here would mean a
             # publisher wiring bug, not a chunking-algorithm bug.
             check("qa_chunk_company_matches_report_company", c.company_id == report.company_id, str(c.id))
-        check("qa_chunk_page_range_valid", c.page_start <= c.page_end, str(c.id))
+        check("qa_chunk_page_range_valid", _qa(c, "page_start") <= _qa(c, "page_end"), str(c.id))
         check(
             "qa_chunk_dimensions_match_configured_column",
-            c.dimensions == APP_EMBEDDING_DIMENSION == len(c.embedding),
+            _qa(c, "dimensions") == APP_EMBEDDING_DIMENSION == len(_qa(c, "embedding")),
             str(c.id),
         )
-        check("qa_chunk_vector_not_zero", vector_norm_nonzero(c.embedding), str(c.id))
+        check("qa_chunk_vector_not_zero", vector_norm_nonzero(_qa(c, "embedding")), str(c.id))
+        chunk_embedding_text_hash = _qa(c, "embedding_text_hash")
         check(
             "qa_chunk_embedding_text_hash_self_consistent",
-            c.embedding_text_hash == compute_embedding_text_hash(c.text),
+            chunk_embedding_text_hash == compute_embedding_text_hash(_qa(c, "text")),
             str(c.id),
         )
         check(
             "no_duplicate_qa_chunk_text_hash_within_report",
-            c.embedding_text_hash not in hashes_by_report[c.report_id],
+            chunk_embedding_text_hash not in hashes_by_report[c.report_id],
             str(c.id),
         )
-        hashes_by_report[c.report_id].add(c.embedding_text_hash)
+        hashes_by_report[c.report_id].add(chunk_embedding_text_hash)
 
     mapping_counts_by_chunk: dict[uuid.UUID, int] = defaultdict(int)
     for m in qa_chunk_passages:

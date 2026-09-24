@@ -241,6 +241,8 @@ DROP_CUTOVER_COMPARISON_CURRENT_VIEWS_SQL = tuple(
 # per-publication id -- `RetrievalContext.passage_embedding_id` on those
 # older rows still points at the legacy id, which is why validation checks
 # both id spaces (see `publishing/validation.py`).
+CREATE_ARTIFACTS_SCHEMA_SQL = "CREATE SCHEMA IF NOT EXISTS app_artifacts;"
+
 CORPUS_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
     (
         "current_passages",
@@ -267,4 +269,118 @@ CORPUS_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
         "FROM app_corpus.passage_embeddings ce "
         "JOIN app.current_passages p ON p.source_passage_id = ce.source_passage_id;",
     ),
+)
+
+# ---------------------------------------------------------------------------
+# Track 7F.7a.5: versioned shared artifacts (`app_artifacts` schema)
+# ---------------------------------------------------------------------------
+#
+# Same COALESCE-against-a-LEFT-JOIN template as `CORPUS_CURRENT_VIEWS` above,
+# extended to the four artifact families whose per-row content is large
+# enough to matter (passage_comparisons, retrieval_contexts,
+# passage_language_signals, qa_chunks -- see docs/versioned-shared-artifacts-
+# implementation-7f7a5.md section on scope). `t.<col>` is always NULL for a
+# publication built by the publisher from this migration onward (it stops
+# populating these columns; see `publisher.py`), and always the pre-existing
+# populated value for a publication built before this migration -- exactly
+# the same backward-compatibility shape `CORPUS_CURRENT_VIEWS` established
+# for `current_passages`. `retrieval_context_language_categories`,
+# `retrieval_context_risk_subcategories`, and `qa_chunk_passages` are
+# deliberately NOT redefined here: their entire content is one small
+# column (a category/subcategory string, or an integer ordinal) that is
+# already minimal on the thin per-publication row, so there is no
+# meaningful byte saving to chase by moving it into `app_artifacts` and
+# rewriting these views -- their `app_artifacts.*` counterparts exist (see
+# `models.py`) purely to prove the same existence-check/reuse/GC mechanism
+# at that granularity, addressed via their own `*_artifact_id` link column,
+# never through a COALESCE view.
+ARTIFACT_CURRENT_VIEWS: tuple[tuple[str, str], ...] = (
+    (
+        "current_passage_comparisons",
+        "CREATE OR REPLACE VIEW app.current_passage_comparisons AS "
+        "SELECT t.publication_id, t.source_alignment_id, t.report_comparison_id, "
+        "t.earlier_passage_id, t.later_passage_id, "
+        "COALESCE(t.alignment_status, art.alignment_status) AS alignment_status, "
+        "COALESCE(t.alignment_type, art.alignment_type) AS alignment_type, "
+        "COALESCE(t.confidence, art.confidence) AS confidence, "
+        "COALESCE(t.confidence_label, art.confidence_label) AS confidence_label, "
+        "COALESCE(t.semantic_similarity, art.semantic_similarity) AS semantic_similarity, "
+        "COALESCE(t.lexical_similarity, art.lexical_similarity) AS lexical_similarity, "
+        "COALESCE(t.heading_similarity, art.heading_similarity) AS heading_similarity, "
+        "COALESCE(t.content_score, art.content_score) AS content_score, "
+        "COALESCE(t.position_difference, art.position_difference) AS position_difference, "
+        "COALESCE(t.collision_flag, art.collision_flag) AS collision_flag, "
+        "COALESCE(t.split_merge_flag, art.split_merge_flag) AS split_merge_flag, "
+        "COALESCE(t.primary_alignment, art.primary_alignment) AS primary_alignment, "
+        "COALESCE(t.review_reason, art.review_reason) AS review_reason, "
+        "t.id, t.created_at, t.alignment_artifact_id "
+        "FROM app.passage_comparisons t "
+        "LEFT JOIN app_artifacts.passage_comparisons art ON art.id = t.alignment_artifact_id "
+        f"{_ACTIVE_PUBLICATION_JOIN};",
+    ),
+    (
+        "current_retrieval_contexts",
+        "CREATE OR REPLACE VIEW app.current_retrieval_contexts AS "
+        "SELECT t.publication_id, t.passage_id, t.passage_embedding_id, t.passage_comparison_id, "
+        "t.report_comparison_id, t.report_id, t.company_id, t.context_type, t.report_side, "
+        "COALESCE(t.alignment_status, art.alignment_status) AS alignment_status, "
+        "COALESCE(t.alignment_type, art.alignment_type) AS alignment_type, "
+        "COALESCE(t.confidence, art.confidence) AS confidence, "
+        "t.report_period_end, t.earlier_period_end, t.later_period_end, "
+        "COALESCE(t.heading, art.heading) AS heading, "
+        "COALESCE(t.passage_type, art.passage_type) AS passage_type, "
+        "COALESCE(t.primary_narrative_eligible, art.primary_narrative_eligible) AS primary_narrative_eligible, "
+        "COALESCE(t.feature_eligible, art.feature_eligible) AS feature_eligible, "
+        "COALESCE(t.structured_content_category, art.structured_content_category) AS structured_content_category, "
+        "t.report_side_quality, t.alignment_change_quality, "
+        "COALESCE(t.collision_flag, art.collision_flag) AS collision_flag, "
+        "COALESCE(t.split_merge_flag, art.split_merge_flag) AS split_merge_flag, "
+        "t.irregular_gap_flag, t.id, t.created_at, t.alignment_artifact_id "
+        "FROM app.retrieval_contexts t "
+        "LEFT JOIN app_artifacts.retrieval_contexts art ON art.id = t.alignment_artifact_id "
+        f"{_ACTIVE_PUBLICATION_JOIN};",
+    ),
+    (
+        "current_passage_language_signals",
+        "CREATE OR REPLACE VIEW app.current_passage_language_signals AS "
+        "SELECT t.publication_id, t.passage_id, t.passage_comparison_id, t.report_comparison_id, "
+        "t.report_side, t.category, t.subcategory, "
+        "COALESCE(t.raw_count, art.raw_count) AS raw_count, "
+        "COALESCE(t.negated_count, art.negated_count) AS negated_count, "
+        "COALESCE(t.adjusted_count, art.adjusted_count) AS adjusted_count, "
+        "COALESCE(t.rate_per_1000, art.rate_per_1000) AS rate_per_1000, "
+        "COALESCE(t.is_introduced, art.is_introduced) AS is_introduced, "
+        "COALESCE(t.is_removed, art.is_removed) AS is_removed, "
+        "COALESCE(t.is_retained, art.is_retained) AS is_retained, "
+        "t.id, t.created_at, t.language_signal_artifact_id "
+        "FROM app.passage_language_signals t "
+        "LEFT JOIN app_artifacts.passage_language_signals art ON art.id = t.language_signal_artifact_id "
+        f"{_ACTIVE_PUBLICATION_JOIN};",
+    ),
+    (
+        "current_qa_chunks",
+        "CREATE OR REPLACE VIEW app.current_qa_chunks AS "
+        "SELECT t.publication_id, t.report_id, t.company_id, t.chunk_index, "
+        "COALESCE(t.text, art.text) AS text, "
+        "COALESCE(t.section_heading, art.section_heading) AS section_heading, "
+        "COALESCE(t.page_start, art.page_start) AS page_start, "
+        "COALESCE(t.page_end, art.page_end) AS page_end, "
+        "COALESCE(t.token_count, art.token_count) AS token_count, "
+        "COALESCE(t.truncation_policy, art.truncation_policy) AS truncation_policy, "
+        "COALESCE(t.embedding_model, art.embedding_model) AS embedding_model, "
+        "COALESCE(t.embedding_model_revision, art.embedding_model_revision) AS embedding_model_revision, "
+        "COALESCE(t.dimensions, art.dimensions) AS dimensions, "
+        "COALESCE(t.embedding_text_hash, art.embedding_text_hash) AS embedding_text_hash, "
+        "COALESCE(t.embedding, art.embedding) AS embedding, "
+        "COALESCE(t.vector_norm, art.vector_norm) AS vector_norm, "
+        "COALESCE(t.search_vector, art.search_vector) AS search_vector, "
+        "t.id, t.created_at, t.qa_chunking_artifact_id "
+        "FROM app.qa_chunks t "
+        "LEFT JOIN app_artifacts.qa_chunks art ON art.id = t.qa_chunking_artifact_id "
+        f"{_ACTIVE_PUBLICATION_JOIN};",
+    ),
+)
+
+DROP_ARTIFACT_CURRENT_VIEWS_SQL = tuple(
+    f"DROP VIEW IF EXISTS app.{name};" for name, _ in reversed(ARTIFACT_CURRENT_VIEWS)
 )

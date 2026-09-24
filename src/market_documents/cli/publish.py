@@ -17,6 +17,7 @@ from market_documents.publishing.publisher import (
     PublicationBuilder,
     activate_publication,
     cleanup_publications,
+    gc_orphaned_artifact_rows,
     gc_orphaned_corpus_rows,
 )
 from market_documents.publishing.retrieval_benchmark import (
@@ -421,4 +422,26 @@ def gc_corpus(
     typer.echo(
         f"[OK]   {verb} {removed['passages']} corpus passage(s), "
         f"{removed['passage_embeddings']} corpus embedding(s)"
+    )
+
+
+@app.command("gc-artifacts")
+def gc_artifacts(
+    target_database_url: str = typer.Option(None, "--target-database-url", envvar="APP_DATABASE_URL"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Track 7F.7a.5: remove shared `app_artifacts.*` rows no longer
+    referenced by any existing publication. Run after `cleanup` (and
+    independent of, order-insensitive relative to, `gc-corpus`) -- never
+    deletes a generation another publication's thin `app.*` rows still
+    reference."""
+    url = _target_url(target_database_url)
+    with app_session_scope(url) as session:
+        removed = gc_orphaned_artifact_rows(session, dry_run=dry_run)
+    verb = "would remove" if dry_run else "removed"
+    typer.echo(
+        f"[OK]   {verb} {removed['passage_comparisons']} passage_comparison artifact(s), "
+        f"{removed['retrieval_contexts']} retrieval_context artifact(s), "
+        f"{removed['passage_language_signals']} passage_language_signal artifact(s), "
+        f"{removed['qa_chunks']} qa_chunk artifact(s)"
     )

@@ -125,6 +125,18 @@ class Publication(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     validation_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Track 7F.7a.5: which `app_artifacts.*` generation each shared family
+    # resolves to for this publication. Nullable because a publication built
+    # before this migration never wrote to `app_artifacts` at all -- its
+    # rows carry their bulk content inline instead (see the `*_artifact_id`
+    # columns on `PassageComparison`/`RetrievalContext`/`PassageLanguageSignal`/
+    # `QaChunk` below). A reviewer can determine exactly which artifact
+    # generations a publication depends on from these three columns alone,
+    # without inspecting individual rows.
+    alignment_artifact_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    language_signal_artifact_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    qa_chunking_artifact_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
 
 class ApplicationState(AppBase):
     """Singleton pointer at the currently-served publication. `app.current_*`
@@ -488,11 +500,22 @@ class PassageComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     later_passage_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=True
     )
+    # Track 7F.7a.5: added by migration app_0014. NULL from that migration
+    # onward -- the publisher no longer populates this row's own content
+    # columns below (also relaxed to nullable by the same migration);
+    # `app.current_passage_comparisons` resolves them via COALESCE against
+    # `app_artifacts.passage_comparisons` instead. A publication built
+    # before app_0014 keeps this NULL and its own content columns populated
+    # (COALESCE prefers them), exactly the `Passage.text`/`app_corpus`
+    # precedent from Track 7E.1.
+    alignment_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.passage_comparisons.id"), nullable=True
+    )
 
-    alignment_status: Mapped[str] = mapped_column(String(32), nullable=False)
-    alignment_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    confidence: Mapped[str] = mapped_column(String(32), nullable=False)
-    confidence_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    alignment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    alignment_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     semantic_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
     lexical_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -500,9 +523,9 @@ class PassageComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     content_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     position_difference: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    collision_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    split_merge_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    primary_alignment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    collision_flag: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    split_merge_flag: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    primary_alignment: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -644,14 +667,20 @@ class PassageLanguageSignal(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     subcategory: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    raw_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Track 7F.7a.5: added by migration app_0014 -- same NULL-until-resolved-
+    # by-COALESCE-view pattern as `PassageComparison.alignment_artifact_id`.
+    language_signal_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.passage_language_signals.id"), nullable=True
+    )
+
+    raw_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     negated_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    adjusted_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    adjusted_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rate_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    is_introduced: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    is_removed: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    is_retained: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_introduced: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_removed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_retained: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class DiscoveryItem(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
@@ -859,6 +888,16 @@ class RetrievalContext(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
         UUID(as_uuid=True), ForeignKey("app.companies.id", ondelete="CASCADE"), nullable=False
     )
 
+    # Track 7F.7a.5: added by migration app_0014 -- same NULL-until-resolved-
+    # by-COALESCE-view pattern as `PassageComparison.alignment_artifact_id`.
+    # Deliberately the SAME `ALIGNMENT_ARTIFACT_VERSION` axis as
+    # `PassageComparison` (see `labels.py`) rather than a separate one --
+    # retrieval-context content is derived entirely from alignment/passage-
+    # comparison inputs and has never needed its own version axis.
+    alignment_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.retrieval_contexts.id"), nullable=True
+    )
+
     context_type: Mapped[str] = mapped_column(String(32), nullable=False)
     report_side: Mapped[str | None] = mapped_column(String(16), nullable=True)
     alignment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -870,16 +909,16 @@ class RetrievalContext(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     later_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     heading: Mapped[str | None] = mapped_column(Text, nullable=True)
-    passage_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    primary_narrative_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    feature_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    passage_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    primary_narrative_eligible: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    feature_eligible: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     structured_content_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     report_side_quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
     alignment_change_quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    collision_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    split_merge_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    collision_flag: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    split_merge_flag: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     irregular_gap_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
@@ -906,6 +945,15 @@ class RetrievalContextLanguageCategory(AppUUIDPkMixin, AppCreatedAtMixin, AppBas
     retrieval_context_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.retrieval_contexts.id", ondelete="CASCADE"), nullable=False
     )
+    # Track 7F.7a.5: added by migration app_0014, purely for GC/reuse
+    # provenance -- `category` itself stays populated directly on this thin
+    # row (never nulled, no COALESCE view rewrite here): a single short
+    # string is already minimal, so there is no meaningful byte saving in
+    # resolving it through `app_artifacts` at read time. This link only lets
+    # the reuse/GC mechanism be exercised at this table's granularity too.
+    retrieval_context_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.retrieval_context_language_categories.id"), nullable=True
+    )
     category: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
@@ -929,6 +977,11 @@ class RetrievalContextRiskSubcategory(AppUUIDPkMixin, AppCreatedAtMixin, AppBase
     )
     retrieval_context_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.retrieval_contexts.id", ondelete="CASCADE"), nullable=False
+    )
+    # Track 7F.7a.5: same GC/reuse-provenance-only link as
+    # `RetrievalContextLanguageCategory.retrieval_context_artifact_id` above.
+    retrieval_context_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.retrieval_context_risk_subcategories.id"), nullable=True
     )
     subcategory: Mapped[str] = mapped_column(String(64), nullable=False)
 
@@ -983,20 +1036,29 @@ class QaChunk(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
         UUID(as_uuid=True), ForeignKey("app.companies.id", ondelete="CASCADE"), nullable=False
     )
 
-    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    section_heading: Mapped[str | None] = mapped_column(Text, nullable=True)
-    page_start: Mapped[int] = mapped_column(Integer, nullable=False)
-    page_end: Mapped[int] = mapped_column(Integer, nullable=False)
-    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    truncation_policy: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+    # Track 7F.7a.5: added by migration app_0014 -- same NULL-until-resolved-
+    # by-COALESCE-view pattern as `PassageComparison.alignment_artifact_id`.
+    # Combines `labels.QA_CHUNKING_ARTIFACT_VERSION` with `embedding_model`/
+    # `embedding_model_revision` in its identity (see `ArtifactQaChunk` in
+    # this module) since chunk *embeddings* additionally depend on the model.
+    qa_chunking_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.qa_chunks.id"), nullable=True
+    )
 
-    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
-    embedding_model_revision: Mapped[str] = mapped_column(String(64), nullable=False)
-    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
-    embedding_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=False)
-    vector_norm: Mapped[float] = mapped_column(Float, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    section_heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    truncation_policy: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    embedding_model_revision: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedding_text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=True)
+    vector_norm: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # GENERATED ALWAYS ... STORED: same pattern as `Passage.search_vector`,
     # enabling optional lexical retrieval over chunk text (brief: "optional
@@ -1034,6 +1096,12 @@ class QaChunkPassage(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     )
     passage_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("app.passages.id", ondelete="CASCADE"), nullable=False
+    )
+    # Track 7F.7a.5: same GC/reuse-provenance-only link as
+    # `RetrievalContextLanguageCategory.retrieval_context_artifact_id` --
+    # `member_order` is a single small integer, not worth a COALESCE view.
+    qa_chunk_passage_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.qa_chunk_passages.id"), nullable=True
     )
     member_order: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -1146,3 +1214,268 @@ class CorpusPassageEmbedding(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
 
     embedding: Mapped[list[float]] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=False)
     vector_norm: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Track 7F.7a.5: versioned shared artifacts (`app_artifacts` schema)
+# ---------------------------------------------------------------------------
+#
+# Same shape as `app_corpus.*` above -- NOT scoped by `publication_id`, IDs
+# assigned via `labels.derive_id` (never a fresh per-family sentinel like
+# `CORPUS_SCOPE`: each family passes its own real, bumpable version constant
+# from `labels.py` instead) -- but keyed by a per-family *version*, not a
+# fixed one, so a release that only changes one family's generation logic
+# creates a new generation for that family alone, leaving the other three
+# families' existing rows/generations untouched and still shared by every
+# publication that references them. See docs/versioned-shared-artifacts-
+# implementation-7f7a5.md for the full design and
+# `publisher.py`'s existence-check-before-insert construction sites for how
+# a build decides whether to reuse an existing generation or create one.
+#
+# `content_hash` on the four large tables is a defensive check only (see
+# `labels.py`'s version-bump-rules docstring and section 8 of the design
+# doc): the version key is the sole identity mechanism used for reuse
+# lookups; the hash exists purely so a build that computes different
+# content under the SAME identity+version (a developer changed generation
+# logic without bumping the version) fails loudly instead of silently
+# reusing or overwriting the row -- see `publisher._check_content_hash`.
+
+
+class ArtifactPassageComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One passage-comparison's alignment/scoring payload, shared across
+    every publication whose alignment logic (and therefore
+    `labels.ALIGNMENT_ARTIFACT_VERSION`) is unchanged for this
+    `source_alignment_id`. `earlier_source_passage_id`/
+    `later_source_passage_id` are research-side passage identities (the same
+    key space as `app_corpus.passages.source_passage_id`), never a
+    publication's own `app.passages.id` -- a single artifact generation must
+    resolve identically no matter which publication references it, and two
+    different publications assign two different ids to the same source
+    passage (see `app.passages.id`'s derivation in `publisher.py`)."""
+
+    __tablename__ = "passage_comparisons"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_alignment_id", "alignment_artifact_version",
+            name="uq_app_artifacts_passage_comparisons_source_version",
+        ),
+        Index("ix_app_artifacts_passage_comparisons_source", "source_alignment_id"),
+        {"schema": "app_artifacts"},
+    )
+
+    source_alignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    alignment_artifact_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    earlier_source_passage_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    later_source_passage_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    alignment_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    alignment_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence_label: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    semantic_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lexical_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    heading_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    content_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    position_difference: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    collision_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    split_merge_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    primary_alignment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ArtifactRetrievalContext(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One retrieval-context's classification payload, shared across every
+    publication whose alignment logic is unchanged for this `source_key`
+    (the comparison-linked side's `source_alignment_id`, or the report-only
+    passage's `source_passage_id`, as text -- a single column rather than
+    two nullable UUID columns since the two cases never share a namespace
+    and never need independently-typed lookups)."""
+
+    __tablename__ = "retrieval_contexts"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_key", "report_side", "context_type", "alignment_artifact_version",
+            name="uq_app_artifacts_retrieval_contexts_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_app_artifacts_retrieval_contexts_source_key", "source_key"),
+        {"schema": "app_artifacts"},
+    )
+
+    source_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    report_side: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    context_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    alignment_artifact_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    source_passage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    alignment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    alignment_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    passage_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    primary_narrative_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    feature_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    structured_content_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    collision_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    split_merge_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ArtifactRetrievalContextLanguageCategory(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """GC/reuse-provenance counterpart of `RetrievalContextLanguageCategory`
+    -- see that thin model's `retrieval_context_artifact_id` docstring for
+    why its `category` value is never resolved through this table at read
+    time."""
+
+    __tablename__ = "retrieval_context_language_categories"
+    __table_args__ = (
+        UniqueConstraint(
+            "retrieval_context_artifact_id", "category",
+            name="uq_app_artifacts_rc_language_categories_scope",
+        ),
+        {"schema": "app_artifacts"},
+    )
+
+    retrieval_context_artifact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.retrieval_contexts.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ArtifactRetrievalContextRiskSubcategory(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """GC/reuse-provenance counterpart of `RetrievalContextRiskSubcategory`
+    -- same rationale as `ArtifactRetrievalContextLanguageCategory` above."""
+
+    __tablename__ = "retrieval_context_risk_subcategories"
+    __table_args__ = (
+        UniqueConstraint(
+            "retrieval_context_artifact_id", "subcategory",
+            name="uq_app_artifacts_rc_risk_subcategories_scope",
+        ),
+        {"schema": "app_artifacts"},
+    )
+
+    retrieval_context_artifact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.retrieval_contexts.id", ondelete="CASCADE"), nullable=False
+    )
+    subcategory: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ArtifactPassageLanguageSignal(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One passage/category/subcategory language-signal count, shared across
+    every publication whose signal-extraction logic (and therefore
+    `labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION`) is unchanged for this
+    `source_signal_id`."""
+
+    __tablename__ = "passage_language_signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_signal_id", "report_side", "category", "subcategory", "language_signal_artifact_version",
+            name="uq_app_artifacts_passage_language_signals_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_app_artifacts_passage_language_signals_source", "source_signal_id"),
+        {"schema": "app_artifacts"},
+    )
+
+    source_signal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    report_side: Mapped[str] = mapped_column(String(16), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    subcategory: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    language_signal_artifact_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    raw_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    negated_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    adjusted_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    rate_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    is_introduced: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_removed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_retained: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ArtifactQaChunk(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """One QA retrieval chunk, shared across every publication built from
+    unchanged source data with the same `labels.QA_CHUNKING_ARTIFACT_VERSION`
+    AND the same `embedding_model`/`embedding_model_revision` -- chunk
+    *embeddings* depend on the model even when the chunk-window builder
+    itself hasn't changed, so both must match for reuse (see `labels.py`'s
+    version-bump-rules docstring)."""
+
+    __tablename__ = "qa_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_report_id", "chunk_index", "qa_chunking_artifact_version",
+            "embedding_model", "embedding_model_revision",
+            name="uq_app_artifacts_qa_chunks_scope",
+        ),
+        Index("ix_app_artifacts_qa_chunks_source_report_id", "source_report_id"),
+        Index(
+            "ix_app_artifacts_qa_chunks_hnsw_cosine",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        CheckConstraint("page_start <= page_end", name="ck_app_artifacts_qa_chunks_page_range"),
+        {"schema": "app_artifacts"},
+    )
+
+    source_report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    qa_chunking_artifact_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    section_heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    truncation_policy: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    embedding_model_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(APP_EMBEDDING_DIMENSION), nullable=False)
+    vector_norm: Mapped[float] = mapped_column(Float, nullable=False)
+
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('pg_catalog.english', coalesce(section_heading, '')), 'A') || "
+            "setweight(to_tsvector('pg_catalog.english', text), 'B')",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ArtifactQaChunkPassage(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
+    """GC/reuse-provenance counterpart of `QaChunkPassage` -- `member_order`
+    is never resolved through this table at read time (same rationale as
+    `ArtifactRetrievalContextLanguageCategory`)."""
+
+    __tablename__ = "qa_chunk_passages"
+    __table_args__ = (
+        UniqueConstraint(
+            "qa_chunk_artifact_id", "source_member_passage_id",
+            name="uq_app_artifacts_qa_chunk_passages_scope",
+        ),
+        {"schema": "app_artifacts"},
+    )
+
+    qa_chunk_artifact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_artifacts.qa_chunks.id", ondelete="CASCADE"), nullable=False
+    )
+    source_member_passage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    member_order: Mapped[int] = mapped_column(Integer, nullable=False)

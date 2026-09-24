@@ -83,6 +83,27 @@ def test_expected_views_present_at_head(app_engine):
     } <= views
 
 
+def test_app_artifacts_tables_present_at_head(app_engine):
+    inspector = inspect(app_engine)
+    artifact_tables = set(inspector.get_table_names(schema="app_artifacts"))
+    assert {
+        "passage_comparisons",
+        "retrieval_contexts",
+        "retrieval_context_language_categories",
+        "retrieval_context_risk_subcategories",
+        "passage_language_signals",
+        "qa_chunks",
+        "qa_chunk_passages",
+    } <= artifact_tables
+
+    columns = {c["name"] for c in inspector.get_columns("publications", schema="app_internal")}
+    assert {
+        "alignment_artifact_version",
+        "language_signal_artifact_version",
+        "qa_chunking_artifact_version",
+    } <= columns
+
+
 def test_disclosure_change_quality_columns_present_at_head(app_engine):
     inspector = inspect(app_engine)
     columns = {c["name"] for c in inspector.get_columns("report_comparisons", schema="app")}
@@ -187,6 +208,32 @@ def test_app_0008_downgrade_to_app_0007_and_reupgrade(app_engine):
         assert {"current_qa_chunks", "current_qa_chunk_passages"} <= views
         columns = {c["name"] for c in inspector.get_columns("publications", schema="app_internal")}
         assert {"qa_chunk_count", "qa_chunk_passage_mapping_count"} <= columns
+    finally:
+        command.upgrade(cfg, "head")
+
+
+def test_app_0014_downgrade_to_app_0013_and_reupgrade(app_engine):
+    cfg = _app_alembic_config(app_engine)
+    try:
+        command.downgrade(cfg, "app_0013")
+
+        inspector = inspect(app_engine)
+        assert "passage_comparisons" not in inspector.get_table_names(schema="app_artifacts")
+        columns = {c["name"] for c in inspector.get_columns("passage_comparisons", schema="app")}
+        assert "alignment_artifact_id" not in columns
+        pub_columns = {c["name"] for c in inspector.get_columns("publications", schema="app_internal")}
+        assert "alignment_artifact_version" not in pub_columns
+        view_columns = {c["name"] for c in inspector.get_columns("current_passage_comparisons", schema="app")}
+        assert "alignment_artifact_id" not in view_columns
+
+        command.upgrade(cfg, "head")
+
+        inspector = inspect(app_engine)
+        assert "passage_comparisons" in inspector.get_table_names(schema="app_artifacts")
+        columns = {c["name"] for c in inspector.get_columns("passage_comparisons", schema="app")}
+        assert "alignment_artifact_id" in columns
+        view_columns = {c["name"] for c in inspector.get_columns("current_passage_comparisons", schema="app")}
+        assert "alignment_artifact_id" in view_columns
     finally:
         command.upgrade(cfg, "head")
 

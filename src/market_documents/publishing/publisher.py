@@ -25,6 +25,13 @@ from market_documents.publishing.findings import ComparisonMetrics, eligible_can
 from market_documents.publishing.models import (
     APP_EMBEDDING_DIMENSION,
     ApplicationState,
+    ArtifactPassageComparison,
+    ArtifactPassageLanguageSignal,
+    ArtifactQaChunk,
+    ArtifactQaChunkPassage,
+    ArtifactRetrievalContext,
+    ArtifactRetrievalContextLanguageCategory,
+    ArtifactRetrievalContextRiskSubcategory,
     Company,
     CorpusPassage,
     CorpusPassageEmbedding,
@@ -215,6 +222,29 @@ def _source_configuration_hash(research_schema_version: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _content_hash(*parts) -> str:
+    """Track 7F.7a.5: defensive content hash for one `app_artifacts.*` row
+    -- see section 8 of docs/versioned-shared-artifacts-implementation-
+    7f7a5.md. Never the identity mechanism itself (the deterministic id
+    already is); this only lets `_check_content_hash` catch a developer
+    changing generation logic without bumping the corresponding artifact
+    version constant."""
+    payload = "|".join("" if p is None else str(p) for p in parts)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _check_content_hash(existing_hash: str, computed_hash: str, table: str, identity: str) -> None:
+    if existing_hash != computed_hash:
+        raise RuntimeError(
+            f"content hash mismatch for app_artifacts.{table} identity {identity}: an existing "
+            "shared artifact generation's stored content differs from what this build just "
+            "computed under the SAME identity and version. This means generation logic changed "
+            "without bumping the corresponding *_ARTIFACT_VERSION constant in labels.py -- bump "
+            "it (creating a new, isolated generation) rather than silently reusing or overwriting "
+            "an existing immutable one."
+        )
+
+
 def _new_rate_words(features) -> float | None:
     denom = (
         features.eligible_unchanged_words
@@ -276,6 +306,9 @@ class PublicationBuilder:
             source_database_identifier=_redact_url(self.settings.database_url),
             source_schema_version=snapshot.research_schema_version,
             source_configuration_hash=_source_configuration_hash(snapshot.research_schema_version),
+            alignment_artifact_version=labels.ALIGNMENT_ARTIFACT_VERSION,
+            language_signal_artifact_version=labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION,
+            qa_chunking_artifact_version=labels.QA_CHUNKING_ARTIFACT_VERSION,
             status=PublicationStatus.BUILDING.value,
             started_at=datetime.now(timezone.utc),
         )
@@ -832,6 +865,83 @@ class PublicationBuilder:
         # category rows can be deduplicated deterministically.
         pc_records: list[tuple[PassageComparison, ReportComparison, Passage | None, Passage | None]] = []
         signal_tags_by_pc_side: dict[tuple[uuid.UUID, str], list[LanguageSignalTag]] = {}
+        # Track 7F.7a.5: resolved (COALESCE-equivalent) content for each
+        # `app_pc.id` created below -- the retrieval-contexts pass reads
+        # alignment classification from here rather than from `app_pc`
+        # itself, since `app_pc`'s own content columns are left NULL for a
+        # publish from this migration onward (content lives in
+        # `app_artifacts.passage_comparisons` instead; see `PassageComparison
+        # .alignment_artifact_id`'s docstring in `models.py`).
+        pc_resolved: dict[uuid.UUID, dict] = {}
+
+        # Track 7F.7a.5: existence-check-before-insert, same shape as the
+        # `existing_corpus_passages`/`existing_corpus_embeddings` bulk
+        # lookups above -- one SELECT WHERE id = ANY(...) covering every
+        # alignment in this snapshot (ids are computed, not queried, so this
+        # is even cheaper than the corpus case). An id present here means an
+        # earlier publish (this one or a prior one) already wrote this exact
+        # (source_alignment_id, ALIGNMENT_ARTIFACT_VERSION) generation.
+        all_alignment_artifact_ids = {
+            labels.derive_id(labels.ALIGNMENT_ARTIFACT_VERSION, "passage_comparisons", str(alignment.id))
+            for cd in snapshot.comparisons
+            for alignment in cd.passage_alignments
+        }
+        existing_pc_artifacts: dict[uuid.UUID, ArtifactPassageComparison] = (
+            {
+                a.id: a
+                for a in app_session.scalars(
+                    select(ArtifactPassageComparison).where(
+                        ArtifactPassageComparison.id.in_(all_alignment_artifact_ids)
+                    )
+                )
+            }
+            if all_alignment_artifact_ids
+            else {}
+        )
+
+        # Track 7F.7a.5: same existence-check-before-insert bulk lookup for
+        # `passage_language_signals`, precomputed here (before this data is
+        # otherwise available, inside the signals loop further below) so one
+        # SELECT covers every signal/category/subcategory in this snapshot.
+        # Identity parts deliberately mirror the thin table's own original id
+        # scheme exactly (`signal.id`, `category`, `subcategory`) -- `report_
+        # side` is not a separate discriminator because a research `signal.id`
+        # already belongs to exactly one side.
+        all_signal_artifact_ids: set[uuid.UUID] = set()
+        for cd in snapshot.comparisons:
+            if cd.language_features is None or cd.language_lineage_mismatch:
+                continue
+            for signal in cd.passage_language_signals:
+                for category in CORE_CATEGORIES:
+                    if getattr(signal, f"{category}_count") == 0:
+                        continue
+                    all_signal_artifact_ids.add(
+                        labels.derive_id(
+                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
+                            str(signal.id), category, "",
+                        )
+                    )
+                for hit in cd.category_hits_by_signal_id.get(signal.id, []):
+                    if hit.hit_count <= 0:
+                        continue
+                    all_signal_artifact_ids.add(
+                        labels.derive_id(
+                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
+                            str(signal.id), hit.category, hit.subcategory,
+                        )
+                    )
+        existing_signal_artifacts: dict[uuid.UUID, ArtifactPassageLanguageSignal] = (
+            {
+                a.id: a
+                for a in app_session.scalars(
+                    select(ArtifactPassageLanguageSignal).where(
+                        ArtifactPassageLanguageSignal.id.in_(all_signal_artifact_ids)
+                    )
+                )
+            }
+            if all_signal_artifact_ids
+            else {}
+        )
 
         for cd in snapshot.comparisons:
             app_comparison = app_comparisons.get(cd.pair.id)
@@ -861,14 +971,8 @@ class PublicationBuilder:
                     continue
                 if alignment.alignment_status == AlignmentStatus.REMOVED and earlier_app is None:
                     continue
-                app_pc_id = labels.derive_id(pv, "passage_comparisons", str(alignment.id))
-                app_pc = PassageComparison(
-                    id=app_pc_id,
-                    publication_id=pub_id,
-                    source_alignment_id=alignment.id,
-                    report_comparison_id=app_comparison.id,
-                    earlier_passage_id=earlier_app.id if earlier_app else None,
-                    later_passage_id=later_app.id if later_app else None,
+
+                content = dict(
                     alignment_status=alignment.alignment_status.value,
                     alignment_type=alignment.alignment_type.value,
                     confidence=alignment.confidence.value,
@@ -884,9 +988,48 @@ class PublicationBuilder:
                     primary_alignment=alignment.primary_alignment,
                     review_reason=alignment.review_reason,
                 )
+                artifact_id = labels.derive_id(
+                    labels.ALIGNMENT_ARTIFACT_VERSION, "passage_comparisons", str(alignment.id)
+                )
+                computed_hash = _content_hash(
+                    content["alignment_status"], content["alignment_type"], content["confidence"],
+                    content["confidence_label"], content["semantic_similarity"], content["lexical_similarity"],
+                    content["heading_similarity"], content["content_score"], content["position_difference"],
+                    content["collision_flag"], content["split_merge_flag"], content["primary_alignment"],
+                    content["review_reason"], alignment.earlier_passage_id, alignment.later_passage_id,
+                )
+                pc_artifact = existing_pc_artifacts.get(artifact_id)
+                if pc_artifact is not None:
+                    _check_content_hash(
+                        pc_artifact.content_hash, computed_hash, "passage_comparisons", str(alignment.id)
+                    )
+                else:
+                    pc_artifact = ArtifactPassageComparison(
+                        id=artifact_id,
+                        source_alignment_id=alignment.id,
+                        alignment_artifact_version=labels.ALIGNMENT_ARTIFACT_VERSION,
+                        earlier_source_passage_id=alignment.earlier_passage_id,
+                        later_source_passage_id=alignment.later_passage_id,
+                        content_hash=computed_hash,
+                        **content,
+                    )
+                    app_session.add(pc_artifact)
+                    existing_pc_artifacts[artifact_id] = pc_artifact
+
+                app_pc_id = labels.derive_id(pv, "passage_comparisons", str(alignment.id))
+                app_pc = PassageComparison(
+                    id=app_pc_id,
+                    publication_id=pub_id,
+                    source_alignment_id=alignment.id,
+                    report_comparison_id=app_comparison.id,
+                    earlier_passage_id=earlier_app.id if earlier_app else None,
+                    later_passage_id=later_app.id if later_app else None,
+                    alignment_artifact_id=pc_artifact.id,
+                )
                 app_session.add(app_pc)
                 app_alignment_by_source[alignment.id] = app_pc_id
                 pc_records.append((app_pc, app_comparison, earlier_app, later_app))
+                pc_resolved[app_pc_id] = content
                 passage_comparison_count += 1
 
             app_session.flush()
@@ -1015,6 +1158,44 @@ class PublicationBuilder:
                         if raw_count == 0:
                             continue
                         rate = safe_ratio(raw_count * 1000, signal.passage_word_count)
+                        signal_content = dict(
+                            raw_count=raw_count,
+                            negated_count=None,
+                            adjusted_count=raw_count,
+                            rate_per_1000=rate,
+                            is_introduced=is_introduced,
+                            is_removed=is_removed,
+                            is_retained=is_retained,
+                        )
+                        signal_artifact_id = labels.derive_id(
+                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
+                            str(signal.id), category, "",
+                        )
+                        signal_computed_hash = _content_hash(
+                            signal_content["raw_count"], signal_content["negated_count"],
+                            signal_content["adjusted_count"], signal_content["rate_per_1000"],
+                            signal_content["is_introduced"], signal_content["is_removed"],
+                            signal_content["is_retained"],
+                        )
+                        signal_artifact = existing_signal_artifacts.get(signal_artifact_id)
+                        if signal_artifact is not None:
+                            _check_content_hash(
+                                signal_artifact.content_hash, signal_computed_hash,
+                                "passage_language_signals", f"{signal.id}:{category}",
+                            )
+                        else:
+                            signal_artifact = ArtifactPassageLanguageSignal(
+                                id=signal_artifact_id,
+                                source_signal_id=signal.id,
+                                report_side=signal.report_side.value,
+                                category=category,
+                                subcategory=None,
+                                language_signal_artifact_version=labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION,
+                                content_hash=signal_computed_hash,
+                                **signal_content,
+                            )
+                            app_session.add(signal_artifact)
+                            existing_signal_artifacts[signal_artifact_id] = signal_artifact
                         app_session.add(
                             PassageLanguageSignal(
                                 id=labels.derive_id(
@@ -1027,13 +1208,7 @@ class PublicationBuilder:
                                 report_side=signal.report_side.value,
                                 category=category,
                                 subcategory=None,
-                                raw_count=raw_count,
-                                negated_count=None,
-                                adjusted_count=raw_count,
-                                rate_per_1000=rate,
-                                is_introduced=is_introduced,
-                                is_removed=is_removed,
-                                is_retained=is_retained,
+                                language_signal_artifact_id=signal_artifact.id,
                             )
                         )
                         passage_language_signal_count += 1
@@ -1052,6 +1227,43 @@ class PublicationBuilder:
                             gov_bucket[hit.subcategory] = gov_bucket.get(hit.subcategory, 0) + hit.hit_count
                         adjusted = max(hit.hit_count - hit.negated_hit_count, 0)
                         rate = safe_ratio(hit.hit_count * 1000, signal.passage_word_count)
+                        hit_content = dict(
+                            raw_count=hit.hit_count,
+                            negated_count=hit.negated_hit_count,
+                            adjusted_count=adjusted,
+                            rate_per_1000=rate,
+                            is_introduced=is_introduced,
+                            is_removed=is_removed,
+                            is_retained=is_retained,
+                        )
+                        hit_artifact_id = labels.derive_id(
+                            labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION, "passage_language_signals",
+                            str(signal.id), hit.category, hit.subcategory,
+                        )
+                        hit_computed_hash = _content_hash(
+                            hit_content["raw_count"], hit_content["negated_count"],
+                            hit_content["adjusted_count"], hit_content["rate_per_1000"],
+                            hit_content["is_introduced"], hit_content["is_removed"], hit_content["is_retained"],
+                        )
+                        hit_artifact = existing_signal_artifacts.get(hit_artifact_id)
+                        if hit_artifact is not None:
+                            _check_content_hash(
+                                hit_artifact.content_hash, hit_computed_hash,
+                                "passage_language_signals", f"{signal.id}:{hit.category}:{hit.subcategory}",
+                            )
+                        else:
+                            hit_artifact = ArtifactPassageLanguageSignal(
+                                id=hit_artifact_id,
+                                source_signal_id=signal.id,
+                                report_side=signal.report_side.value,
+                                category=hit.category,
+                                subcategory=hit.subcategory,
+                                language_signal_artifact_version=labels.LANGUAGE_SIGNAL_ARTIFACT_VERSION,
+                                content_hash=hit_computed_hash,
+                                **hit_content,
+                            )
+                            app_session.add(hit_artifact)
+                            existing_signal_artifacts[hit_artifact_id] = hit_artifact
                         app_session.add(
                             PassageLanguageSignal(
                                 id=labels.derive_id(
@@ -1064,13 +1276,7 @@ class PublicationBuilder:
                                 report_side=signal.report_side.value,
                                 category=hit.category,
                                 subcategory=hit.subcategory,
-                                raw_count=hit.hit_count,
-                                negated_count=hit.negated_hit_count,
-                                adjusted_count=adjusted,
-                                rate_per_1000=rate,
-                                is_introduced=is_introduced,
-                                is_removed=is_removed,
-                                is_retained=is_retained,
+                                language_signal_artifact_id=hit_artifact.id,
                             )
                         )
                         passage_language_signal_count += 1
@@ -1183,7 +1389,35 @@ class PublicationBuilder:
         retrieval_context_count = 0
         comparison_participant_source_ids: set[uuid.UUID] = set()
 
+        # Track 7F.7a.5: existence-check-before-insert for `retrieval_
+        # contexts`, on the SAME `ALIGNMENT_ARTIFACT_VERSION` axis as
+        # `passage_comparisons` (see `labels.py`). `source_key` is the
+        # comparison's `source_alignment_id` (a passage-comparison-linked
+        # context is entirely a function of one alignment + one side).
+        all_rc_artifact_ids: set[uuid.UUID] = set()
+        for _app_pc, _app_comparison, earlier_app, later_app in pc_records:
+            for side_value, side_app in (("EARLIER", earlier_app), ("LATER", later_app)):
+                if side_app is None:
+                    continue
+                all_rc_artifact_ids.add(
+                    labels.derive_id(
+                        labels.ALIGNMENT_ARTIFACT_VERSION, "retrieval_contexts",
+                        str(_app_pc.source_alignment_id), side_value, "COMPARISON_LINKED",
+                    )
+                )
+        existing_rc_artifacts: dict[uuid.UUID, ArtifactRetrievalContext] = (
+            {
+                a.id: a
+                for a in app_session.scalars(
+                    select(ArtifactRetrievalContext).where(ArtifactRetrievalContext.id.in_(all_rc_artifact_ids))
+                )
+            }
+            if all_rc_artifact_ids
+            else {}
+        )
+
         for app_pc, app_comparison, earlier_app, later_app in pc_records:
+            pc_content = pc_resolved[app_pc.id]
             sides = (
                 ("EARLIER", earlier_app, app_comparison.earlier_report_id, app_comparison.earlier_period_end),
                 ("LATER", later_app, app_comparison.later_report_id, app_comparison.later_period_end),
@@ -1200,9 +1434,53 @@ class PublicationBuilder:
                     # published; `validate_persisted` surfaces the gap.
                     continue
                 tags = signal_tags_by_pc_side.get((app_pc.id, side_value), [])
+
+                rc_content = dict(
+                    alignment_status=pc_content["alignment_status"],
+                    alignment_type=pc_content["alignment_type"],
+                    confidence=pc_content["confidence"],
+                    heading=side_app.heading,
+                    passage_type=side_app.passage_type,
+                    primary_narrative_eligible=side_app.primary_narrative_eligible,
+                    feature_eligible=side_app.feature_eligible,
+                    structured_content_category=side_app.structured_content_category,
+                    collision_flag=pc_content["collision_flag"],
+                    split_merge_flag=pc_content["split_merge_flag"],
+                )
+                rc_artifact_id = labels.derive_id(
+                    labels.ALIGNMENT_ARTIFACT_VERSION, "retrieval_contexts",
+                    str(app_pc.source_alignment_id), side_value, "COMPARISON_LINKED",
+                )
+                rc_computed_hash = _content_hash(
+                    rc_content["alignment_status"], rc_content["alignment_type"], rc_content["confidence"],
+                    rc_content["heading"], rc_content["passage_type"], rc_content["primary_narrative_eligible"],
+                    rc_content["feature_eligible"], rc_content["structured_content_category"],
+                    rc_content["collision_flag"], rc_content["split_merge_flag"], side_app.source_passage_id,
+                )
+                rc_artifact = existing_rc_artifacts.get(rc_artifact_id)
+                if rc_artifact is not None:
+                    _check_content_hash(
+                        rc_artifact.content_hash, rc_computed_hash, "retrieval_contexts",
+                        f"{app_pc.source_alignment_id}:{side_value}",
+                    )
+                else:
+                    rc_artifact = ArtifactRetrievalContext(
+                        id=rc_artifact_id,
+                        source_key=str(app_pc.source_alignment_id),
+                        report_side=side_value,
+                        context_type="COMPARISON_LINKED",
+                        alignment_artifact_version=labels.ALIGNMENT_ARTIFACT_VERSION,
+                        source_passage_id=side_app.source_passage_id,
+                        content_hash=rc_computed_hash,
+                        **rc_content,
+                    )
+                    app_session.add(rc_artifact)
+                    existing_rc_artifacts[rc_artifact_id] = rc_artifact
+
+                rc_id = labels.derive_id(pv, "retrieval_contexts", str(app_pc.id), side_value)
                 app_session.add(
                     RetrievalContext(
-                        id=labels.derive_id(pv, "retrieval_contexts", str(app_pc.id), side_value),
+                        id=rc_id,
                         publication_id=pub_id,
                         passage_id=side_app.id,
                         passage_embedding_id=side_embedding.id,
@@ -1210,50 +1488,60 @@ class PublicationBuilder:
                         report_comparison_id=app_comparison.id,
                         report_id=side_report_id,
                         company_id=app_comparison.company_id,
+                        alignment_artifact_id=rc_artifact.id,
                         context_type="COMPARISON_LINKED",
                         report_side=side_value,
-                        alignment_status=app_pc.alignment_status,
-                        alignment_type=app_pc.alignment_type,
-                        confidence=app_pc.confidence,
                         report_period_end=side_period_end,
                         earlier_period_end=app_comparison.earlier_period_end,
                         later_period_end=app_comparison.later_period_end,
-                        heading=side_app.heading,
-                        passage_type=side_app.passage_type,
-                        primary_narrative_eligible=side_app.primary_narrative_eligible,
-                        feature_eligible=side_app.feature_eligible,
-                        structured_content_category=side_app.structured_content_category,
                         report_side_quality=app_comparison.report_side_quality,
                         alignment_change_quality=app_comparison.alignment_change_quality,
-                        collision_flag=app_pc.collision_flag,
-                        split_merge_flag=app_pc.split_merge_flag,
                         irregular_gap_flag=app_comparison.is_irregular_gap,
                     )
                 )
                 retrieval_context_count += 1
                 for category in distinct_categories(tags):
+                    cat_artifact_id = labels.derive_id(
+                        labels.ALIGNMENT_ARTIFACT_VERSION, "retrieval_context_language_categories",
+                        str(rc_artifact.id), category,
+                    )
+                    cat_artifact = app_session.get(ArtifactRetrievalContextLanguageCategory, cat_artifact_id)
+                    if cat_artifact is None:
+                        cat_artifact = ArtifactRetrievalContextLanguageCategory(
+                            id=cat_artifact_id, retrieval_context_artifact_id=rc_artifact.id, category=category,
+                        )
+                        app_session.add(cat_artifact)
                     app_session.add(
                         RetrievalContextLanguageCategory(
                             id=labels.derive_id(
                                 pv, "retrieval_context_language_categories", str(app_pc.id), side_value, category
                             ),
                             publication_id=pub_id,
-                            retrieval_context_id=labels.derive_id(
-                                pv, "retrieval_contexts", str(app_pc.id), side_value
-                            ),
+                            retrieval_context_id=rc_id,
+                            retrieval_context_artifact_id=cat_artifact.id,
                             category=category,
                         )
                     )
                 for subcategory in distinct_risk_subcategories(tags):
+                    subcat_artifact_id = labels.derive_id(
+                        labels.ALIGNMENT_ARTIFACT_VERSION, "retrieval_context_risk_subcategories",
+                        str(rc_artifact.id), subcategory,
+                    )
+                    subcat_artifact = app_session.get(ArtifactRetrievalContextRiskSubcategory, subcat_artifact_id)
+                    if subcat_artifact is None:
+                        subcat_artifact = ArtifactRetrievalContextRiskSubcategory(
+                            id=subcat_artifact_id, retrieval_context_artifact_id=rc_artifact.id,
+                            subcategory=subcategory,
+                        )
+                        app_session.add(subcat_artifact)
                     app_session.add(
                         RetrievalContextRiskSubcategory(
                             id=labels.derive_id(
                                 pv, "retrieval_context_risk_subcategories", str(app_pc.id), side_value, subcategory
                             ),
                             publication_id=pub_id,
-                            retrieval_context_id=labels.derive_id(
-                                pv, "retrieval_contexts", str(app_pc.id), side_value
-                            ),
+                            retrieval_context_id=rc_id,
+                            retrieval_context_artifact_id=subcat_artifact.id,
                             subcategory=subcategory,
                         )
                     )
@@ -1266,12 +1554,73 @@ class PublicationBuilder:
         # minimal context so it stays searchable, per the milestone's
         # "recommended eligibility" policy. Real corpus measurement (see the
         # Milestone 7B.1 report) found this affects ~0.1% of passages.
-        for source_passage_id, app_passage in app_passages.items():
-            if source_passage_id in comparison_participant_source_ids:
-                continue
-            embedding = app_passage_embeddings.get(source_passage_id)
-            if embedding is None:
-                continue
+        _report_only_candidates = [
+            (source_passage_id, app_passage)
+            for source_passage_id, app_passage in app_passages.items()
+            if source_passage_id not in comparison_participant_source_ids
+            and app_passage_embeddings.get(source_passage_id) is not None
+        ]
+        all_report_only_artifact_ids = {
+            labels.derive_id(
+                labels.ALIGNMENT_ARTIFACT_VERSION, "retrieval_contexts",
+                str(source_passage_id), "", "REPORT_ONLY",
+            )
+            for source_passage_id, _ in _report_only_candidates
+        }
+        existing_rc_artifacts.update(
+            {
+                a.id: a
+                for a in app_session.scalars(
+                    select(ArtifactRetrievalContext).where(ArtifactRetrievalContext.id.in_(all_report_only_artifact_ids))
+                )
+            }
+            if all_report_only_artifact_ids
+            else {}
+        )
+
+        for source_passage_id, app_passage in _report_only_candidates:
+            embedding = app_passage_embeddings[source_passage_id]
+
+            ro_content = dict(
+                alignment_status=None,
+                alignment_type=None,
+                confidence=None,
+                heading=app_passage.heading,
+                passage_type=app_passage.passage_type,
+                primary_narrative_eligible=app_passage.primary_narrative_eligible,
+                feature_eligible=app_passage.feature_eligible,
+                structured_content_category=app_passage.structured_content_category,
+                collision_flag=False,
+                split_merge_flag=False,
+            )
+            ro_artifact_id = labels.derive_id(
+                labels.ALIGNMENT_ARTIFACT_VERSION, "retrieval_contexts", str(source_passage_id), "", "REPORT_ONLY",
+            )
+            ro_computed_hash = _content_hash(
+                ro_content["alignment_status"], ro_content["alignment_type"], ro_content["confidence"],
+                ro_content["heading"], ro_content["passage_type"], ro_content["primary_narrative_eligible"],
+                ro_content["feature_eligible"], ro_content["structured_content_category"],
+                ro_content["collision_flag"], ro_content["split_merge_flag"], source_passage_id,
+            )
+            ro_artifact = existing_rc_artifacts.get(ro_artifact_id)
+            if ro_artifact is not None:
+                _check_content_hash(
+                    ro_artifact.content_hash, ro_computed_hash, "retrieval_contexts", f"{source_passage_id}:REPORT_ONLY"
+                )
+            else:
+                ro_artifact = ArtifactRetrievalContext(
+                    id=ro_artifact_id,
+                    source_key=str(source_passage_id),
+                    report_side=None,
+                    context_type="REPORT_ONLY",
+                    alignment_artifact_version=labels.ALIGNMENT_ARTIFACT_VERSION,
+                    source_passage_id=source_passage_id,
+                    content_hash=ro_computed_hash,
+                    **ro_content,
+                )
+                app_session.add(ro_artifact)
+                existing_rc_artifacts[ro_artifact_id] = ro_artifact
+
             app_session.add(
                 RetrievalContext(
                     id=labels.derive_id(pv, "retrieval_contexts", str(app_passage.id), "REPORT_ONLY"),
@@ -1282,23 +1631,14 @@ class PublicationBuilder:
                     report_comparison_id=None,
                     report_id=app_passage.report_id,
                     company_id=app_passage.company_id,
+                    alignment_artifact_id=ro_artifact.id,
                     context_type="REPORT_ONLY",
                     report_side=None,
-                    alignment_status=None,
-                    alignment_type=None,
-                    confidence=None,
                     report_period_end=app_passage.report_period_end,
                     earlier_period_end=None,
                     later_period_end=None,
-                    heading=app_passage.heading,
-                    passage_type=app_passage.passage_type,
-                    primary_narrative_eligible=app_passage.primary_narrative_eligible,
-                    feature_eligible=app_passage.feature_eligible,
-                    structured_content_category=app_passage.structured_content_category,
                     report_side_quality=None,
                     alignment_change_quality=None,
-                    collision_flag=False,
-                    split_merge_flag=False,
                     irregular_gap_flag=False,
                 )
             )
@@ -1319,6 +1659,13 @@ class PublicationBuilder:
         qa_chunk_count = 0
         qa_chunk_passage_mapping_count = 0
         embedding_model = get_embedding_model() if self.include_qa_chunks else None
+        # Track 7F.7a.5: reverse of `app_passages` -- needed to translate a
+        # chunk's member passage ids (per-publication `app.passages.id`
+        # values, from `candidate.member_passage_ids`) back to the research-
+        # side `source_passage_id` that `app_artifacts.qa_chunk_passages`
+        # identifies members by (publication-independent, like every other
+        # `app_artifacts.*` identity).
+        source_by_app_passage_id: dict[uuid.UUID, uuid.UUID] = {p.id: sp for sp, p in app_passages.items()}
         for report_source_id, passage_datasets in snapshot.passages_by_report.items() if self.include_qa_chunks else ():
             app_report = app_reports.get(report_source_id)
             if app_report is None:
@@ -1355,6 +1702,34 @@ class PublicationBuilder:
             if not chunk_candidates:
                 continue
 
+            # Track 7F.7a.5: existence-check-before-insert bulk lookup for
+            # this report's chunks, on the `QA_CHUNKING_ARTIFACT_VERSION`
+            # axis combined with the embedding model/revision (see
+            # `ArtifactQaChunk`'s docstring in `models.py`) -- computed from
+            # `chunk_index` alone, before the (expensive) embedding pass
+            # below, so a rebuild never needs to re-encode to find out
+            # whether a generation already exists is not attempted here
+            # (the encode still runs unconditionally -- see the module
+            # docstring on this section for why skipping it was judged out
+            # of scope for this track), but the DB write itself is skipped.
+            candidate_artifact_ids = {
+                labels.derive_id(
+                    labels.QA_CHUNKING_ARTIFACT_VERSION, "qa_chunks",
+                    str(report_source_id), str(c.chunk_index), MODEL_NAME, MODEL_REVISION,
+                )
+                for c in chunk_candidates
+            }
+            existing_qa_artifacts_for_report: dict[uuid.UUID, ArtifactQaChunk] = (
+                {
+                    a.id: a
+                    for a in app_session.scalars(
+                        select(ArtifactQaChunk).where(ArtifactQaChunk.id.in_(candidate_artifact_ids))
+                    )
+                }
+                if candidate_artifact_ids
+                else {}
+            )
+
             # Batched, never one giant single-call encode of an entire
             # report's chunks -- `encode_batch` forwards `batch_size=len
             # (texts)` straight to the model (a single unbatched forward
@@ -1381,10 +1756,59 @@ class PublicationBuilder:
                     continue
                 seen_hashes.add(text_hash)
 
+                vector = list(enc.vector)
+                dimensions = len(vector)
+                chunk_artifact_id = labels.derive_id(
+                    labels.QA_CHUNKING_ARTIFACT_VERSION, "qa_chunks",
+                    str(report_source_id), str(candidate.chunk_index), MODEL_NAME, MODEL_REVISION,
+                )
+                chunk_content = dict(
+                    text=candidate.text,
+                    section_heading=candidate.section_heading,
+                    page_start=candidate.page_start,
+                    page_end=candidate.page_end,
+                    token_count=candidate.token_count,
+                    truncation_policy=candidate.truncation_policy,
+                    embedding_model=MODEL_NAME,
+                    embedding_model_revision=MODEL_REVISION,
+                    dimensions=dimensions,
+                    embedding_text_hash=text_hash,
+                    embedding=vector,
+                    vector_norm=vector_norm(vector),
+                )
+                # Vector floats are excluded from the defensive hash (see
+                # `_content_hash`'s callers elsewhere): `embedding_text_hash`
+                # already ties this generation to its exact source text, and
+                # float round-tripping through pgvector storage is not
+                # guaranteed bit-identical, which would make the hash a
+                # false-positive mismatch detector rather than a true one.
+                chunk_computed_hash = _content_hash(
+                    chunk_content["text"], chunk_content["section_heading"], chunk_content["page_start"],
+                    chunk_content["page_end"], chunk_content["token_count"], chunk_content["truncation_policy"],
+                    chunk_content["embedding_model"], chunk_content["embedding_model_revision"],
+                    chunk_content["dimensions"], chunk_content["embedding_text_hash"],
+                )
+                chunk_artifact = existing_qa_artifacts_for_report.get(chunk_artifact_id)
+                if chunk_artifact is not None:
+                    _check_content_hash(
+                        chunk_artifact.content_hash, chunk_computed_hash, "qa_chunks",
+                        f"{report_source_id}:{candidate.chunk_index}",
+                    )
+                else:
+                    chunk_artifact = ArtifactQaChunk(
+                        id=chunk_artifact_id,
+                        source_report_id=report_source_id,
+                        chunk_index=candidate.chunk_index,
+                        qa_chunking_artifact_version=labels.QA_CHUNKING_ARTIFACT_VERSION,
+                        content_hash=chunk_computed_hash,
+                        **chunk_content,
+                    )
+                    app_session.add(chunk_artifact)
+                    existing_qa_artifacts_for_report[chunk_artifact_id] = chunk_artifact
+
                 chunk_id = labels.derive_id(
                     pv, "qa_chunks", str(candidate.report_id), str(candidate.chunk_index)
                 )
-                vector = list(enc.vector)
                 app_session.add(
                     AppQaChunk(
                         id=chunk_id,
@@ -1392,22 +1816,25 @@ class PublicationBuilder:
                         report_id=candidate.report_id,
                         company_id=candidate.company_id,
                         chunk_index=candidate.chunk_index,
-                        text=candidate.text,
-                        section_heading=candidate.section_heading,
-                        page_start=candidate.page_start,
-                        page_end=candidate.page_end,
-                        token_count=candidate.token_count,
-                        truncation_policy=candidate.truncation_policy,
-                        embedding_model=MODEL_NAME,
-                        embedding_model_revision=MODEL_REVISION,
-                        dimensions=len(vector),
-                        embedding_text_hash=text_hash,
-                        embedding=vector,
-                        vector_norm=vector_norm(vector),
+                        qa_chunking_artifact_id=chunk_artifact.id,
                     )
                 )
                 qa_chunk_count += 1
                 for member_order, member_passage_id in enumerate(candidate.member_passage_ids):
+                    source_member_passage_id = source_by_app_passage_id[member_passage_id]
+                    mapping_artifact_id = labels.derive_id(
+                        labels.QA_CHUNKING_ARTIFACT_VERSION, "qa_chunk_passages",
+                        str(chunk_artifact.id), str(source_member_passage_id),
+                    )
+                    mapping_artifact = app_session.get(ArtifactQaChunkPassage, mapping_artifact_id)
+                    if mapping_artifact is None:
+                        mapping_artifact = ArtifactQaChunkPassage(
+                            id=mapping_artifact_id,
+                            qa_chunk_artifact_id=chunk_artifact.id,
+                            source_member_passage_id=source_member_passage_id,
+                            member_order=member_order,
+                        )
+                        app_session.add(mapping_artifact)
                     app_session.add(
                         AppQaChunkPassage(
                             id=labels.derive_id(
@@ -1416,6 +1843,7 @@ class PublicationBuilder:
                             publication_id=pub_id,
                             qa_chunk_id=chunk_id,
                             passage_id=member_passage_id,
+                            qa_chunk_passage_artifact_id=mapping_artifact.id,
                             member_order=member_order,
                         )
                     )
@@ -1581,3 +2009,69 @@ def gc_orphaned_corpus_rows(app_session: Session, dry_run: bool = False) -> dict
         app_session.flush()
 
     return {"passage_embeddings": len(orphaned_embeddings), "passages": len(orphaned_passages)}
+
+
+def gc_orphaned_artifact_rows(app_session: Session, dry_run: bool = False) -> dict[str, int]:
+    """Track 7F.7a.5: the `app_artifacts.*` counterpart of `gc_orphaned_
+    corpus_rows` above -- same reference-counted (never age-only, never
+    FK-cascade) deletion policy, extended to the four artifact families. An
+    artifact generation is orphaned when NO retained publication's thin
+    `app.*` row still points at it via its `*_artifact_id` link column.
+
+    Must run AFTER `cleanup_publications` in a publish runbook, for the
+    identical reason `gc_orphaned_corpus_rows` must: only once a superseded
+    publication's own thin rows are actually gone can this query see that
+    the artifact generation they alone referenced is now unreferenced.
+    Deleting an `ArtifactRetrievalContext`/`ArtifactQaChunk` row here
+    CASCADEs to its own `app_artifacts.retrieval_context_language_
+    categories`/`retrieval_context_risk_subcategories`/`qa_chunk_passages`
+    children (see the FKs added in migration app_0014) -- those are never
+    reference-counted independently.
+    """
+    orphaned_pc = list(
+        app_session.scalars(
+            select(ArtifactPassageComparison).where(
+                ~select(PassageComparison.id)
+                .where(PassageComparison.alignment_artifact_id == ArtifactPassageComparison.id)
+                .exists()
+            )
+        )
+    )
+    orphaned_rc = list(
+        app_session.scalars(
+            select(ArtifactRetrievalContext).where(
+                ~select(RetrievalContext.id)
+                .where(RetrievalContext.alignment_artifact_id == ArtifactRetrievalContext.id)
+                .exists()
+            )
+        )
+    )
+    orphaned_signals = list(
+        app_session.scalars(
+            select(ArtifactPassageLanguageSignal).where(
+                ~select(PassageLanguageSignal.id)
+                .where(PassageLanguageSignal.language_signal_artifact_id == ArtifactPassageLanguageSignal.id)
+                .exists()
+            )
+        )
+    )
+    orphaned_qa = list(
+        app_session.scalars(
+            select(ArtifactQaChunk).where(
+                ~select(AppQaChunk.id).where(AppQaChunk.qa_chunking_artifact_id == ArtifactQaChunk.id).exists()
+            )
+        )
+    )
+
+    if not dry_run:
+        for group in (orphaned_pc, orphaned_rc, orphaned_signals, orphaned_qa):
+            for row in group:
+                app_session.delete(row)
+        app_session.flush()
+
+    return {
+        "passage_comparisons": len(orphaned_pc),
+        "retrieval_contexts": len(orphaned_rc),
+        "passage_language_signals": len(orphaned_signals),
+        "qa_chunks": len(orphaned_qa),
+    }
