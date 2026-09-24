@@ -1,4 +1,5 @@
 .env
+.env.neon
 .venv/
 __pycache__/
 .pytest_cache/
