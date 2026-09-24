@@ -49,7 +49,7 @@ export function DiscoveryResultsTable({
       return (
         <EmptyState
           title="This company's governance results didn't clear the quality gate"
-          description="Report-side signal quality wasn't GOOD or USABLE (or wasn't primary-eligible) for any comparison, so no governance language share value can be shown."
+          description="Report-side signal quality wasn't GOOD or USABLE (or wasn't primary-eligible) for any comparison, so no governance language change value can be shown."
         />
       );
     }
@@ -58,7 +58,7 @@ export function DiscoveryResultsTable({
       return (
         <EmptyState
           title="Below materiality threshold"
-          description={`This company's largest quality-eligible financial-condition language share change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "share")}, which does not clear the ${formatMetricValue(threshold, "share")} materiality threshold. Not ranked as an eligible Discover finding.`}
+          description={`This company's largest quality-eligible financial-condition language change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "rate_per_1000_words")}, which does not clear the ${formatMetricValue(threshold, "rate_per_1000_words")} materiality threshold. Not ranked as an eligible Discover finding.`}
         >
           <Link href={`/comparisons/${reportComparisonId}`}>View this comparison →</Link>
         </EmptyState>
@@ -69,7 +69,7 @@ export function DiscoveryResultsTable({
       return (
         <EmptyState
           title="Below materiality threshold"
-          description={`This company's largest quality-eligible governance language share change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "share")}, which does not clear the ${formatMetricValue(threshold, "share")} materiality threshold. Not ranked as an eligible Discover finding.`}
+          description={`This company's largest quality-eligible governance language change (${formatComparisonPeriod(earlierPeriodEnd, laterPeriodEnd) ?? "unknown period"}) was ${formatMetricValue(observedValue, "rate_per_1000_words")}, which does not clear the ${formatMetricValue(threshold, "rate_per_1000_words")} materiality threshold. Not ranked as an eligible Discover finding.`}
         >
           <Link href={`/comparisons/${reportComparisonId}`}>View this comparison →</Link>
         </EmptyState>

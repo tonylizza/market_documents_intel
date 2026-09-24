@@ -13,6 +13,7 @@ import { DeterministicFindingsList } from "@/components/DeterministicFindingsLis
 import { LanguageMetricsSection } from "@/components/LanguageMetricsSection";
 import { FinancialConditionSupportingDetail } from "@/components/FinancialConditionSupportingDetail";
 import { GovernanceSupportingDetail } from "@/components/GovernanceSupportingDetail";
+import { TopicChangeDecomposition } from "@/components/TopicChangeDecomposition";
 import { PassageCompositionSection } from "@/components/PassageCompositionSection";
 import { TechnicalDetails } from "@/components/TechnicalDetails";
 import { DefinitionList } from "@/components/DefinitionList";
@@ -78,6 +79,7 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
     financialConditionSubcategoryMovers,
     governanceSubcategoryMovers,
     passageComposition,
+    topicEvidencePassages,
   } = viewModel;
 
   return (
@@ -150,6 +152,20 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
         <DeterministicFindingsList findings={findings} />
       </section>
 
+      <section aria-labelledby="topic-change-heading" className={styles.section}>
+        <SectionHeader
+          id="topic-change-heading"
+          title="Topic-language changes"
+          description="How each topic's vocabulary changed in amount and in narrative density. A topic change counts only when both move the same way; it is 0 when the movement is explained by the report getting longer or shorter."
+        />
+        <TopicChangeDecomposition
+          comparisonId={comparison.id}
+          topicChange={comparison.topicChange}
+          netToneChange={comparison.netToneChange}
+          evidence={topicEvidencePassages}
+        />
+      </section>
+
       <section aria-labelledby="report-language-heading" className={styles.section}>
         <SectionHeader
           id="report-language-heading"
@@ -172,9 +188,10 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
         <SectionHeader
           id="financial-condition-supporting-heading"
           title="Financial-condition supporting detail"
-          description="Topic-mix change and dominant subcategory movers -- supporting detail for a financial-condition finding, never the Discover ranking metric itself."
+          description="Share of classified topic language, topic-mix change, and dominant subcategory movers -- supporting detail for a financial-condition finding, never the Discover ranking metric itself."
         />
         <FinancialConditionSupportingDetail
+          shareChange={comparison.financialConditionShareChange}
           topicMixChange={comparison.financialConditionTopicMixChange}
           subcategoryMovers={financialConditionSubcategoryMovers}
         />
@@ -184,7 +201,7 @@ export default async function ComparisonPage({ params }: ComparisonPageProps) {
         <SectionHeader
           id="governance-supporting-heading"
           title="Governance supporting detail"
-          description="Language density, topic-mix change, and dominant subcategory movers -- supporting detail for a governance finding, never the Discover ranking metric itself."
+          description="Language density, share of classified topic language, topic-mix change, and dominant subcategory movers -- supporting detail for a governance finding, never the Discover ranking metric itself."
         />
         <GovernanceSupportingDetail
           languageDensityChange={comparison.governanceChange}

@@ -61,8 +61,8 @@ describe("DiscoveryResultsTable", () => {
         items={[]}
         financialConditionCompanyStatus={{
           status: "below_materiality",
-          observedValue: 0.021,
-          threshold: 0.04,
+          observedValue: 0.12,
+          threshold: 0.25,
           reportComparisonId: "cmp-below",
           earlierPeriodEnd: "2023-06-30",
           laterPeriodEnd: "2024-06-30",
@@ -70,8 +70,8 @@ describe("DiscoveryResultsTable", () => {
       />,
     );
     expect(screen.getByText(/Below materiality threshold/)).toBeInTheDocument();
-    expect(screen.getByText(/2\.1%/)).toBeInTheDocument();
-    expect(screen.getByText(/4\.0%/)).toBeInTheDocument();
+    expect(screen.getByText(/\+0\.12 \/ 1,000 words/)).toBeInTheDocument();
+    expect(screen.getByText(/\+0\.25 \/ 1,000 words materiality threshold/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View this comparison/ })).toHaveAttribute("href", "/comparisons/cmp-below");
   });
 
@@ -86,14 +86,14 @@ describe("DiscoveryResultsTable", () => {
     expect(screen.getByText(/governance results didn't clear the quality gate/)).toBeInTheDocument();
   });
 
-  it("Track 7F.7a.1: renders a distinct governance below-materiality state with the observed value and threshold (0.05), never as an eligible finding", () => {
+  it("Track 7F.7a.1: renders a distinct governance below-materiality state with the observed value and threshold (0.25 per 1,000 words), never as an eligible finding", () => {
     render(
       <DiscoveryResultsTable
         items={[]}
         governanceCompanyStatus={{
           status: "below_materiality",
-          observedValue: 0.021,
-          threshold: 0.05,
+          observedValue: -0.1,
+          threshold: 0.25,
           reportComparisonId: "cmp-gov-below",
           earlierPeriodEnd: "2023-06-30",
           laterPeriodEnd: "2024-06-30",
@@ -101,8 +101,8 @@ describe("DiscoveryResultsTable", () => {
       />,
     );
     expect(screen.getByText(/Below materiality threshold/)).toBeInTheDocument();
-    expect(screen.getByText(/2\.1%/)).toBeInTheDocument();
-    expect(screen.getByText(/5\.0%/)).toBeInTheDocument();
+    expect(screen.getByText(/-0\.10 \/ 1,000 words/)).toBeInTheDocument();
+    expect(screen.getByText(/\+0\.25 \/ 1,000 words materiality threshold/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View this comparison/ })).toHaveAttribute("href", "/comparisons/cmp-gov-below");
   });
 });

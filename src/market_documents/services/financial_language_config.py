@@ -39,7 +39,14 @@ ALGORITHM_VERSION = "1.3.0"
 # so supporting-detail UI can state the factual count/share decomposition
 # instead of the removed |M1-G| < 1.0 heuristic. No change to matching,
 # negation, or any existing rate/share formula.
-SIGNAL_VERSION = "1.3.0"
+# Bumped again for Track 7F.9: new persisted derived fields on
+# `ReportPairLanguageFeatures` -- the unified Discover topic-change metric
+# (C_min conjunction of the pair-mean count leg and the density leg) for
+# financial_condition/governance/uncertainty, its inputs (eligible words,
+# financial_condition hits), and supporting alignment-unit diagnostics. No
+# change to matching, negation, taxonomy, population rules, or any existing
+# rate/share formula -- per-passage signal content is unchanged.
+SIGNAL_VERSION = "1.4.0"
 
 # Loughran-McDonald sentiment categories -- typed columns on
 # `PassageLanguageSignal`/`ReportPairLanguageFeatures` (spec item: "Core

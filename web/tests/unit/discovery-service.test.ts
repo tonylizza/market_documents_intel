@@ -51,7 +51,8 @@ function makeCompanyRepository(overrides: Partial<CompanyRepository> = {}): Comp
 
 function makeDiscoveryRepository(overrides: Partial<DiscoveryRepository> = {}): DiscoveryRepository {
   return {
-    listAvailableDiscoveryTypes: async () => ["largest_risk_introduction", "largest_risk_removal"] as DiscoveryType[],
+    listAvailableDiscoveryTypes: async () =>
+      ["largest_risk_introduction", "largest_negative_tone_shift", "largest_governance_shift"] as DiscoveryType[],
     getDiscoveryItems: async () => [makeItem()],
     getFinancialConditionCompanyStatus: async () => ({ status: "no_comparisons" }) satisfies FinancialConditionCompanyStatus,
     getGovernanceCompanyStatus: async () => ({ status: "no_comparisons" }) satisfies GovernanceCompanyStatus,
@@ -136,10 +137,38 @@ describe("filterDiscoveryItemsByMinQuality", () => {
 });
 
 describe("getDiscoveryPageViewModel", () => {
-  it("uses the first available type when none is requested", async () => {
+  it("uses the first available published type when none is requested", async () => {
     const viewModel = await getDiscoveryPageViewModel(makeDiscoveryRepository(), makeCompanyRepository(), {});
-    expect(viewModel.selectedType).toBe("largest_risk_introduction");
+    expect(viewModel.selectedType).toBe("largest_governance_shift");
     expect(viewModel.items).toHaveLength(1);
+  });
+
+  it("Track 7F.9: never lists an under-review type as available, even if an older publication has items for it", async () => {
+    const viewModel = await getDiscoveryPageViewModel(makeDiscoveryRepository(), makeCompanyRepository(), {});
+    expect(viewModel.availableTypes).toEqual(["largest_governance_shift", "largest_negative_tone_shift"]);
+    expect(viewModel.underReviewTypes.map((c) => c.type).sort()).toEqual([
+      "largest_new_disclosure_share",
+      "largest_overall_change",
+      "largest_risk_introduction",
+      "largest_risk_removal",
+    ]);
+  });
+
+  it("Track 7F.9: an explicitly requested under-review type shows its not-published state, never a fallback ranking", async () => {
+    let itemsFetched = false;
+    const viewModel = await getDiscoveryPageViewModel(
+      makeDiscoveryRepository({
+        getDiscoveryItems: async () => {
+          itemsFetched = true;
+          return [makeItem()];
+        },
+      }),
+      makeCompanyRepository(),
+      { type: "largest_risk_removal" },
+    );
+    expect(viewModel.requestedUnderReviewType?.type).toBe("largest_risk_removal");
+    expect(viewModel.items).toEqual([]);
+    expect(itemsFetched).toBe(false);
   });
 
   it("carries filter options from the company repository (companies + period range), no duplicate query", async () => {
@@ -163,10 +192,10 @@ describe("getDiscoveryPageViewModel", () => {
 
   it("applies the minQuality filter from params to the fetched items", async () => {
     const discoveryRepository = makeDiscoveryRepository({
-      getDiscoveryItems: async () => [makeItem({ qualityLabel: "Attribution uncertain" })],
+      getDiscoveryItems: async () => [makeItem({ qualityLabel: "Review recommended" })],
     });
     const viewModel = await getDiscoveryPageViewModel(discoveryRepository, makeCompanyRepository(), {
-      type: "largest_risk_introduction",
+      type: "largest_governance_shift",
       minQuality: "GOOD",
     });
     expect(viewModel.items).toEqual([]);

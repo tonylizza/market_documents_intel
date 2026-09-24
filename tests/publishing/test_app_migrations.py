@@ -238,6 +238,45 @@ def test_app_0014_downgrade_to_app_0013_and_reupgrade(app_engine):
         command.upgrade(cfg, "head")
 
 
+_APP_0015_COLUMNS = {
+    "feature_eligible_primary_words_earlier",
+    "financial_condition_hits_later",
+    "uncertainty_hits_earlier",
+    "financial_condition_topic_change",
+    "governance_topic_change",
+    "uncertainty_topic_change",
+    "governance_count_change_per_1000",
+    "uncertainty_change_consistency_ratio",
+    "financial_condition_largest_passage_share",
+    "governance_supporting_hits",
+    "positive_rate_change",
+    "negative_rate_change",
+}
+
+
+def test_app_0015_downgrade_to_app_0014_and_reupgrade(app_engine):
+    cfg = _app_alembic_config(app_engine)
+    try:
+        command.downgrade(cfg, "app_0014")
+
+        inspector = inspect(app_engine)
+        columns = {c["name"] for c in inspector.get_columns("report_comparisons", schema="app")}
+        assert not (_APP_0015_COLUMNS & columns)
+        view_columns = {c["name"] for c in inspector.get_columns("current_report_comparisons", schema="app")}
+        assert not (_APP_0015_COLUMNS & view_columns)
+
+        command.upgrade(cfg, "head")
+
+        inspector = inspect(app_engine)
+        columns = {c["name"] for c in inspector.get_columns("report_comparisons", schema="app")}
+        assert _APP_0015_COLUMNS <= columns
+        # The SELECT t.* view must be re-expanded to expose the new columns.
+        view_columns = {c["name"] for c in inspector.get_columns("current_report_comparisons", schema="app")}
+        assert _APP_0015_COLUMNS <= view_columns
+    finally:
+        command.upgrade(cfg, "head")
+
+
 def test_downgrade_to_base_and_reupgrade_to_head(app_engine):
     cfg = _app_alembic_config(app_engine)
     try:

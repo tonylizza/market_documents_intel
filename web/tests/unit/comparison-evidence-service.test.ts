@@ -67,6 +67,7 @@ function makeDetail(overrides: Partial<ReportComparisonDetail> = {}): ReportComp
     structuredContentExclusionShare: 0.01,
     reportSideWarning: null,
     alignmentChangeWarning: null,
+    topicChange: null,
     ...overrides,
   };
 }
@@ -92,6 +93,7 @@ function makeFakeRepository(overrides: Partial<ComparisonRepository> = {}): Comp
     getComparisonById: async () => makeDetail(),
     getComparisonLanguageMetrics: async () => [],
     getComparisonPassageComposition: async () => makeComposition(),
+    getTopicEvidencePassages: async () => [],
     getComparisonEvidence: async () => [],
     countComparisonEvidence: async () => 0,
     getComparisonEvidenceFilterOptions: async () => ({ confidenceLevels: [], categories: [], subcategoriesByCategory: {} }),

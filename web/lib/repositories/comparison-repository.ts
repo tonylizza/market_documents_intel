@@ -1,4 +1,9 @@
-import type { LanguageMetric, PassageComposition, ReportComparisonDetail } from "@/lib/domain/comparison";
+import type {
+  LanguageMetric,
+  PassageComposition,
+  ReportComparisonDetail,
+  TopicEvidencePassage,
+} from "@/lib/domain/comparison";
 import type { ComparisonEvidenceFilterOptions, ComparisonEvidenceFilters, ComparisonEvidenceItem } from "@/lib/domain/passage";
 import type { NarrativeUnitComparison, StructuredTableComparison } from "@/lib/domain/cutover-comparison";
 
@@ -16,6 +21,9 @@ export interface ComparisonRepository {
   getComparisonById(comparisonId: string): Promise<ReportComparisonDetail | null>;
   getComparisonLanguageMetrics(comparisonId: string): Promise<LanguageMetric[]>;
   getComparisonPassageComposition(comparisonId: string): Promise<PassageComposition>;
+  /** Track 7F.9 -- up to `perSide` highest-hit eligible-narrative passages
+   * per (topic category, report side), for the topic-change decomposition. */
+  getTopicEvidencePassages(comparisonId: string, perSide: number): Promise<TopicEvidencePassage[]>;
 
   /** Bounded, filtered, paginated evidence rows for one comparison -- see
    * `passage-mapper.ts`'s shared column list. Never fetches every alignment

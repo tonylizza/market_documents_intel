@@ -23,6 +23,7 @@ function makeDetail(): ReportComparisonDetail {
     structuredContentExclusionShare: 0.1,
     reportSideWarning: null,
     alignmentChangeWarning: null,
+    topicChange: null,
   };
 }
 
@@ -90,6 +91,9 @@ vi.mock("@/lib/repositories/postgres-comparison-repository", () => ({
     }
     async getComparisonLanguageMetrics() {
       return LANGUAGE_METRICS;
+    }
+    async getTopicEvidencePassages() {
+      return [];
     }
     async getComparisonPassageComposition() {
       return COMPOSITION;

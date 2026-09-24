@@ -1,5 +1,6 @@
-"""Corpus-wide `discovery_items` ranking: the same 8 candidate signals as
-`findings.py`, ranked across three `rank_scope`s (`corpus`,
+"""Corpus-wide `discovery_items` ranking: the same candidate signals as
+`findings.py` (the published `CANDIDATES` only -- `DISABLED_CANDIDATE_KEYS`
+types are never ranked), ranked across three `rank_scope`s (`corpus`,
 `company_history`, `latest_comparisons`) instead of picked per-comparison.
 
 Pure and database-free, like `findings.py` -- operates only on

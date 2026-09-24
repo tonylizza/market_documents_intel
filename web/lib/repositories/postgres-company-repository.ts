@@ -23,11 +23,10 @@ import type { CompanyRepository } from "@/lib/repositories/company-repository";
  * docs/frontend.md). Not read from the database: this list encodes which
  * types are *safe to treat as primary* on this page, which is a frontend
  * presentation decision, not a data fact to query for. */
+// Track 7F.9: risk introduction/removal removed -- methodology under review.
 export const LANGUAGE_DISCOVERY_TYPES = [
   "largest_uncertainty_increase",
   "largest_negative_tone_shift",
-  "largest_risk_introduction",
-  "largest_risk_removal",
   "largest_governance_shift",
   "largest_financial_condition_shift",
 ] as const;

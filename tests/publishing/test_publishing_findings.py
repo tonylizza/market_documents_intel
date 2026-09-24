@@ -1,5 +1,13 @@
+"""CandidateSpec behaviour under the frozen Track 7F.8/7F.8a methodology,
+implemented in Track 7F.9 (C_min topic-change metrics, net tone decline,
+disabled alignment/feature-gated types, no evidence gate)."""
+
+import pytest
+
 from market_documents.publishing.findings import (
     CANDIDATE_KEY_ORDER,
+    CANDIDATES,
+    DISABLED_CANDIDATE_KEYS,
     ComparisonMetrics,
     eligible_candidates,
     select_findings,
@@ -21,6 +29,9 @@ def _base_metrics(**overrides) -> ComparisonMetrics:
         financial_condition_topic_mix_change=None,
         governance_share_change=None,
         governance_topic_mix_change=None,
+        financial_condition_topic_change=None,
+        governance_topic_change=None,
+        uncertainty_topic_change=None,
         report_side_quality_ok=False,
         report_side_primary_eligible=False,
         alignment_change_quality_ok=False,
@@ -31,206 +42,164 @@ def _base_metrics(**overrides) -> ComparisonMetrics:
     return ComparisonMetrics(**defaults)
 
 
-def test_no_eligible_candidates_yields_all_none_findings():
-    metrics = _base_metrics()
-    primary, secondary, tertiary = select_findings(metrics)
-    assert primary is None and secondary is None and tertiary is None
+def _report_side(**overrides) -> ComparisonMetrics:
+    return _base_metrics(report_side_quality_ok=True, report_side_primary_eligible=True, **overrides)
 
 
-def test_ineligible_but_huge_value_never_selected():
-    # feature gate fails (feature_quality_ok False) despite a huge score.
-    metrics = _base_metrics(disclosure_change_score=0.99, feature_quality_ok=False, feature_primary_eligible=True)
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
+def test_candidate_specs_match_frozen_methodology():
+    specs = {s.key: s for s in CANDIDATES}
+    assert set(specs) == {
+        "largest_uncertainty_increase",
+        "largest_negative_tone_shift",
+        "largest_governance_shift",
+        "largest_financial_condition_shift",
+    }
+    assert (specs["largest_financial_condition_shift"].metric_key, specs["largest_financial_condition_shift"].epsilon) == (
+        "financial_condition_topic_change", 0.25,
+    )
+    assert (specs["largest_governance_shift"].metric_key, specs["largest_governance_shift"].epsilon) == (
+        "governance_topic_change", 0.25,
+    )
+    assert (specs["largest_uncertainty_increase"].metric_key, specs["largest_uncertainty_increase"].epsilon) == (
+        "uncertainty_topic_change", 0.75,
+    )
+    assert (specs["largest_negative_tone_shift"].metric_key, specs["largest_negative_tone_shift"].epsilon) == (
+        "net_tone_change", 2.25,
+    )
+    assert all(s.unit == "rate_per_1000_words" for s in CANDIDATES)
 
 
-def test_sub_epsilon_candidate_never_selected():
-    # disclosure_change_score epsilon is 0.05; well below that is immaterial.
-    metrics = _base_metrics(disclosure_change_score=0.01, feature_quality_ok=True, feature_primary_eligible=True)
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
+def test_disabled_keys_are_exactly_the_frozen_set_and_have_no_spec():
+    assert set(DISABLED_CANDIDATE_KEYS) == {
+        "largest_overall_change",
+        "largest_new_disclosure_share",
+        "largest_risk_introduction",
+        "largest_risk_removal",
+    }
+    assert not set(DISABLED_CANDIDATE_KEYS) & {s.key for s in CANDIDATES}
+    # Vocabulary is unchanged: every key is either published or disabled.
+    assert set(CANDIDATE_KEY_ORDER) == {s.key for s in CANDIDATES} | set(DISABLED_CANDIDATE_KEYS)
 
 
-def test_single_eligible_candidate_fills_only_primary():
-    metrics = _base_metrics(disclosure_change_score=0.5, feature_quality_ok=True, feature_primary_eligible=True)
-    primary, secondary, tertiary = select_findings(metrics)
-    assert primary is not None and primary.key == "largest_overall_change"
-    assert secondary is None and tertiary is None
-
-
-def test_magnitude_descending_order():
+def test_disabled_types_never_selected_even_when_every_gate_passes():
     metrics = _base_metrics(
-        disclosure_change_score=0.10,
+        disclosure_change_score=0.99,
         feature_quality_ok=True,
         feature_primary_eligible=True,
-        net_tone_change=-8.0,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
+        new_rate_words=0.9,
+        risk_language_introduction=50.0,
+        risk_language_removal=50.0,
+        alignment_change_quality_ok=True,
+        alignment_change_primary_eligible=True,
+    )
+    assert eligible_candidates(metrics) == []
+    assert select_findings(metrics) == (None, None, None)
+
+
+def test_no_eligible_candidates_yields_all_none_findings():
+    assert select_findings(_base_metrics()) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    "field,key",
+    [
+        ("financial_condition_topic_change", "largest_financial_condition_shift"),
+        ("governance_topic_change", "largest_governance_shift"),
+    ],
+)
+def test_topic_threshold_is_quarter_per_1000_both_directions(field, key):
+    assert select_findings(_report_side(**{field: 0.2499}))[0] is None
+    assert select_findings(_report_side(**{field: -0.2499}))[0] is None
+    for value in (0.25, -0.25, 1.2, -0.9):
+        primary = select_findings(_report_side(**{field: value}))[0]
+        assert primary is not None and primary.key == key and primary.value == value
+
+
+def test_uncertainty_is_increase_only_at_three_quarters():
+    assert select_findings(_report_side(uncertainty_topic_change=0.7499))[0] is None
+    assert select_findings(_report_side(uncertainty_topic_change=-5.0))[0] is None
+    primary = select_findings(_report_side(uncertainty_topic_change=0.75))[0]
+    assert primary is not None and primary.key == "largest_uncertainty_increase"
+
+
+def test_uncertainty_ranks_on_topic_change_not_density():
+    # BEL 2019->2020: density +2.18 but hits fell (C_min = 0) -- no finding.
+    metrics = _report_side(uncertainty_intensity_change=2.1753, uncertainty_topic_change=0.0)
+    assert select_findings(metrics)[0] is None
+
+
+def test_net_tone_decline_only_at_minus_two_and_a_quarter():
+    assert select_findings(_report_side(net_tone_change=5.0))[0] is None
+    assert select_findings(_report_side(net_tone_change=-2.2499))[0] is None
+    primary = select_findings(_report_side(net_tone_change=-2.25))[0]
+    assert primary is not None and primary.key == "largest_negative_tone_shift"
+
+
+def test_supporting_metrics_never_drive_findings():
+    # Large M1 / M3 / topic-mix values alone never produce a finding.
+    metrics = _report_side(
+        financial_condition_language_change=50.0,
+        financial_condition_share_change=0.5,
+        financial_condition_topic_mix_change=0.9,
+        governance_language_change=50.0,
+        governance_share_change=0.5,
+        governance_topic_mix_change=0.9,
+        uncertainty_intensity_change=50.0,
+    )
+    assert select_findings(metrics) == (None, None, None)
+
+
+def test_report_side_gate_still_required():
+    metrics = _base_metrics(financial_condition_topic_change=5.0, net_tone_change=-9.0)
+    assert select_findings(metrics) == (None, None, None)
+
+
+def test_magnitude_descending_order_and_top_three():
+    metrics = _report_side(
+        net_tone_change=-9.0,  # 9 / 2.25 = 4.0
+        financial_condition_topic_change=-0.5,  # 2.0
+        governance_topic_change=1.25,  # 5.0
+        uncertainty_topic_change=0.9,  # 1.2
     )
     primary, secondary, tertiary = select_findings(metrics)
-    # net_tone_change magnitude (8.0/1.0=8) beats disclosure_change_score (0.10/0.05=2)
-    assert primary.key == "largest_negative_tone_shift"
-    assert secondary.key == "largest_overall_change"
-    assert tertiary is None
-
-
-def test_negative_tone_shift_requires_negative_value():
-    metrics = _base_metrics(
-        net_tone_change=5.0,  # positive == tone improved, not a "negative tone shift"
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_uncertainty_increase_requires_positive_value():
-    metrics = _base_metrics(
-        uncertainty_intensity_change=-5.0,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_risk_introduction_gated_by_alignment_change_not_report_side():
-    metrics = _base_metrics(
-        risk_language_introduction=10.0,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-        alignment_change_quality_ok=False,
-        alignment_change_primary_eligible=False,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None  # wrong gate satisfied, not the required one
+    assert [primary.key, secondary.key, tertiary.key] == [
+        "largest_governance_shift",
+        "largest_negative_tone_shift",
+        "largest_financial_condition_shift",
+    ]
 
 
 def test_fixed_order_tiebreak_on_exact_ties():
-    # governance_share_change (M3-G, epsilon 0.05) magnitude 5.0/0.05=100 vs
-    # net_tone_change (epsilon 1.0) magnitude 5.0/1.0=5 would not tie -- use
-    # a governance_share_change value whose /epsilon magnitude exactly
-    # matches net_tone_change's (5.0/1.0=5 -> 0.25/0.05=5).
-    metrics = _base_metrics(
-        net_tone_change=-5.0,
-        governance_share_change=0.25,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    survivors = eligible_candidates(metrics)
-    magnitudes = {s.key: s.magnitude for s in survivors}
+    # 0.5 / 0.25 == 4.5 / 2.25 == 2.0 exactly.
+    metrics = _report_side(net_tone_change=-4.5, governance_topic_change=0.5)
+    magnitudes = {s.key: s.magnitude for s in eligible_candidates(metrics)}
     assert magnitudes["largest_negative_tone_shift"] == magnitudes["largest_governance_shift"]
     primary, secondary, _ = select_findings(metrics)
-    # net_tone_change appears before governance_share_change in CANDIDATE_KEY_ORDER
-    assert CANDIDATE_KEY_ORDER.index("largest_negative_tone_shift") < CANDIDATE_KEY_ORDER.index(
-        "largest_governance_shift"
-    )
     assert primary.key == "largest_negative_tone_shift"
     assert secondary.key == "largest_governance_shift"
 
 
-def test_top_three_selected_when_more_than_three_eligible():
-    metrics = _base_metrics(
-        disclosure_change_score=0.9,
-        feature_quality_ok=True,
-        feature_primary_eligible=True,
-        net_tone_change=-9.0,
-        uncertainty_intensity_change=8.0,
-        governance_language_change=7.0,
-        financial_condition_share_change=0.06,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, secondary, tertiary = select_findings(metrics)
-    assert None not in (primary, secondary, tertiary)
-    magnitudes = [primary.magnitude, secondary.magnitude, tertiary.magnitude]
-    assert magnitudes == sorted(magnitudes, reverse=True)
+# --- Golden anchor cases (persisted values; see
+# tests/test_topic_change_metrics.py for the formula-level anchors). ---
 
 
-# --- Track 7F.4: M3 (financial_condition_share_change) is now the
-# `largest_financial_condition_shift` candidate, epsilon=0.04, M1
-# (financial_condition_language_change) no longer drives ranking. ---
-
-
-def test_financial_condition_candidate_uses_m3_not_m1():
-    # Large M1 alone (old metric) is not enough -- M3 absent means no finding.
-    metrics = _base_metrics(
-        financial_condition_language_change=50.0,
-        financial_condition_share_change=None,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_financial_condition_epsilon_is_point_zero_four():
-    below = _base_metrics(
-        financial_condition_share_change=0.039,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    assert select_findings(below)[0] is None
-
-    at_threshold = _base_metrics(
-        financial_condition_share_change=0.04,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(at_threshold)
-    assert primary is not None and primary.key == "largest_financial_condition_shift"
-
-
-def test_act_2017_2018_artifact_demoted_by_m3():
-    # ACT 2017->2018: M1 +1.0019 (old metric, would have been eligible under
-    # epsilon=1.0) but M3 +0.0182 is well below the 0.04 materiality bar --
-    # this is the flagship denominator-shrinkage artifact 7F.1 diagnosed.
-    metrics = _base_metrics(
-        financial_condition_language_change=1.0019,
-        financial_condition_share_change=0.0182,
-        financial_condition_topic_mix_change=0.0043,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_sbp_2023_2024_positive_control_retained():
-    metrics = _base_metrics(
-        financial_condition_language_change=-1.1027,
-        financial_condition_share_change=-0.0725,
-        financial_condition_topic_mix_change=0.0126,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is not None
-    assert primary.key == "largest_financial_condition_shift"
-    assert primary.value == -0.0725
-
-
-def test_financial_condition_quality_gate_unchanged():
-    # ACT 2016->2024: large M3 but quality-excluded (report-side gate fails)
-    # -- must stay excluded regardless of M3 magnitude.
-    metrics = _base_metrics(
-        financial_condition_share_change=0.5,
-        report_side_quality_ok=False,
-        report_side_primary_eligible=False,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_other_discovery_candidates_unaffected_by_m3_change():
-    metrics = _base_metrics(
-        disclosure_change_score=0.9,
-        feature_quality_ok=True,
-        feature_primary_eligible=True,
-        net_tone_change=-9.0,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-        financial_condition_share_change=None,
-    )
-    survivors = {f.key for f in eligible_candidates(metrics)}
-    assert survivors == {"largest_overall_change", "largest_negative_tone_shift"}
+@pytest.mark.parametrize(
+    "field,value,eligible",
+    [
+        ("financial_condition_topic_change", 0.0, False),  # ACT FC 2017->2018
+        ("financial_condition_topic_change", 0.0, False),  # BEL FC 2019->2020
+        ("financial_condition_topic_change", -0.9016, True),  # SBP FC 2023->2024
+        ("financial_condition_topic_change", 0.2783, True),  # BEL FC 2020->2021
+        ("financial_condition_topic_change", -0.9256, True),  # ACT FC 2016->2017
+        ("governance_topic_change", 0.0, False),  # SUR GOV 2023->2024
+        ("governance_topic_change", -0.1391, False),  # BEL GOV 2018->2019, below threshold
+        ("governance_topic_change", 0.4998, True),  # ACT GOV 2017->2018
+        ("governance_topic_change", 1.1889, True),  # BEL GOV 2016->2017
+        ("governance_topic_change", -0.9168, True),  # ACT GOV 2023->2024
+        ("uncertainty_topic_change", 0.0, False),  # BEL UNC 2019->2020
+        ("uncertainty_topic_change", 0.0, False),  # BEL UNC 2020->2021
+        ("uncertainty_topic_change", 0.7596, True),  # ACT UNC 2019->2020
+    ],
+)
+def test_anchor_case_eligibility(field, value, eligible):
+    assert (select_findings(_report_side(**{field: value}))[0] is not None) is eligible

@@ -6,6 +6,7 @@ import type {
   PassageComposition,
   ReportComparisonDetail,
   TechnicalQualityDetail,
+  TopicEvidencePassage,
 } from "@/lib/domain/comparison";
 import { buildFindings } from "@/lib/content/finding-copy";
 import { buildHeadlineMetrics } from "@/lib/services/headline-metrics";
@@ -29,7 +30,12 @@ export interface ComparisonPageViewModel {
    * with any hits, not just the top 3 -- see `buildGovernanceSubcategoryMovers`). */
   governanceSubcategoryMovers: GovernanceSubcategoryMover[];
   passageComposition: PassageComposition;
+  /** Track 7F.9 -- highest-hit eligible passages per topic category and
+   * report side (`TOPIC_EVIDENCE_PER_SIDE` each). */
+  topicEvidencePassages: TopicEvidencePassage[];
 }
+
+export const TOPIC_EVIDENCE_PER_SIDE = 3;
 
 /** Track 7F.7a.1 item 12 -- one governance subcategory mover row, extending
  * the raw `LanguageMetric` hit counts with each side's governance-share
@@ -112,7 +118,7 @@ export function buildTechnicalDetails(comparison: ReportComparisonDetail): Techn
 const ALIGNMENT_CHANGE_DEFAULT_POPULATION = "primary_narrative_excl_ambiguous";
 
 /** Three queries total (comparison+company join, language metrics, passage
- * composition) -- findings/headline metrics/technical details are all pure
+ * composition; plus Track 7F.9's topic-evidence read when topic data exists) -- findings/headline metrics/technical details are all pure
  * derivations of the first, adding zero further queries. `null` when the
  * comparison id doesn't exist (page renders a 404). */
 export async function getComparisonPageViewModel(
@@ -122,9 +128,10 @@ export async function getComparisonPageViewModel(
   const comparison = await repository.getComparisonById(comparisonId);
   if (!comparison) return null;
 
-  const [languageMetrics, passageComposition] = await Promise.all([
+  const [languageMetrics, passageComposition, topicEvidencePassages] = await Promise.all([
     repository.getComparisonLanguageMetrics(comparisonId),
     repository.getComparisonPassageComposition(comparisonId),
+    comparison.topicChange ? repository.getTopicEvidencePassages(comparisonId, TOPIC_EVIDENCE_PER_SIDE) : Promise.resolve([]),
   ]);
 
   return {
@@ -146,5 +153,6 @@ export async function getComparisonPageViewModel(
     ),
     governanceSubcategoryMovers: buildGovernanceSubcategoryMovers(languageMetrics),
     passageComposition,
+    topicEvidencePassages,
   };
 }

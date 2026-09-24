@@ -1,5 +1,5 @@
-import type { ComparisonSummary } from "@/lib/domain/comparison";
-import type { ComparisonRow } from "@/lib/schemas/comparison";
+import type { ComparisonSummary, TopicCategoryChange, TopicChangeDetail } from "@/lib/domain/comparison";
+import type { ComparisonRow, TopicChangeRow } from "@/lib/schemas/comparison";
 
 /**
  * Maps a validated `comparisonRowSchema` row to `ComparisonSummary` --
@@ -130,3 +130,100 @@ export const COMPARISON_ROW_COLUMNS_SQL = `
   rc.tertiary_finding_key,
   rc.finding_payload
 `;
+
+/** Track 7F.9 -- topic-change columns, selected only by the comparison-
+ * detail query (alongside `COMPARISON_ROW_COLUMNS_SQL`) so the company-
+ * history/card queries don't carry them. */
+export const TOPIC_CHANGE_COLUMNS_SQL = `
+  rc.feature_eligible_primary_words_earlier,
+  rc.feature_eligible_primary_words_later,
+  rc.financial_condition_hits_earlier,
+  rc.financial_condition_hits_later,
+  rc.uncertainty_hits_earlier,
+  rc.uncertainty_hits_later,
+  rc.positive_rate_change,
+  rc.negative_rate_change,
+  rc.financial_condition_count_change_per_1000,
+  rc.financial_condition_topic_change,
+  rc.financial_condition_supporting_hits,
+  rc.financial_condition_opposing_hits,
+  rc.financial_condition_change_consistency_ratio,
+  rc.financial_condition_largest_passage_share,
+  rc.governance_count_change_per_1000,
+  rc.governance_topic_change,
+  rc.governance_supporting_hits,
+  rc.governance_opposing_hits,
+  rc.governance_change_consistency_ratio,
+  rc.governance_largest_passage_share,
+  rc.uncertainty_count_change_per_1000,
+  rc.uncertainty_topic_change,
+  rc.uncertainty_supporting_hits,
+  rc.uncertainty_opposing_hits,
+  rc.uncertainty_change_consistency_ratio,
+  rc.uncertainty_largest_passage_share
+`;
+
+function mapTopicCategory(
+  hitsEarlier: number | null,
+  hitsLater: number | null,
+  densityChange: number | null,
+  row: {
+    countChangePer1000: number | null;
+    topicChange: number | null;
+    supportingHits: number | null;
+    opposingHits: number | null;
+    changeConsistencyRatio: number | null;
+    largestPassageShare: number | null;
+  },
+): TopicCategoryChange {
+  return { hitsEarlier, hitsLater, densityChange, ...row };
+}
+
+/** `null` when the publication predates the 7F.9 fields (every topic
+ * change column NULL) -- never a fabricated all-zero decomposition. */
+export function mapTopicChangeRow(data: TopicChangeRow & ComparisonRow): TopicChangeDetail | null {
+  if (
+    data.financial_condition_topic_change === null &&
+    data.governance_topic_change === null &&
+    data.uncertainty_topic_change === null
+  ) {
+    return null;
+  }
+  return {
+    wordsEarlier: data.feature_eligible_primary_words_earlier,
+    wordsLater: data.feature_eligible_primary_words_later,
+    positiveRateChange: data.positive_rate_change,
+    negativeRateChange: data.negative_rate_change,
+    categories: {
+      financial_condition: mapTopicCategory(
+        data.financial_condition_hits_earlier,
+        data.financial_condition_hits_later,
+        data.financial_condition_change,
+        {
+          countChangePer1000: data.financial_condition_count_change_per_1000,
+          topicChange: data.financial_condition_topic_change,
+          supportingHits: data.financial_condition_supporting_hits,
+          opposingHits: data.financial_condition_opposing_hits,
+          changeConsistencyRatio: data.financial_condition_change_consistency_ratio,
+          largestPassageShare: data.financial_condition_largest_passage_share,
+        },
+      ),
+      governance: mapTopicCategory(data.governance_hits_earlier, data.governance_hits_later, data.governance_change, {
+        countChangePer1000: data.governance_count_change_per_1000,
+        topicChange: data.governance_topic_change,
+        supportingHits: data.governance_supporting_hits,
+        opposingHits: data.governance_opposing_hits,
+        changeConsistencyRatio: data.governance_change_consistency_ratio,
+        largestPassageShare: data.governance_largest_passage_share,
+      }),
+      uncertainty: mapTopicCategory(data.uncertainty_hits_earlier, data.uncertainty_hits_later, data.uncertainty_change, {
+        countChangePer1000: data.uncertainty_count_change_per_1000,
+        topicChange: data.uncertainty_topic_change,
+        supportingHits: data.uncertainty_supporting_hits,
+        opposingHits: data.uncertainty_opposing_hits,
+        changeConsistencyRatio: data.uncertainty_change_consistency_ratio,
+        largestPassageShare: data.uncertainty_largest_passage_share,
+      }),
+    },
+  };
+}

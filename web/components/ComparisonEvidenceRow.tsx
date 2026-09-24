@@ -5,6 +5,7 @@ import { TechnicalDetails } from "@/components/TechnicalDetails";
 import { DefinitionList } from "@/components/DefinitionList";
 import { formatAlignmentStatusLabel, formatAlignmentTypeLabel } from "@/lib/config/passage-vocabulary";
 import { formatMetricValue } from "@/lib/formatting/numbers";
+import { POSSIBLY_MOVED_LABEL, isWeakChangeAttribution } from "@/lib/services/alignment-caveat";
 import styles from "./ComparisonEvidenceRow.module.css";
 
 export interface ComparisonEvidenceRowProps {
@@ -41,6 +42,11 @@ export function ComparisonEvidenceRow({ item }: ComparisonEvidenceRowProps) {
         <span className={styles.badge}>{formatAlignmentTypeLabel(item.alignmentType)}</span>
         {item.collisionFlag && <span className={styles.badge}>Collision flagged</span>}
         {item.splitMergeFlag && <span className={styles.badge}>Split/merge flagged</span>}
+        {isWeakChangeAttribution(item.alignmentStatus, item.confidence) && (
+          <span className={styles.badge} title="Weak alignment confidence: similar text may appear elsewhere in the other report.">
+            {POSSIBLY_MOVED_LABEL}
+          </span>
+        )}
       </div>
 
       <div className={styles.sides}>

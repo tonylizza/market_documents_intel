@@ -9,6 +9,8 @@ import type {
 } from "@/lib/domain/discovery";
 import {
   DISCOVERY_TYPE_CONFIG,
+  PUBLISHED_DISCOVERY_TYPES,
+  UNDER_REVIEW_DISCOVERY_TYPES,
   isDiscoveryType,
   resolveRankScope,
   type DiscoveryType,
@@ -52,6 +54,25 @@ export interface DiscoveryPageViewModel {
    * above, only populated when `selectedType === "largest_governance_
    * shift"`. */
   governanceCompanyStatus: GovernanceCompanyStatus | null;
+  /** Track 7F.9 -- rankings whose methodology is not currently published /
+   * under review. Always listed explicitly; never silently omitted. */
+  underReviewTypes: DiscoveryTypeConfig[];
+  /** Set when the URL explicitly requests an under-review ranking: the page
+   * shows its "not currently published" state instead of falling back. */
+  requestedUnderReviewType: DiscoveryTypeConfig | null;
+}
+
+/** Restricts repository-reported types to published ones, in the fixed
+ * published display order -- an under-review type is never rendered as a
+ * ranking even if an older publication still contains items for it. */
+export function publishedAvailableTypes(repositoryTypes: readonly DiscoveryType[]): DiscoveryType[] {
+  return PUBLISHED_DISCOVERY_TYPES.filter((type) => repositoryTypes.includes(type));
+}
+
+export function resolveRequestedUnderReviewType(typeParam: string | null | undefined): DiscoveryTypeConfig | null {
+  if (!typeParam || !isDiscoveryType(typeParam)) return null;
+  const config = DISCOVERY_TYPE_CONFIG[typeParam];
+  return config.publicationStatus === "under_review" ? config : null;
 }
 
 /** Falls back to the first available (non-empty) discovery type when the
@@ -102,7 +123,8 @@ export async function getDiscoveryPageViewModel(
   companyRepository: CompanyRepository,
   params: DiscoveryPageParams,
 ): Promise<DiscoveryPageViewModel> {
-  const availableTypes = await discoveryRepository.listAvailableDiscoveryTypes();
+  const availableTypes = publishedAvailableTypes(await discoveryRepository.listAvailableDiscoveryTypes());
+  const requestedUnderReviewType = resolveRequestedUnderReviewType(params.type);
   const selectedType = resolveSelectedDiscoveryType(params.type, availableTypes);
   const scope = resolveRankScope(params.scope);
   const minQuality = resolveMinQualityParam(params.minQuality);
@@ -111,7 +133,7 @@ export async function getDiscoveryPageViewModel(
   const periodEnd = resolvePeriodDateParam(params.periodEnd);
 
   const [rawItems, companies, summary] = await Promise.all([
-    selectedType
+    selectedType && !requestedUnderReviewType
       ? discoveryRepository.getDiscoveryItems({ type: selectedType, scope, companyTicker, periodStart, periodEnd })
       : Promise.resolve([]),
     companyRepository.listCompanies(),
@@ -122,12 +144,12 @@ export async function getDiscoveryPageViewModel(
   const items = filterDiscoveryItemsByMinQuality(rawItems, typeConfig.qualityDimension, minQuality);
 
   const financialConditionCompanyStatus =
-    selectedType === "largest_financial_condition_shift" && companyTicker && items.length === 0
+    !requestedUnderReviewType && selectedType === "largest_financial_condition_shift" && companyTicker && items.length === 0
       ? await discoveryRepository.getFinancialConditionCompanyStatus(companyTicker)
       : null;
 
   const governanceCompanyStatus =
-    selectedType === "largest_governance_shift" && companyTicker && items.length === 0
+    !requestedUnderReviewType && selectedType === "largest_governance_shift" && companyTicker && items.length === 0
       ? await discoveryRepository.getGovernanceCompanyStatus(companyTicker)
       : null;
 
@@ -145,5 +167,7 @@ export async function getDiscoveryPageViewModel(
     items,
     financialConditionCompanyStatus,
     governanceCompanyStatus,
+    underReviewTypes: UNDER_REVIEW_DISCOVERY_TYPES.map((type) => DISCOVERY_TYPE_CONFIG[type]),
+    requestedUnderReviewType,
   };
 }

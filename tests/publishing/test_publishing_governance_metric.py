@@ -1,12 +1,11 @@
-"""Track 7F.7a.1: governance moves from M1-G (governance_language_change,
-rate-difference heuristic) to M3-G (governance_share_change, epsilon=0.05
-per docs/governance-metric-redesign-7f7a.md's
-ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD decision) as the `largest_governance_
-shift` Discover candidate -- exact mirror of the financial-condition M1->M3
-switch validated in `test_publishing_findings.py`.
+"""Governance Discover candidate under Track 7F.9: `largest_governance_shift`
+ranks on `governance_topic_change` (C_min, |value| >= 0.25 per 1,000 words,
+both directions). M3-G (`governance_share_change`, the 7F.7a.1 ranking
+metric), M1-G, and M6-G are supporting detail only.
 
-Anchor values below are the validated 7F.7a corpus results (see
-docs/governance-metric-redesign-7f7a.md section 13/14/15).
+Anchor values are the persisted 7F.9 C_min values for the 7F.8a governance
+anchors and expected findings (docs/discover-metrics-unified-
+implementation-7f9.md Sections 11-12).
 """
 
 from market_documents.publishing.findings import (
@@ -32,8 +31,11 @@ def _base_metrics(**overrides) -> ComparisonMetrics:
         financial_condition_topic_mix_change=None,
         governance_share_change=None,
         governance_topic_mix_change=None,
-        report_side_quality_ok=False,
-        report_side_primary_eligible=False,
+        financial_condition_topic_change=None,
+        governance_topic_change=None,
+        uncertainty_topic_change=None,
+        report_side_quality_ok=True,
+        report_side_primary_eligible=True,
         alignment_change_quality_ok=False,
         alignment_change_primary_eligible=False,
         new_rate_words=None,
@@ -42,188 +44,60 @@ def _base_metrics(**overrides) -> ComparisonMetrics:
     return ComparisonMetrics(**defaults)
 
 
-def test_governance_candidate_uses_m3g_not_m1g():
-    # Large M1-G alone (old metric) is not enough -- M3-G absent means no finding.
-    metrics = _base_metrics(
-        governance_language_change=50.0,
-        governance_share_change=None,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_governance_candidate_key_maps_to_share_change_metric():
-    metrics = _base_metrics(
-        governance_share_change=0.10,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
+def test_governance_candidate_maps_to_topic_change_metric():
+    primary, _, _ = select_findings(_base_metrics(governance_topic_change=0.5))
     assert primary is not None
     assert primary.key == "largest_governance_shift"
-    assert primary.metric_key == "governance_share_change"
+    assert primary.metric_key == "governance_topic_change"
 
 
-def test_governance_epsilon_is_point_zero_five():
-    below = _base_metrics(
-        governance_share_change=0.049,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    assert select_findings(below)[0] is None
-
-    at_threshold = _base_metrics(
-        governance_share_change=0.05,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(at_threshold)
-    assert primary is not None and primary.key == "largest_governance_shift"
-
-
-def test_governance_quality_gate_unchanged():
-    # ACT long-gap pair: large M3-G but quality-excluded (report-side gate
-    # fails) -- must stay excluded regardless of M3-G magnitude.
-    metrics = _base_metrics(
-        governance_share_change=0.5,
-        report_side_quality_ok=False,
-        report_side_primary_eligible=False,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is None
-
-
-def test_other_discovery_candidates_unaffected_by_governance_change():
-    metrics = _base_metrics(
-        disclosure_change_score=0.9,
-        feature_quality_ok=True,
-        feature_primary_eligible=True,
-        net_tone_change=-9.0,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-        governance_share_change=None,
-    )
-    survivors = {f.key for f in eligible_candidates(metrics)}
-    assert survivors == {"largest_overall_change", "largest_negative_tone_shift"}
-
-
-# --- Anchor regression checks (docs/governance-metric-redesign-7f7a.md sec 14/15) ---
-
-
-def test_act_2017_2018_retained_under_m3g():
-    # M1-G +1.7360 (old metric, inflated by report-length change) but the
-    # real signal is M3-G +0.0865 -- must clear the 0.05 bar and remain
-    # eligible (unlike the financial-condition ACT 2017->2018 case, which
-    # was *demoted* by its M3 switch -- governance's M3-G tells the
-    # opposite story here: the share increase is real, not an artifact).
-    metrics = _base_metrics(
-        governance_language_change=1.7360,
-        governance_share_change=0.0865,
-        governance_topic_mix_change=0.0193,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is not None
-    assert primary.key == "largest_governance_shift"
-    assert primary.value == 0.0865
-
-
-def test_bel_2018_2019_retained_under_m3g():
-    # M1-G -1.0697 (absolute volume roughly flat) but relative share
-    # declined (M3-G -0.0635) because other custom-taxonomy categories
-    # expanded -- share-relative movement, must remain eligible.
+def test_m3g_and_m1g_no_longer_drive_ranking():
+    # BEL 2018->2019: M3-G -0.0635 (eligible under 7F.7a.1) and M1-G -1.07,
+    # but C_min is -0.139 -- below threshold, not a governance finding.
     metrics = _base_metrics(
         governance_language_change=-1.0697,
         governance_share_change=-0.0635,
         governance_topic_mix_change=0.0056,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
+        governance_topic_change=-0.1391,
     )
-    primary, _, _ = select_findings(metrics)
-    assert primary is not None
-    assert primary.key == "largest_governance_shift"
-    assert primary.value == -0.0635
+    assert select_findings(metrics)[0] is None
+    assert metrics.governance_share_change == -0.0635  # retained as supporting detail
 
 
-def test_bel_2016_2017_retained_under_m3g():
+def test_flat_count_is_not_a_finding():
+    # SUR 2023->2024: governance hits 152 -> 152, C_min = 0.
+    assert select_findings(_base_metrics(governance_share_change=0.06, governance_topic_change=0.0))[0] is None
+
+
+def test_quality_gate_unchanged():
     metrics = _base_metrics(
-        governance_language_change=1.2790,
-        governance_share_change=0.0993,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
+        governance_topic_change=3.0, report_side_quality_ok=False, report_side_primary_eligible=False
     )
-    primary, _, _ = select_findings(metrics)
-    assert primary is not None
-    assert primary.key == "largest_governance_shift"
-    assert primary.value == 0.0993
+    assert select_findings(metrics)[0] is None
 
 
-def test_act_2023_2024_becomes_rank_one_by_magnitude():
-    # |M3-G| = 0.1093 is the largest of the 6 validated eligible pairs --
-    # confirm its magnitude beats the next-largest anchor (BEL 2016->2017,
-    # |M3-G|=0.0993).
-    act_2023 = _base_metrics(
-        governance_language_change=-1.0545,
-        governance_share_change=-0.1093,
-        governance_topic_mix_change=0.0660,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    bel_2016 = _base_metrics(
-        governance_share_change=0.0993,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    act_primary, _, _ = select_findings(act_2023)
-    bel_primary, _, _ = select_findings(bel_2016)
-    assert act_primary is not None and bel_primary is not None
-    assert act_primary.magnitude > bel_primary.magnitude
+def test_expected_governance_findings_rank_by_magnitude():
+    # The five expected 7F.9 governance findings, in expected rank order.
+    anchors = {
+        "BEL 2016->2017": 1.1889,
+        "ACT 2023->2024": -0.9168,
+        "ACT 2017->2018": 0.4998,
+        "SDL 2024->2025": -0.452,
+        "ACT 2020->2021": -0.269,
+    }
+    magnitudes = []
+    for label, value in anchors.items():
+        primary, _, _ = select_findings(_base_metrics(governance_topic_change=value))
+        assert primary is not None and primary.key == "largest_governance_shift", label
+        assert primary.value == value
+        magnitudes.append(primary.magnitude)
+    assert magnitudes == sorted(magnitudes, reverse=True)
 
 
-def test_sdl_2024_2025_becomes_eligible():
-    metrics = _base_metrics(
-        governance_share_change=-0.0609,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is not None
-    assert primary.key == "largest_governance_shift"
-    assert primary.value == -0.0609
-
-
-def test_sbp_2023_2024_becomes_eligible():
-    metrics = _base_metrics(
-        governance_share_change=0.0589,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    primary, _, _ = select_findings(metrics)
-    assert primary is not None
-    assert primary.key == "largest_governance_shift"
-    assert primary.value == 0.0589
-
-
-def test_m1g_remains_available_as_supporting_detail():
-    # M1-G stays populated on ComparisonMetrics regardless of ranking
-    # eligibility -- it is dropped from `CandidateSpec` wiring only, never
-    # removed from the data model.
-    metrics = _base_metrics(
-        governance_language_change=1.7360,
-        governance_share_change=0.0865,
-        report_side_quality_ok=True,
-        report_side_primary_eligible=True,
-    )
-    assert metrics.governance_language_change == 1.7360
-    primary, _, _ = select_findings(metrics)
-    assert primary.metric_key == "governance_share_change"  # not governance_language_change
+def test_other_candidates_unaffected_by_governance():
+    metrics = _base_metrics(net_tone_change=-9.0, governance_topic_change=None)
+    assert {f.key for f in eligible_candidates(metrics)} == {"largest_negative_tone_shift"}
 
 
 def test_candidate_key_order_unchanged_for_governance_position():
-    assert "largest_governance_shift" in CANDIDATE_KEY_ORDER
-    # Position in the fixed evaluation/tie-break order is unchanged by the
-    # metric-key swap (only the underlying value source changed).
     assert CANDIDATE_KEY_ORDER.index("largest_governance_shift") == 5

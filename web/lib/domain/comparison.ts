@@ -134,6 +134,59 @@ export interface ReportComparisonDetail extends ComparisonSummary {
   structuredContentExclusionShare: number | null;
   reportSideWarning: string | null;
   alignmentChangeWarning: string | null;
+  /** Track 7F.9 -- unified topic-change decomposition and net-tone
+   * components. `null` when the comparison has no published language
+   * features (or was built before the 7F.9 publication). */
+  topicChange: TopicChangeDetail | null;
+}
+
+/** Track 7F.9 -- one category's C_min topic-change record, published
+ * verbatim from `app.current_report_comparisons`. `densityChange` is the
+ * existing M1 column. The four diagnostics are supporting detail only and
+ * never an eligibility condition. */
+export interface TopicCategoryChange {
+  hitsEarlier: number | null;
+  hitsLater: number | null;
+  countChangePer1000: number | null;
+  densityChange: number | null;
+  topicChange: number | null;
+  supportingHits: number | null;
+  opposingHits: number | null;
+  changeConsistencyRatio: number | null;
+  largestPassageShare: number | null;
+}
+
+export type TopicCategory = "financial_condition" | "governance" | "uncertainty";
+
+export const TOPIC_CATEGORIES: readonly TopicCategory[] = ["financial_condition", "governance", "uncertainty"];
+
+/** Track 7F.9 -- one of the highest-hit passages for a topic category on one
+ * report side (eligible narrative only). Evidence is report-side on
+ * purpose: a passage is shown because *its own report* contains the
+ * category's words, never as a claimed earlier->later causal pair. */
+export interface TopicEvidencePassage {
+  category: TopicCategory;
+  reportSide: "EARLIER" | "LATER";
+  passageComparisonId: string;
+  hits: number;
+  heading: string | null;
+  excerpt: string;
+  firstPageNumber: number | null;
+  alignmentStatus: string;
+  confidence: string;
+  /** Non-null when the passage's alignment is too weak to read its
+   * NEW/REMOVED/SUBSTANTIALLY_MODIFIED status as definitive. */
+  alignmentCaveat: string | null;
+}
+
+export interface TopicChangeDetail {
+  wordsEarlier: number | null;
+  wordsLater: number | null;
+  categories: Record<TopicCategory, TopicCategoryChange>;
+  /** Net-tone components: `netToneChange = positiveRateChange -
+   * negativeRateChange` (per 1,000 words). */
+  positiveRateChange: number | null;
+  negativeRateChange: number | null;
 }
 
 /** One deterministic, published finding rendered via the finding-copy

@@ -331,6 +331,42 @@ class ReportComparison(AppUUIDPkMixin, AppCreatedAtMixin, AppBase):
     governance_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_taxonomy_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_taxonomy_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Track 7F.9: unified Discover topic-change metric (C_min) plus its legs,
+    # inputs, and supporting-only alignment-unit diagnostics, published
+    # verbatim from `ReportPairLanguageFeatures` (see that model and
+    # docs/discover-metrics-unified-implementation-7f9.md). The density leg
+    # M1 is the existing `financial_condition_change`/`governance_change`/
+    # `uncertainty_change` column; `uncertainty_hits_*` mirrors the research
+    # `uncertainty_count_*` columns under the topic-metric naming.
+    feature_eligible_primary_words_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feature_eligible_primary_words_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uncertainty_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uncertainty_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_count_change_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_count_change_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_count_change_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_topic_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_topic_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_topic_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_supporting_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_opposing_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_change_consistency_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_largest_passage_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_supporting_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    governance_opposing_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    governance_change_consistency_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_largest_passage_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_supporting_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uncertainty_opposing_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uncertainty_change_consistency_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_largest_passage_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Track 7F.9: net-tone components (`net_tone_change = positive_rate_
+    # change - negative_rate_change`), so "net tone decline" can say whether
+    # it came from fewer positive words or more negative words.
+    positive_rate_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    negative_rate_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     forward_looking_change_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

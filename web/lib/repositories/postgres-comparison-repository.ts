@@ -1,13 +1,27 @@
 import "server-only";
 import { query } from "@/lib/db/pool";
 import { MalformedRowError } from "@/lib/db/errors";
-import type { LanguageMetric, PassageComposition, PassageCompositionStatus, ReportComparisonDetail } from "@/lib/domain/comparison";
 import {
-  comparisonDetailRowSchema,
+  TOPIC_CATEGORIES,
+  type LanguageMetric,
+  type PassageComposition,
+  type PassageCompositionStatus,
+  type ReportComparisonDetail,
+  type TopicEvidencePassage,
+} from "@/lib/domain/comparison";
+import { alignmentCaveat } from "@/lib/services/alignment-caveat";
+import {
+  comparisonDetailWithTopicRowSchema,
   languageMetricRowSchema,
   passageCompositionRowSchema,
+  topicEvidencePassageRowSchema,
 } from "@/lib/schemas/comparison";
-import { COMPARISON_ROW_COLUMNS_SQL, mapComparisonRow } from "@/lib/repositories/comparison-mapper";
+import {
+  COMPARISON_ROW_COLUMNS_SQL,
+  TOPIC_CHANGE_COLUMNS_SQL,
+  mapComparisonRow,
+  mapTopicChangeRow,
+} from "@/lib/repositories/comparison-mapper";
 import type { ComparisonRepository } from "@/lib/repositories/comparison-repository";
 import type { NarrativeUnitComparison, StructuredTableComparison } from "@/lib/domain/cutover-comparison";
 import {
@@ -116,6 +130,8 @@ export class PostgresComparisonRepository implements ComparisonRepository {
     const rows = await query(
       "SELECT " +
         COMPARISON_ROW_COLUMNS_SQL +
+        "," +
+        TOPIC_CHANGE_COLUMNS_SQL +
         `,
               c.ticker AS company_ticker,
               c.name AS company_name
@@ -126,7 +142,7 @@ export class PostgresComparisonRepository implements ComparisonRepository {
     );
     if (rows.length === 0) return null;
 
-    const parsed = comparisonDetailRowSchema.safeParse(rows[0]);
+    const parsed = comparisonDetailWithTopicRowSchema.safeParse(rows[0]);
     if (!parsed.success) {
       throw new MalformedRowError("comparison-detail", parsed.error.message);
     }
@@ -143,7 +159,55 @@ export class PostgresComparisonRepository implements ComparisonRepository {
       structuredContentExclusionShare: data.structured_content_exclusion_share,
       reportSideWarning: data.report_side_warning,
       alignmentChangeWarning: data.alignment_change_warning,
+      topicChange: mapTopicChangeRow(data),
     } satisfies ReportComparisonDetail;
+  }
+
+  async getTopicEvidencePassages(comparisonId: string, perSide: number): Promise<TopicEvidencePassage[]> {
+    const rows = await query(
+      `WITH per_passage AS (
+         SELECT s.category, s.report_side, s.passage_id, s.passage_comparison_id, SUM(s.raw_count)::int AS hits
+         FROM app.current_passage_language_signals s
+         JOIN app.current_passages p ON p.id = s.passage_id
+         WHERE s.report_comparison_id = $1
+           AND s.category = ANY($2::text[])
+           AND p.primary_narrative_eligible AND p.feature_eligible
+         GROUP BY s.category, s.report_side, s.passage_id, s.passage_comparison_id
+       ), ranked AS (
+         SELECT per_passage.*,
+                row_number() OVER (PARTITION BY category, report_side ORDER BY hits DESC, passage_id) AS rn
+         FROM per_passage
+         WHERE hits > 0
+       )
+       SELECT r.category, r.report_side, r.passage_comparison_id, r.hits,
+              p.heading, left(p.text, $3) AS excerpt, p.first_page_number,
+              pc.alignment_status, pc.confidence
+       FROM ranked r
+       JOIN app.current_passages p ON p.id = r.passage_id
+       JOIN app.current_passage_comparisons pc ON pc.id = r.passage_comparison_id
+       WHERE r.rn <= $4
+       ORDER BY r.category, r.report_side, r.rn`,
+      [comparisonId, TOPIC_CATEGORIES, MAX_EXCERPT_LENGTH, perSide],
+    );
+    return rows.map((row, index) => {
+      const parsed = topicEvidencePassageRowSchema.safeParse(row);
+      if (!parsed.success) {
+        throw new MalformedRowError(`topic-evidence-passages[${index}]`, parsed.error.message);
+      }
+      const data = parsed.data;
+      return {
+        category: data.category,
+        reportSide: data.report_side,
+        passageComparisonId: data.passage_comparison_id,
+        hits: data.hits,
+        heading: data.heading,
+        excerpt: data.excerpt ?? "",
+        firstPageNumber: data.first_page_number,
+        alignmentStatus: data.alignment_status,
+        confidence: data.confidence,
+        alignmentCaveat: alignmentCaveat(data.alignment_status, data.confidence),
+      } satisfies TopicEvidencePassage;
+    });
   }
 
   async getComparisonLanguageMetrics(comparisonId: string): Promise<LanguageMetric[]> {

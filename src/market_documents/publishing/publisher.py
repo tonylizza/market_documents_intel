@@ -90,78 +90,113 @@ _CANDIDATE_QUALITY_SCOPE = {
     "largest_risk_removal": "alignment_change",
 }
 
+# Track 7F.9: descriptions follow the frozen 7F.8/7F.8a methodology.
+# "Discover status" wording is part of the text so a metric that no longer
+# drives any ranking (supporting-only or disabled) is never presented as one.
+_UNDER_REVIEW = (
+    "Not currently published in Discover: methodology under review. A missing Discover ranking does not mean "
+    "no change occurred."
+)
+
 METRIC_CATALOG: tuple[dict, ...] = (
     dict(
         metric_key="disclosure_change_score",
         display_name="Overall disclosure change",
-        short_description="How much a report's disclosures changed compared to the prior report.",
-        technical_description="Composite score over lexical/structural passage-alignment change classes, weighted per `feature_extraction`'s score_version.",
+        short_description="How much a report's disclosures changed compared to the prior report. " + _UNDER_REVIEW,
+        technical_description="Composite score over lexical/structural passage-alignment change classes, weighted per `feature_extraction`'s score_version. Discover ranking disabled (Track 7F.8/7F.9): the feature-quality gate fails on alignment-confidence share and similarity-disagreement rules pending upstream alignment-quality work.",
         unit="score_0_1",
         direction_interpretation="Higher means more change; the score does not indicate whether the change is positive or negative for the company.",
-        methodology_anchor="Milestone 3/6: services.feature_extraction.build_features, ReportPairFeatures.disclosure_change_score",
+        methodology_anchor="Milestone 3/6: services.feature_extraction.build_features, ReportPairFeatures.disclosure_change_score; disabled in Discover per docs/discover-metrics-methodology-consolidation-7f8.md Section 12",
+    ),
+    dict(
+        metric_key="financial_condition_topic_change",
+        display_name="Financial-condition language change",
+        short_description="Whether financial-condition vocabulary changed both in amount and in narrative density. Primary Discover metric for financial-condition findings.",
+        technical_description="C_min = sign(D) * min(|D|, |M1|) when D and M1 agree in sign, else 0. D = 1000 * (h2 - h1) / ((w1 + w2) / 2) (count change per 1,000 pair-average words); M1 = 1000 * (h2/w2 - h1/w1) (density change per 1,000 words). h = financial-condition taxonomy hits, w = feature-eligible primary-narrative words. Discover threshold |value| >= 0.25, both directions.",
+        unit="rate_per_1000_words",
+        direction_interpretation="Positive means more financial-condition vocabulary that also forms a larger part of the narrative; negative means less and a smaller part; 0 means the amount and the density did not move together. Does not measure financial health, financial performance, or financial risk.",
+        methodology_anchor="Track 7F.8/7F.8a/7F.9: docs/discover-metrics-unified-implementation-7f9.md, ReportPairLanguageFeatures.financial_condition_topic_change",
+    ),
+    dict(
+        metric_key="governance_topic_change",
+        display_name="Governance language change",
+        short_description="Whether governance vocabulary changed both in amount and in narrative density. Primary Discover metric for governance findings.",
+        technical_description="C_min = sign(D) * min(|D|, |M1|) when D and M1 agree in sign, else 0, over governance taxonomy hits (same D/M1 definitions as financial-condition). Discover threshold |value| >= 0.25, both directions.",
+        unit="rate_per_1000_words",
+        direction_interpretation="Positive means more governance vocabulary that also forms a larger part of the narrative; negative means less and a smaller part; 0 means the amount and the density did not move together. Does not measure whether governance quality improved or worsened.",
+        methodology_anchor="Track 7F.8/7F.8a/7F.9: docs/discover-metrics-unified-implementation-7f9.md, ReportPairLanguageFeatures.governance_topic_change",
+    ),
+    dict(
+        metric_key="uncertainty_topic_change",
+        display_name="Uncertainty-language change",
+        short_description="Whether Loughran-McDonald uncertainty vocabulary changed both in amount and in narrative density. Primary Discover metric for uncertainty-language increases.",
+        technical_description="C_min = sign(D) * min(|D|, |M1|) when D and M1 agree in sign, else 0, over Loughran-McDonald uncertainty hits (same D/M1 definitions as financial-condition). Discover threshold value >= 0.75, increases only.",
+        unit="rate_per_1000_words",
+        direction_interpretation="Positive means more uncertainty vocabulary that also forms a larger part of the narrative; negative means less. Does not mean actual business uncertainty increased or decreased.",
+        methodology_anchor="Track 7F.8/7F.8a/7F.9: docs/discover-metrics-unified-implementation-7f9.md, ReportPairLanguageFeatures.uncertainty_topic_change",
     ),
     dict(
         metric_key="net_tone_change",
         display_name="Net tone change",
-        short_description="Whether the report's overall language tone became more positive or more negative.",
-        technical_description="Change in (positive_rate - negative_rate) per 1,000 analyzed words, earlier vs. later report.",
+        short_description="Change in Loughran-McDonald positive-word density minus negative-word density. Discover ranks declines only (\"net tone decline\").",
+        technical_description="1000 * [(P2 - N2)/w2 - (P1 - N1)/w1]: change in (positive rate - negative rate) per 1,000 analyzed words, earlier vs. later report. Always shown with its positive-rate and negative-rate components. Discover threshold value <= -2.25.",
         unit="rate_per_1000_words",
-        direction_interpretation="Positive means tone became more positive; negative means tone became more negative.",
-        methodology_anchor="Milestone 6: services.financial_language_metrics, ReportPairLanguageFeatures.net_tone_change",
+        direction_interpretation="Negative means positive-word density fell relative to negative-word density (fewer positive words and/or more negative words); positive means the reverse. A dictionary word-count measure, not management sentiment, outlook, or performance.",
+        methodology_anchor="Milestone 6: services.financial_language_metrics, ReportPairLanguageFeatures.net_tone_change; threshold/semantics per Track 7F.8/7F.9",
     ),
     dict(
         metric_key="uncertainty_intensity_change",
-        display_name="Uncertainty language change",
-        short_description="Whether uncertainty-related language increased or decreased.",
-        technical_description="Change in uncertainty-category dictionary hit rate per 1,000 analyzed words.",
+        display_name="Uncertainty language density change",
+        short_description="Change in uncertainty-related word density. Supporting detail only -- the density leg of the uncertainty topic change.",
+        technical_description="M1: change in uncertainty-category dictionary hit rate per 1,000 analyzed words.",
         unit="rate_per_1000_words",
-        direction_interpretation="Positive means more uncertainty language; negative means less.",
-        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.uncertainty_intensity_change",
+        direction_interpretation="Positive means uncertainty words form a larger part of the narrative; negative means a smaller part. Can move opposite to the raw count when report length changes.",
+        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.uncertainty_intensity_change; supporting-only per Track 7F.8/7F.9",
     ),
     dict(
         metric_key="risk_language_introduction",
-        display_name="Risk language introduced",
-        short_description="How much new risk-related language was introduced in modified/new passages.",
-        technical_description="Risk-category dictionary hits attributable to NEW/SUBSTANTIALLY_MODIFIED-introduced passage content, rate per 1,000 words of the alignment-change-analyzed population.",
+        display_name="Risk language in new passages",
+        short_description="Risk-related language in passages classified as NEW. " + _UNDER_REVIEW,
+        technical_description="Risk-category taxonomy hits in NEW (later-side, unmatched) passages, per 1,000 words of those NEW passages. Discover ranking disabled (Track 7F.8/7F.9): NEW status is unreliable where passages moved or alignment missed a match.",
         unit="rate_per_1000_words",
-        direction_interpretation="Higher means more newly introduced risk language.",
-        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.risk_language_introduction",
+        direction_interpretation="Higher means denser risk language within NEW passages; not a measure of new business risk.",
+        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.risk_language_introduction; disabled in Discover per docs/discover-metrics-methodology-consolidation-7f8.md Section 9",
     ),
     dict(
         metric_key="risk_language_removal",
-        display_name="Risk language removed",
-        short_description="How much previously-present risk-related language was removed.",
-        technical_description="Risk-category dictionary hits attributable to REMOVED/SUBSTANTIALLY_MODIFIED-removed passage content, rate per 1,000 words of the alignment-change-analyzed population.",
+        display_name="Risk language in removed passages",
+        short_description="Risk-related language in passages classified as REMOVED. " + _UNDER_REVIEW,
+        technical_description="Risk-category taxonomy hits in REMOVED (earlier-side, unmatched) passages, per 1,000 words of those REMOVED passages. Discover ranking disabled (Track 7F.8/7F.9): REMOVED status is unreliable where passages moved or alignment missed a match.",
         unit="rate_per_1000_words",
-        direction_interpretation="Higher means more risk language removed.",
-        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.risk_language_removal",
+        direction_interpretation="Higher means denser risk language within REMOVED passages; not a measure of reduced business risk.",
+        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.risk_language_removal; disabled in Discover per docs/discover-metrics-methodology-consolidation-7f8.md Section 9",
     ),
     dict(
         metric_key="governance_language_change",
-        display_name="Governance language change",
-        short_description="Change in governance-related language.",
-        technical_description="Change in custom-taxonomy governance-category rate per 1,000 analyzed words.",
+        display_name="Governance language density change",
+        short_description="Change in governance-related word density. Supporting detail only -- the density leg of the governance topic change.",
+        technical_description="M1-G: change in custom-taxonomy governance-category rate per 1,000 analyzed words.",
         unit="rate_per_1000_words",
-        direction_interpretation="Positive means more governance language; negative means less.",
-        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.governance_language_change",
+        direction_interpretation="Positive means governance words form a larger part of the narrative; negative means a smaller part.",
+        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.governance_language_change; supporting-only per Track 7F.8/7F.9",
     ),
     dict(
         metric_key="financial_condition_language_change",
-        display_name="Financial condition language change",
-        short_description="Change in language describing financial condition.",
-        technical_description="Change in custom-taxonomy financial-condition-category rate per 1,000 analyzed words.",
+        display_name="Financial-condition language density change",
+        short_description="Change in financial-condition word density. Supporting detail only -- the density leg of the financial-condition topic change.",
+        technical_description="M1: change in custom-taxonomy financial-condition-category rate per 1,000 analyzed words.",
         unit="rate_per_1000_words",
-        direction_interpretation="Positive means more financial-condition language; negative means less.",
-        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.financial_condition_language_change",
+        direction_interpretation="Positive means financial-condition words form a larger part of the narrative; negative means a smaller part.",
+        methodology_anchor="Milestone 6: ReportPairLanguageFeatures.financial_condition_language_change; supporting-only per Track 7F.8/7F.9",
     ),
     dict(
         metric_key="financial_condition_share_change",
-        display_name="Financial-condition language share change",
-        short_description="Change in financial-condition language's share of classified risk / financial-condition / governance / strategy language.",
-        technical_description="Change in (financial_condition hits / total custom-taxonomy hits) over the feature-eligible-primary population, earlier vs. later report.",
+        display_name="Financial-condition share of classified topic language",
+        short_description="Change in financial-condition language's share of classified risk / financial-condition / governance / strategy language. Supporting detail only.",
+        technical_description="M3: change in (financial_condition hits / total custom-taxonomy hits) over the feature-eligible-primary population, earlier vs. later report. Compositional: moves when other categories change even if financial-condition hits do not.",
         unit="share",
-        direction_interpretation="Positive means financial-condition language grew as a share of classified language; negative means it shrank.",
-        methodology_anchor="Track 7F.3/7F.4: docs/financial-condition-ranking-calibration-7f3.md (M3, ADOPT_M3_WITH_THRESHOLD), ReportPairLanguageFeatures.financial_condition_share_change",
+        direction_interpretation="Positive means financial-condition language grew as a share of classified topic language; negative means it shrank.",
+        methodology_anchor="Track 7F.3/7F.4: docs/financial-condition-ranking-calibration-7f3.md (M3), ReportPairLanguageFeatures.financial_condition_share_change; supporting-only per Track 7F.8/7F.9",
     ),
     dict(
         metric_key="financial_condition_topic_mix_change",
@@ -174,12 +209,12 @@ METRIC_CATALOG: tuple[dict, ...] = (
     ),
     dict(
         metric_key="governance_share_change",
-        display_name="Governance language share change",
-        short_description="Change in governance language's share of classified risk / financial-condition / governance / strategy language.",
-        technical_description="Change in (governance hits / total custom-taxonomy hits) over the feature-eligible-primary population, earlier vs. later report.",
+        display_name="Governance share of classified topic language",
+        short_description="Change in governance language's share of classified risk / financial-condition / governance / strategy language. Supporting detail only.",
+        technical_description="M3-G: change in (governance hits / total custom-taxonomy hits) over the feature-eligible-primary population, earlier vs. later report. Compositional: moves when other categories change even if governance hits do not.",
         unit="share",
-        direction_interpretation="Positive means governance language grew as a share of classified language; negative means it shrank.",
-        methodology_anchor="Track 7F.7a/7F.7a.1: docs/governance-metric-redesign-7f7a.md (M3-G, ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD), ReportPairLanguageFeatures.governance_share_change",
+        direction_interpretation="Positive means governance language grew as a share of classified topic language; negative means it shrank.",
+        methodology_anchor="Track 7F.7a/7F.7a.1: docs/governance-metric-redesign-7f7a.md (M3-G), ReportPairLanguageFeatures.governance_share_change; supporting-only per Track 7F.8/7F.9",
     ),
     dict(
         metric_key="governance_topic_mix_change",
@@ -193,11 +228,11 @@ METRIC_CATALOG: tuple[dict, ...] = (
     dict(
         metric_key="new_rate_words",
         display_name="New disclosure share",
-        short_description="Share of the report (by word) that is entirely new disclosure content.",
-        technical_description="`new_words / (unchanged+lightly_modified+substantially_modified+new+removed+ambiguous words)`.",
+        short_description="Share of the report (by word) classified as entirely new disclosure content. " + _UNDER_REVIEW,
+        technical_description="`new_words / (unchanged+lightly_modified+substantially_modified+new+removed+ambiguous words)`. Discover ranking disabled (Track 7F.9): shares the failing feature-quality gate of the disclosure-change score.",
         unit="share",
-        direction_interpretation="Higher means a larger share of the report is new content.",
-        methodology_anchor="Milestone 3: ReportPairFeatures.new_words / feature-eligible word totals",
+        direction_interpretation="Higher means a larger share of the report is classified as new content.",
+        methodology_anchor="Milestone 3: ReportPairFeatures.new_words / feature-eligible word totals; disabled in Discover per docs/discover-metrics-unified-implementation-7f9.md",
     ),
 )
 
@@ -257,6 +292,40 @@ def _new_rate_words(features) -> float | None:
     return safe_ratio(features.eligible_new_words, denom)
 
 
+# Track 7F.9: `ReportPairLanguageFeatures` columns published verbatim onto
+# `app.report_comparisons` under the same name.
+_TOPIC_CHANGE_PASSTHROUGH_FIELDS: tuple[str, ...] = (
+    "feature_eligible_primary_words_earlier",
+    "feature_eligible_primary_words_later",
+    "financial_condition_hits_earlier",
+    "financial_condition_hits_later",
+    *(
+        f"{category}_{suffix}"
+        for category in ("financial_condition", "governance", "uncertainty")
+        for suffix in (
+            "count_change_per_1000",
+            "topic_change",
+            "supporting_hits",
+            "opposing_hits",
+            "change_consistency_ratio",
+            "largest_passage_share",
+        )
+    ),
+    "positive_rate_change",
+    "negative_rate_change",
+)
+
+
+def _topic_change_fields(lf) -> dict:
+    """Track 7F.9 topic-change, diagnostic, and net-tone-component fields for
+    one `ReportComparison` (all `None` when the comparison has no usable
+    language features)."""
+    fields = {name: getattr(lf, name) if lf else None for name in _TOPIC_CHANGE_PASSTHROUGH_FIELDS}
+    fields["uncertainty_hits_earlier"] = lf.uncertainty_count_earlier if lf else None
+    fields["uncertainty_hits_later"] = lf.uncertainty_count_later if lf else None
+    return fields
+
+
 def _comparison_metrics(comparison: ComparisonDataset) -> ComparisonMetrics:
     f = comparison.features
     lf = comparison.language_features
@@ -274,6 +343,9 @@ def _comparison_metrics(comparison: ComparisonDataset) -> ComparisonMetrics:
         financial_condition_topic_mix_change=lf.financial_condition_topic_mix_change if lf else None,
         governance_share_change=lf.governance_share_change if lf else None,
         governance_topic_mix_change=lf.governance_topic_mix_change if lf else None,
+        financial_condition_topic_change=lf.financial_condition_topic_change if lf else None,
+        governance_topic_change=lf.governance_topic_change if lf else None,
+        uncertainty_topic_change=lf.uncertainty_topic_change if lf else None,
         report_side_quality_ok=(lf.report_side_signal_quality.value in ("GOOD", "USABLE")) if lf else False,
         report_side_primary_eligible=lf.report_side_primary_eligible if lf else False,
         alignment_change_quality_ok=(lf.alignment_change_signal_quality.value in ("GOOD", "USABLE")) if lf else False,
@@ -444,6 +516,9 @@ class PublicationBuilder:
                     "financial_condition_topic_mix_change",
                     "governance_share_change",
                     "governance_topic_mix_change",
+                    "financial_condition_topic_change",
+                    "governance_topic_change",
+                    "uncertainty_topic_change",
                 ):
                     value = getattr(metrics, key)
                     if value is not None:
@@ -607,6 +682,7 @@ class PublicationBuilder:
                 governance_hits_later=lf.governance_hits_later if lf else None,
                 custom_taxonomy_hits_earlier=lf.custom_taxonomy_hits_earlier if lf else None,
                 custom_taxonomy_hits_later=lf.custom_taxonomy_hits_later if lf else None,
+                **_topic_change_fields(lf),
                 financial_condition_change=lf.financial_condition_language_change if lf else None,
                 financial_condition_change_label=labels.label_for_signed_metric(
                     lf.financial_condition_language_change if lf else None,

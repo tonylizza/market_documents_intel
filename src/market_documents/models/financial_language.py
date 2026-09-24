@@ -449,6 +449,42 @@ class ReportPairLanguageFeatures(UUIDPkMixin, TimestampMixin, Base):
     custom_taxonomy_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_taxonomy_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # --- Track 7F.9: unified Discover topic-change metric (see
+    # docs/discover-metrics-unified-implementation-7f9.md). All over the same
+    # feature_eligible_primary population as M1/M3/M6. Per category (FC,
+    # governance, uncertainty): `*_count_change_per_1000` is the count leg
+    # D = 1000*(h2-h1)/mean(w1,w2); `*_topic_change` is the primary Discover
+    # metric C_min = sign(D)*min(|D|,|M1|) when D and M1 agree in sign, else
+    # 0 (M1 is the existing `*_language_change`/`uncertainty_intensity_
+    # change` column). Hit inputs: `financial_condition_hits_*` (new),
+    # `governance_hits_*` (7F.7a.1a), `uncertainty_count_*` (Milestone 6).
+    # The four `*_supporting_hits`/`*_opposing_hits`/`*_change_consistency_
+    # ratio`/`*_largest_passage_share` diagnostics decompose h2-h1 across
+    # alignment units and are supporting detail only -- never an eligibility
+    # condition (7F.8a frozen decision).
+    feature_eligible_primary_words_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feature_eligible_primary_words_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_hits_earlier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_hits_later: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_count_change_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_count_change_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_count_change_per_1000: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_topic_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_topic_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_topic_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_supporting_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_opposing_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    financial_condition_change_consistency_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    financial_condition_largest_passage_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_supporting_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    governance_opposing_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    governance_change_consistency_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    governance_largest_passage_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_supporting_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uncertainty_opposing_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uncertainty_change_consistency_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uncertainty_largest_passage_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # --- Custom-taxonomy earlier/later/change (combined across subcategories) ---
     risk_rate_earlier: Mapped[float | None] = mapped_column(Float, nullable=True)
     risk_rate_later: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -1,3 +1,5 @@
+import pytest
+
 from market_documents.models.enums import AlignmentConfidence, AlignmentStatus, LanguageSignalRunStatus, PassageType, ReportSide
 from market_documents.models.financial_language import LanguageSignalRun, PassageLanguageSignal
 from market_documents.services import financial_language_dictionary_import as di
@@ -414,3 +416,39 @@ def test_build_eligible_language_signals_batch(db_session, tmp_path):
     assert pair1.id in completed_ids
     assert pair2.id in completed_ids
     assert len(outcome.failed) == 0
+
+
+def test_topic_change_fields_persisted_and_internally_consistent(db_session, tmp_path):
+    # Track 7F.9: every persisted topic-change field is reproducible from the
+    # persisted hit/word inputs, and the alignment-unit diagnostics add up to
+    # the net count change.
+    from market_documents.services.financial_language_metrics import (
+        density_change,
+        pair_mean_count_change,
+        topic_change_conjunction,
+    )
+
+    pair, _alignment_run, _e, _l, _feat = _build_scenario_pair(db_session, "SIG7F9", tmp_path)
+    build_language_signals(db_session, pair)
+    feat = get_current_pair_language_features(db_session, pair.id)
+
+    w1, w2 = feat.feature_eligible_primary_words_earlier, feat.feature_eligible_primary_words_later
+    assert w1 > 0 and w2 > 0
+    hits = {
+        "financial_condition": (feat.financial_condition_hits_earlier, feat.financial_condition_hits_later),
+        "governance": (feat.governance_hits_earlier, feat.governance_hits_later),
+        "uncertainty": (feat.uncertainty_count_earlier, feat.uncertainty_count_later),
+    }
+    for category, (h1, h2) in hits.items():
+        d = pair_mean_count_change(h1, h2, w1, w2)
+        assert getattr(feat, f"{category}_count_change_per_1000") == d
+        assert getattr(feat, f"{category}_topic_change") == topic_change_conjunction(d, density_change(h1, h2, w1, w2))
+        supporting = getattr(feat, f"{category}_supporting_hits")
+        opposing = getattr(feat, f"{category}_opposing_hits")
+        assert supporting - opposing == abs(h2 - h1)
+        assert -1.0 <= getattr(feat, f"{category}_change_consistency_ratio") <= 1.0
+        assert 0.0 <= getattr(feat, f"{category}_largest_passage_share") <= 1.0
+    # Uncertainty's density leg is the existing M1 column.
+    assert feat.uncertainty_intensity_change == pytest.approx(
+        density_change(feat.uncertainty_count_earlier, feat.uncertainty_count_later, w1, w2)
+    )

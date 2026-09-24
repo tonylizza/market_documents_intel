@@ -47,7 +47,7 @@ export interface DiscoveryFilterOptions {
  * condition_shift` with zero eligible Discover items, distinguishes *why*:
  * no comparisons published at all, comparisons exist but none clear the
  * report-side quality gate, or quality-eligible comparisons exist but none
- * clear the 0.04 materiality bar (in which case the largest observed
+ * clear the 0.25-per-1,000-words materiality bar (Track 7F.9 topic change) (in which case the largest observed
  * quality-eligible pair is still shown, clearly labeled -- never ranked as
  * an eligible finding). Never collapsed into one generic empty state.
  */
@@ -65,8 +65,8 @@ export type FinancialConditionCompanyStatus =
 
 /**
  * Track 7F.7a.1 -- exact mirror of `FinancialConditionCompanyStatus` above,
- * applied to `largest_governance_shift` (M3-G, threshold 0.05 rather than
- * financial-condition's 0.04). Same four-state discipline: no comparisons
+ * applied to `largest_governance_shift` (governance topic change, same 0.25
+ * per 1,000 words threshold since Track 7F.9). Same four-state discipline: no comparisons
  * published, quality-gate failure, quality-eligible but below materiality
  * (largest observed pair still surfaced, clearly labeled, never promoted to
  * an eligible finding), or an actual eligible `DiscoveryItem`.

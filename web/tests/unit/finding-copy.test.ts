@@ -41,7 +41,7 @@ describe("buildDeterministicFinding", () => {
     expect(finding).not.toBeNull();
     expect(finding?.supportingValue).toBe(2.4);
     expect(finding?.slot).toBe("primary");
-    expect(finding?.headline).toBe("Risk language introduced");
+    expect(finding?.headline).toBe("Risk language in new passages");
   });
 
   it("returns a null supporting value (not a thrown error) when the payload doesn't contain the key", () => {

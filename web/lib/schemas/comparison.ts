@@ -86,6 +86,57 @@ export const comparisonDetailRowSchema = comparisonRowSchema.extend({
 
 export type ComparisonDetailRow = z.infer<typeof comparisonDetailRowSchema>;
 
+const nullableInt = z.number().int().nullable();
+const nullableNumber = z.number().nullable();
+
+/** Track 7F.9 -- topic-change columns selected only by the comparison
+ * detail query (`TOPIC_CHANGE_COLUMNS_SQL`). Columns are `NULL` for a
+ * publication built before app_0015's fields were populated. */
+export const topicChangeRowSchema = z.object({
+  feature_eligible_primary_words_earlier: nullableInt,
+  feature_eligible_primary_words_later: nullableInt,
+  financial_condition_hits_earlier: nullableInt,
+  financial_condition_hits_later: nullableInt,
+  uncertainty_hits_earlier: nullableInt,
+  uncertainty_hits_later: nullableInt,
+  positive_rate_change: nullableNumber,
+  negative_rate_change: nullableNumber,
+  financial_condition_count_change_per_1000: nullableNumber,
+  financial_condition_topic_change: nullableNumber,
+  financial_condition_supporting_hits: nullableInt,
+  financial_condition_opposing_hits: nullableInt,
+  financial_condition_change_consistency_ratio: nullableNumber,
+  financial_condition_largest_passage_share: nullableNumber,
+  governance_count_change_per_1000: nullableNumber,
+  governance_topic_change: nullableNumber,
+  governance_supporting_hits: nullableInt,
+  governance_opposing_hits: nullableInt,
+  governance_change_consistency_ratio: nullableNumber,
+  governance_largest_passage_share: nullableNumber,
+  uncertainty_count_change_per_1000: nullableNumber,
+  uncertainty_topic_change: nullableNumber,
+  uncertainty_supporting_hits: nullableInt,
+  uncertainty_opposing_hits: nullableInt,
+  uncertainty_change_consistency_ratio: nullableNumber,
+  uncertainty_largest_passage_share: nullableNumber,
+});
+
+export type TopicChangeRow = z.infer<typeof topicChangeRowSchema>;
+
+export const comparisonDetailWithTopicRowSchema = comparisonDetailRowSchema.merge(topicChangeRowSchema);
+
+export const topicEvidencePassageRowSchema = z.object({
+  category: z.enum(["financial_condition", "governance", "uncertainty"]),
+  report_side: z.enum(["EARLIER", "LATER"]),
+  passage_comparison_id: z.string(),
+  hits: z.number().int(),
+  heading: z.string().nullable(),
+  excerpt: z.string().nullable(),
+  first_page_number: z.number().int().nullable(),
+  alignment_status: z.string(),
+  confidence: z.string(),
+});
+
 export const companyDetailRowSchema = z.object({
   id: z.string(),
   ticker: z.string(),

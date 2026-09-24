@@ -22,54 +22,58 @@ export interface FindingCopyConfig {
 const FINDING_COPY: Record<DiscoveryType, FindingCopyConfig> = {
   largest_overall_change: {
     key: "largest_overall_change",
-    headline: "Largest overall disclosure change",
+    headline: "Overall disclosure change",
     description:
-      "This comparison has the largest overall disclosure-change magnitude currently published, based on lexical and structural passage-alignment change.",
+      "Overall disclosure-change magnitude based on passage-alignment change. Not currently published as a Discover ranking: methodology under review.",
     unit: "score_0_1",
   },
   largest_uncertainty_increase: {
     key: "largest_uncertainty_increase",
-    headline: "Uncertainty language increased",
-    description: "Uncertainty-related language increased notably compared with the prior report.",
+    headline: "Uncertainty-language increase",
+    description:
+      "Uncertainty vocabulary increased both in amount and as a share of the narrative, per 1,000 words. This describes wording, not whether the business actually became more uncertain.",
     unit: "rate_per_1000_words",
   },
   largest_negative_tone_shift: {
     key: "largest_negative_tone_shift",
-    headline: "Tone shifted more negative",
-    description: "Overall language tone shifted notably more negative compared with the prior report.",
+    headline: "Net tone decline",
+    description:
+      "Positive-word density minus negative-word density fell compared with the prior report, per 1,000 words. A dictionary word-count measure -- see the positive and negative components below; it is not management sentiment or outlook.",
     unit: "rate_per_1000_words",
   },
   largest_risk_introduction: {
     key: "largest_risk_introduction",
-    headline: "Risk language introduced",
+    headline: "Risk language in new passages",
     description:
-      "New risk-related language was introduced in passages that are new or substantially changed since the prior report.",
+      "Risk-related language in passages classified as new. Not currently published as a Discover ranking: methodology under review.",
     unit: "rate_per_1000_words",
   },
   largest_risk_removal: {
     key: "largest_risk_removal",
-    headline: "Risk language removed",
-    description: "Previously present risk-related language was removed from passages changed since the prior report.",
+    headline: "Risk language in removed passages",
+    description:
+      "Risk-related language in passages classified as removed. Not currently published as a Discover ranking: methodology under review.",
     unit: "rate_per_1000_words",
   },
   largest_governance_shift: {
     key: "largest_governance_shift",
-    headline: "Largest governance-language shift",
+    headline: "Governance language change",
     description:
-      "Change in governance language's share of classified risk / financial-condition / governance / strategy language, compared with the prior report.",
-    unit: "share",
+      "Governance vocabulary changed both in amount and in how much of the narrative it occupies, per 1,000 words. This does not indicate whether governance quality improved or worsened.",
+    unit: "rate_per_1000_words",
   },
   largest_financial_condition_shift: {
     key: "largest_financial_condition_shift",
-    headline: "Largest financial-condition language shift",
+    headline: "Financial-condition language change",
     description:
-      "Change in financial-condition language's share of classified risk / financial-condition / governance / strategy language, compared with the prior report.",
-    unit: "share",
+      "Financial-condition vocabulary changed both in amount and in how much of the narrative it occupies, per 1,000 words. This describes language, not financial health, performance or risk.",
+    unit: "rate_per_1000_words",
   },
   largest_new_disclosure_share: {
     key: "largest_new_disclosure_share",
-    headline: "Large share of new disclosure",
-    description: "A notably large share of this report's content is entirely new disclosure not present in the prior report.",
+    headline: "Share of new disclosure",
+    description:
+      "Share of the report classified as entirely new content. Not currently published as a Discover ranking: methodology under review.",
     unit: "share",
   },
 };

@@ -6,6 +6,9 @@ import { EmptyState } from "./EmptyState";
 import styles from "./FinancialConditionSupportingDetail.module.css";
 
 export interface FinancialConditionSupportingDetailProps {
+  /** M3 -- financial-condition share of classified topic language; the
+   * Discover ranking metric before Track 7F.9, supporting detail since. */
+  shareChange?: number | null;
   topicMixChange: number | null;
   subcategoryMovers: readonly LanguageMetric[];
 }
@@ -14,10 +17,12 @@ export interface FinancialConditionSupportingDetailProps {
  * Track 7F.4 items 11/12 -- M6b (topic-mix change, unsigned, never given a
  * +/- direction) plus the top financial_condition subcategory movers by
  * absolute hit-count change. Purely supporting detail for a financial-
- * condition finding -- never the Discover ranking metric (that's M3, shown
- * via the finding itself).
+ * condition finding -- never the Discover ranking metric (since Track 7F.9
+ * that's the financial-condition topic change; M3 is shown here as
+ * supporting detail).
  */
 export function FinancialConditionSupportingDetail({
+  shareChange = null,
   topicMixChange,
   subcategoryMovers,
 }: FinancialConditionSupportingDetailProps) {
@@ -31,6 +36,12 @@ export function FinancialConditionSupportingDetail({
     <div className={styles.wrapper}>
       <DefinitionList
         items={[
+          {
+            term: "Share of classified topic language (M3)",
+            description:
+              (formatMetricValue(shareChange, "share") ?? "Not available") +
+              " change -- financial-condition language as a share of all classified risk / financial-condition / governance / strategy language. Moves when other categories change too. Supporting detail only.",
+          },
           {
             term: "Topic-mix change (M6b)",
             description:

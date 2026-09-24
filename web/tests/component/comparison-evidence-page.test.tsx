@@ -72,6 +72,7 @@ function makeDetail(): ReportComparisonDetail {
     structuredContentExclusionShare: 0.01,
     reportSideWarning: null,
     alignmentChangeWarning: null,
+    topicChange: null,
   };
 }
 
@@ -114,6 +115,9 @@ vi.mock("@/lib/repositories/postgres-comparison-repository", () => ({
     async getComparisonById() {
       if (shouldThrow) throw new Error("connection refused");
       return mockDetail;
+    }
+    async getTopicEvidencePassages() {
+      return [];
     }
     async getComparisonPassageComposition() {
       if (shouldThrow) throw new Error("connection refused");

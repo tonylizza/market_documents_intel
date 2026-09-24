@@ -10,6 +10,8 @@ formulas can be unit tested without PostgreSQL. Database wiring (pulling
 """
 
 import math
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from market_documents.models.enums import AlignmentConfidence, AlignmentStatus, ReportSide
@@ -70,6 +72,11 @@ class SignalRowInput:
     custom_subcategory_hits: dict[tuple[str, str], int] = field(default_factory=dict)
     collision_flag: bool = False
     split_merge_flag: bool = False
+    # Track 7F.9: the pinned `PassageAlignment` row this signal row belongs
+    # to -- the alignment unit that `topic_unit_deltas` groups hits by for
+    # the supporting (never eligibility-affecting) change-consistency
+    # diagnostics. `None` only in unit tests that don't exercise them.
+    passage_alignment_id: uuid.UUID | None = None
 
     def core_count(self, category: str) -> int:
         return getattr(self, f"{category}_count")
@@ -295,3 +302,134 @@ def cosine_distance(a: tuple[float, ...], b: tuple[float, ...]) -> float | None:
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     similarity = dot / (norm_a * norm_b)
     return 1.0 - similarity
+
+
+# --------------------------------------------------------------------------
+# Track 7F.9 -- unified Discover topic-change metric (C_min conjunction) and
+# its supporting alignment-unit diagnostics. Methodology frozen in
+# docs/discover-metrics-methodology-consolidation-7f8.md and
+# docs/topic-conjunction-evidence-challenge-7f8a.md; implementation notes in
+# docs/discover-metrics-unified-implementation-7f9.md.
+# --------------------------------------------------------------------------
+
+
+def pair_mean_count_change(
+    hits_earlier: int, hits_later: int, words_earlier: float, words_later: float, denominator: int = 1000
+) -> float | None:
+    """Count leg `D = 1000 * (h2 - h1) / ((w1 + w2) / 2)`: the change in a
+    category's hit count per 1,000 pair-average words. `None` (never a
+    fabricated 0.0) when the pair-average word count is not positive."""
+    mean_words = (words_earlier + words_later) / 2
+    if mean_words <= 0:
+        return None
+    return denominator * (hits_later - hits_earlier) / mean_words
+
+
+def density_change(
+    hits_earlier: int, hits_later: int, words_earlier: float, words_later: float, denominator: int = 1000
+) -> float | None:
+    """Density leg `M1 = 1000 * (h2/w2 - h1/w1)`, computed in exactly this
+    operation order so it reproduces the 7F.8/7F.8a research value bit for
+    bit. `None` when either side has no words."""
+    if words_earlier <= 0 or words_later <= 0:
+        return None
+    return denominator * (hits_later / words_later - hits_earlier / words_earlier)
+
+
+def topic_change_conjunction(count_change: float | None, density: float | None) -> float | None:
+    """`C_min`: `sign(D) * min(|D|, |M1|)` when the count leg and the density
+    leg share a strictly common direction; `0.0` when either leg is zero or
+    they disagree in sign. `None` only when a leg is itself undefined."""
+    if count_change is None or density is None:
+        return None
+    if count_change * density <= 0:
+        return 0.0
+    return math.copysign(min(abs(count_change), abs(density)), count_change)
+
+
+def change_consistency_ratio(unit_deltas: list[int]) -> float:
+    """Signed `net / gross` over per-alignment-unit hit deltas, in [-1, 1]:
+    +1/-1 when every changed unit moved the same way, near 0 under heavy
+    offsetting churn. `0.0` when no unit changed. Supporting diagnostic only
+    -- never an eligibility condition (7F.8a frozen decision)."""
+    gross = sum(abs(d) for d in unit_deltas)
+    return sum(unit_deltas) / gross if gross > 0 else 0.0
+
+
+def largest_passage_share(unit_deltas: list[int]) -> float:
+    """`max(|unit_delta|) / gross`: how much of the pair's total hit churn a
+    single alignment unit accounts for. `0.0` when no unit changed.
+    Supporting diagnostic only."""
+    gross = sum(abs(d) for d in unit_deltas)
+    return max(abs(d) for d in unit_deltas) / gross if gross > 0 else 0.0
+
+
+def topic_unit_deltas(rows: list[SignalRowInput], hits_of: Callable[[SignalRowInput], int]) -> list[int]:
+    """Later-minus-earlier hit delta per alignment unit (rows grouped by
+    `passage_alignment_id`), over the rows the caller passes -- always the
+    same `feature_eligible_primary` population the pair metrics use. Units
+    whose delta is zero are omitted."""
+    units: dict[uuid.UUID | None, list[int]] = {}
+    for row in rows:
+        unit = units.setdefault(row.passage_alignment_id, [0, 0])
+        unit[0 if row.report_side == ReportSide.EARLIER else 1] += hits_of(row)
+    return [later - earlier for earlier, later in units.values() if later != earlier]
+
+
+@dataclass(frozen=True)
+class TopicChangeDiagnostics:
+    """Supporting-only decomposition of a pair's category hit change across
+    alignment units. `supporting_hits`/`opposing_hits` are expressed relative
+    to the direction of the pair's net count change `h2 - h1` -- which is the
+    finding's direction whenever the topic change is nonzero (C_min always
+    carries sign(D)). Both are 0 when the net change is exactly 0."""
+
+    supporting_hits: int
+    opposing_hits: int
+    change_consistency_ratio: float
+    largest_passage_share: float
+
+
+def topic_change_diagnostics(unit_deltas: list[int]) -> TopicChangeDiagnostics:
+    net = sum(unit_deltas)
+    direction = (net > 0) - (net < 0)
+    return TopicChangeDiagnostics(
+        supporting_hits=sum(abs(d) for d in unit_deltas if d * direction > 0),
+        opposing_hits=sum(abs(d) for d in unit_deltas if d * direction < 0),
+        change_consistency_ratio=change_consistency_ratio(unit_deltas),
+        largest_passage_share=largest_passage_share(unit_deltas),
+    )
+
+
+@dataclass(frozen=True)
+class TopicChange:
+    hits_earlier: int
+    hits_later: int
+    count_change_per_1000: float | None
+    density_change: float | None
+    topic_change: float | None
+    diagnostics: TopicChangeDiagnostics
+
+
+def compute_topic_change(
+    rows: list[SignalRowInput],
+    hits_of: Callable[[SignalRowInput], int],
+    words_earlier: float,
+    words_later: float,
+) -> TopicChange:
+    """One category's full 7F.9 topic-change record over `rows` (the
+    `feature_eligible_primary` population): raw hits each side, the count and
+    density legs, their C_min conjunction, and the alignment-unit
+    diagnostics."""
+    h1 = sum(hits_of(r) for r in rows if r.report_side == ReportSide.EARLIER)
+    h2 = sum(hits_of(r) for r in rows if r.report_side == ReportSide.LATER)
+    d = pair_mean_count_change(h1, h2, words_earlier, words_later)
+    m1 = density_change(h1, h2, words_earlier, words_later)
+    return TopicChange(
+        hits_earlier=h1,
+        hits_later=h2,
+        count_change_per_1000=d,
+        density_change=m1,
+        topic_change=topic_change_conjunction(d, m1),
+        diagnostics=topic_change_diagnostics(topic_unit_deltas(rows, hits_of)),
+    )

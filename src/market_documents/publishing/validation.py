@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from market_documents.publishing import labels
+from market_documents.publishing.findings import DISABLED_CANDIDATE_KEYS
 from market_documents.publishing.models import (
     APP_EMBEDDING_DIMENSION,
     ArtifactPassageComparison,
@@ -322,6 +323,26 @@ def validate_persisted(app_session: Session, publication_id: uuid.UUID) -> Valid
             comp is not None and bool(comp.disclosure_change_primary_eligible),
             f"{item.discovery_type}:{item.report_comparison_id}",
         )
+
+    # Track 7F.9: disabled Discover types (methodology under review) must
+    # never be ranked or selected as a comparison finding. Scoped to
+    # publications built under the 7F.9 catalog (marked by its topic-change
+    # metric definition) so re-validating an older, immutable publication
+    # still reports against the rules it was built under.
+    if "financial_condition_topic_change" in metric_defs:
+        for item in discovery_items:
+            check(
+                "disabled_discovery_type_not_ranked",
+                item.discovery_type not in DISABLED_CANDIDATE_KEYS,
+                f"{item.discovery_type}:{item.report_comparison_id}",
+            )
+        for comp in comparisons:
+            for finding_key in (comp.primary_finding_key, comp.secondary_finding_key, comp.tertiary_finding_key):
+                check(
+                    "disabled_discovery_type_not_a_finding",
+                    finding_key not in DISABLED_CANDIDATE_KEYS,
+                    f"{finding_key}:{comp.id}",
+                )
 
     # --- Track 7E.1 (was Milestone 7B.1): passage embeddings ---
     # A publication built from migration app_0010 onward never writes to

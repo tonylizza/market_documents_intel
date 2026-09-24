@@ -162,14 +162,11 @@ def test_good_quality_score_is_primary_eligible_and_labeled(db_session, app_db_s
     assert comp.disclosure_change_label is not None
 
 
-def test_good_quality_primary_eligible_score_is_discovery_eligible(db_session, app_db_session):
-    # `build_ready_pair`'s scoring engine can legitimately net a full
-    # passage swap to a low/zero disclosure_change_score (turnover
-    # components can cancel), which would fail this test on materiality
-    # grounds alone -- override the persisted score directly, the same
-    # technique already used above for quality/primary_eligible, so this
-    # test isolates the publisher's discovery-ranking behavior rather than
-    # depending on the M3 scoring engine's internals.
+def test_good_quality_primary_eligible_score_is_not_ranked_while_disabled(db_session, app_db_session):
+    # Track 7F.9: `largest_overall_change` is disabled (methodology under
+    # review) -- even a GOOD, primary-eligible, material score is displayed
+    # on the comparison but never ranked in Discover or selected as a
+    # finding. (Before 7F.9 this asserted the opposite.)
     pair, features = _build_pair_with_quality(
         db_session, ticker="DCQ5", quality=FeatureQuality.GOOD, primary_eligible=True
     )
@@ -184,11 +181,13 @@ def test_good_quality_primary_eligible_score_is_discovery_eligible(db_session, a
             select(DiscoveryItem).where(
                 DiscoveryItem.publication_id == publication.id,
                 DiscoveryItem.report_comparison_id == comp.id,
-                DiscoveryItem.discovery_type == "largest_overall_change",
+                DiscoveryItem.discovery_type.in_(("largest_overall_change", "largest_new_disclosure_share")),
             )
         )
     )
-    assert len(items) >= 1
+    assert items == []
+    assert comp.disclosure_change_score == 0.85
+    assert "largest_overall_change" not in (comp.primary_finding_key, comp.secondary_finding_key, comp.tertiary_finding_key)
 
 
 def test_null_score_publishes_all_related_fields_as_none(db_session, app_db_session):

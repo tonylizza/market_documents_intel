@@ -11,31 +11,29 @@ import type { DiscoveryItemFilters, DiscoveryRepository } from "@/lib/repositori
 
 const availableTypeRowSchema = z.object({ discovery_type: z.string() });
 
-// Track 7F.4 item 9: 0.04 mirrors `findings.CandidateSpec.epsilon` for
-// `largest_financial_condition_shift` -- kept as a single named constant
-// here (not duplicated inline) since it's shown to the user, not just used
-// for a comparison.
-const FINANCIAL_CONDITION_MATERIALITY_THRESHOLD = 0.04;
+// Track 7F.9: 0.25 per 1,000 words mirrors `findings.CandidateSpec.epsilon`
+// for `largest_financial_condition_shift` (financial_condition_topic_change)
+// -- kept as a single named constant here since it's shown to the user.
+const FINANCIAL_CONDITION_MATERIALITY_THRESHOLD = 0.25;
 
 const financialConditionStatusRowSchema = z.object({
   id: z.string(),
   earlier_period_end: z.string().nullable(),
   later_period_end: z.string().nullable(),
-  financial_condition_share_change: z.number().nullable(),
+  financial_condition_topic_change: z.number().nullable(),
   report_side_quality: z.string().nullable(),
   report_side_primary_eligible: z.boolean().nullable(),
 });
 
-// Track 7F.7a.1: 0.05 mirrors `findings.CandidateSpec.epsilon` for
-// `largest_governance_shift` -- exact mirror of the financial-condition
-// materiality constant above.
-const GOVERNANCE_MATERIALITY_THRESHOLD = 0.05;
+// Track 7F.9: 0.25 per 1,000 words mirrors `findings.CandidateSpec.epsilon`
+// for `largest_governance_shift` (governance_topic_change).
+const GOVERNANCE_MATERIALITY_THRESHOLD = 0.25;
 
 const governanceStatusRowSchema = z.object({
   id: z.string(),
   earlier_period_end: z.string().nullable(),
   later_period_end: z.string().nullable(),
-  governance_share_change: z.number().nullable(),
+  governance_topic_change: z.number().nullable(),
   report_side_quality: z.string().nullable(),
   report_side_primary_eligible: z.boolean().nullable(),
 });
@@ -112,7 +110,7 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
   async getFinancialConditionCompanyStatus(companyTicker: string): Promise<FinancialConditionCompanyStatus> {
     const rows = await query(
       `SELECT rc.id, rc.earlier_period_end, rc.later_period_end,
-              rc.financial_condition_share_change,
+              rc.financial_condition_topic_change,
               rc.report_side_quality, rc.report_side_primary_eligible
        FROM app.current_report_comparisons rc
        JOIN app.current_companies c ON c.id = rc.company_id
@@ -136,7 +134,7 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
       (row) =>
         (row.report_side_quality === "GOOD" || row.report_side_quality === "USABLE") &&
         row.report_side_primary_eligible === true &&
-        row.financial_condition_share_change !== null,
+        row.financial_condition_topic_change !== null,
     );
 
     if (qualityEligible.length === 0) {
@@ -144,12 +142,12 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
     }
 
     const largest = qualityEligible.reduce((max, row) =>
-      Math.abs(row.financial_condition_share_change as number) > Math.abs(max.financial_condition_share_change as number) ? row : max,
+      Math.abs(row.financial_condition_topic_change as number) > Math.abs(max.financial_condition_topic_change as number) ? row : max,
     );
 
     return {
       status: "below_materiality",
-      observedValue: largest.financial_condition_share_change as number,
+      observedValue: largest.financial_condition_topic_change as number,
       threshold: FINANCIAL_CONDITION_MATERIALITY_THRESHOLD,
       reportComparisonId: largest.id,
       earlierPeriodEnd: largest.earlier_period_end,
@@ -160,7 +158,7 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
   async getGovernanceCompanyStatus(companyTicker: string): Promise<GovernanceCompanyStatus> {
     const rows = await query(
       `SELECT rc.id, rc.earlier_period_end, rc.later_period_end,
-              rc.governance_share_change,
+              rc.governance_topic_change,
               rc.report_side_quality, rc.report_side_primary_eligible
        FROM app.current_report_comparisons rc
        JOIN app.current_companies c ON c.id = rc.company_id
@@ -184,7 +182,7 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
       (row) =>
         (row.report_side_quality === "GOOD" || row.report_side_quality === "USABLE") &&
         row.report_side_primary_eligible === true &&
-        row.governance_share_change !== null,
+        row.governance_topic_change !== null,
     );
 
     if (qualityEligible.length === 0) {
@@ -192,12 +190,12 @@ export class PostgresDiscoveryRepository implements DiscoveryRepository {
     }
 
     const largest = qualityEligible.reduce((max, row) =>
-      Math.abs(row.governance_share_change as number) > Math.abs(max.governance_share_change as number) ? row : max,
+      Math.abs(row.governance_topic_change as number) > Math.abs(max.governance_topic_change as number) ? row : max,
     );
 
     return {
       status: "below_materiality",
-      observedValue: largest.governance_share_change as number,
+      observedValue: largest.governance_topic_change as number,
       threshold: GOVERNANCE_MATERIALITY_THRESHOLD,
       reportComparisonId: largest.id,
       earlierPeriodEnd: largest.earlier_period_end,

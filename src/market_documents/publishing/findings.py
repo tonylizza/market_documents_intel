@@ -15,6 +15,9 @@ from dataclasses import dataclass
 # The brief's 8 discovery types, used directly as finding-candidate keys too
 # (no separate vocabulary) -- fixed evaluation order used as the
 # deterministic tie-break when two candidates have identical magnitude.
+# Keys are stable identifiers (URLs, stored finding keys), not product copy:
+# `largest_negative_tone_shift` is presented as "Net tone decline" since
+# Track 7F.9 without renaming the key.
 CANDIDATE_KEY_ORDER: tuple[str, ...] = (
     "largest_overall_change",
     "largest_uncertainty_increase",
@@ -25,6 +28,29 @@ CANDIDATE_KEY_ORDER: tuple[str, ...] = (
     "largest_financial_condition_shift",
     "largest_new_disclosure_share",
 )
+
+# Track 7F.9 (frozen in docs/discover-metrics-methodology-consolidation-
+# 7f8.md, Sections 9-10 and 21): discovery types with no CandidateSpec -- they
+# are never ranked and never selected as a comparison finding. This is a
+# "methodology not currently published / under review" state, never a claim
+# that no change occurred. The value is the documented reason.
+DISABLED_CANDIDATE_KEYS: dict[str, str] = {
+    "largest_overall_change": (
+        "Disclosure-change score gate fails on alignment-confidence share and similarity-disagreement "
+        "rules pending upstream alignment-quality work (7F.8 Section 12)."
+    ),
+    "largest_new_disclosure_share": (
+        "Shares the failing feature-quality gate of the disclosure-change score (7F.8 Sections 12, 21)."
+    ),
+    "largest_risk_introduction": (
+        "NEW-passage attribution is unreliable (moved passages, alignment misses); needs a moved-content "
+        "guard (7F.8 Section 9)."
+    ),
+    "largest_risk_removal": (
+        "REMOVED-passage attribution is unreliable (moved passages, alignment misses); needs a moved-content "
+        "guard (7F.8 Section 9)."
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -56,6 +82,12 @@ class ComparisonMetrics:
     # but is no longer used by any CandidateSpec.
     governance_share_change: float | None
     governance_topic_mix_change: float | None
+    # Track 7F.9: C_min topic change -- the primary Discover ranking/
+    # materiality metric for financial-condition, governance, and
+    # uncertainty (M3/M3-G and M1 are supporting detail only).
+    financial_condition_topic_change: float | None
+    governance_topic_change: float | None
+    uncertainty_topic_change: float | None
     report_side_quality_ok: bool
     report_side_primary_eligible: bool
     alignment_change_quality_ok: bool
@@ -64,6 +96,9 @@ class ComparisonMetrics:
     new_rate_words: float | None
 
 
+# `_gate_feature`/`_gate_alignment_change` currently gate no CandidateSpec
+# (every type they gated is in `DISABLED_CANDIDATE_KEYS`); retained as the
+# documented gates those types return to once re-enabled.
 def _gate_feature(m: ComparisonMetrics) -> bool:
     return m.feature_quality_ok and m.feature_primary_eligible
 
@@ -92,48 +127,27 @@ class CandidateSpec:
     direction_ok: Callable[[float], bool] = lambda _v: True
 
 
+# Track 7F.9: the four published report-side metrics under the frozen
+# 7F.8/7F.8a methodology. No evidence gate -- the alignment-unit diagnostics
+# are supporting detail only. Specs for `DISABLED_CANDIDATE_KEYS` are
+# deliberately absent (not merely thresholded to zero).
 CANDIDATES: tuple[CandidateSpec, ...] = (
     CandidateSpec(
-        "largest_overall_change", "disclosure_change_score", "score_0_1", 0.05,
-        lambda m: m.disclosure_change_score, _gate_feature,
+        "largest_uncertainty_increase", "uncertainty_topic_change", "rate_per_1000_words", 0.75,
+        lambda m: m.uncertainty_topic_change, _gate_report_side, lambda v: v > 0,
     ),
     CandidateSpec(
-        "largest_uncertainty_increase", "uncertainty_intensity_change", "rate_per_1000_words", 1.0,
-        lambda m: m.uncertainty_intensity_change, _gate_report_side, lambda v: v > 0,
-    ),
-    CandidateSpec(
-        "largest_negative_tone_shift", "net_tone_change", "rate_per_1000_words", 1.0,
+        # Net tone decline: formula unchanged, threshold 2.25, decline only.
+        "largest_negative_tone_shift", "net_tone_change", "rate_per_1000_words", 2.25,
         lambda m: m.net_tone_change, _gate_report_side, lambda v: v < 0,
     ),
     CandidateSpec(
-        "largest_risk_introduction", "risk_language_introduction", "rate_per_1000_words", 1.0,
-        lambda m: m.risk_language_introduction, _gate_alignment_change,
+        "largest_governance_shift", "governance_topic_change", "rate_per_1000_words", 0.25,
+        lambda m: m.governance_topic_change, _gate_report_side,
     ),
     CandidateSpec(
-        "largest_risk_removal", "risk_language_removal", "rate_per_1000_words", 1.0,
-        lambda m: m.risk_language_removal, _gate_alignment_change,
-    ),
-    CandidateSpec(
-        # Track 7F.7a.1: switched from M1-G (rate difference, epsilon=1.0
-        # heuristic) to M3-G (governance_share_change, epsilon=0.05 per
-        # docs/governance-metric-redesign-7f7a.md's
-        # ADOPT_GOVERNANCE_SHARE_WITH_THRESHOLD decision) -- exact mirror of
-        # the financial-condition M1->M3 switch in Track 7F.4.
-        "largest_governance_shift", "governance_share_change", "share", 0.05,
-        lambda m: m.governance_share_change, _gate_report_side,
-    ),
-    CandidateSpec(
-        # Track 7F.4: switched from M1 (rate difference, epsilon=1.0
-        # heuristic) to M3 (financial_condition_share_change, epsilon=0.04
-        # per docs/financial-condition-ranking-calibration-7f3.md's
-        # ADOPT_M3_WITH_THRESHOLD decision) -- M1 is structurally denominator-
-        # sensitive and produced almost no eligible findings.
-        "largest_financial_condition_shift", "financial_condition_share_change", "share", 0.04,
-        lambda m: m.financial_condition_share_change, _gate_report_side,
-    ),
-    CandidateSpec(
-        "largest_new_disclosure_share", "new_rate_words", "share", 0.02,
-        lambda m: m.new_rate_words, _gate_feature,
+        "largest_financial_condition_shift", "financial_condition_topic_change", "rate_per_1000_words", 0.25,
+        lambda m: m.financial_condition_topic_change, _gate_report_side,
     ),
 )
 

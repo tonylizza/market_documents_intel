@@ -49,7 +49,8 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
     displayName: "Net tone change",
     unit: "rate_per_1000_words",
     qualityDimension: "report-side",
-    explanation: "Change in overall language tone (positive minus negative word rate) compared with the prior report.",
+    explanation:
+      "Change in Loughran-McDonald positive-word density minus negative-word density per 1,000 words, compared with the prior report. A dictionary word-count measure, not management sentiment or outlook.",
     value: (c) => c.netToneChange,
     valueLabel: (c) => c.netToneChangeLabel,
     quality: (c) => c.reportSideQuality,
@@ -58,10 +59,11 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
   },
   uncertainty_change: {
     key: "uncertainty_change",
-    displayName: "Uncertainty change",
+    displayName: "Uncertainty-language density change",
     unit: "rate_per_1000_words",
     qualityDimension: "report-side",
-    explanation: "Change in uncertainty-related language rate compared with the prior report.",
+    explanation:
+      "Change in uncertainty-word density per 1,000 narrative words, compared with the prior report. Contextual detail only -- the Discover uncertainty ranking uses the uncertainty topic change, which also requires the word count to move the same way.",
     value: (c) => c.uncertaintyChange,
     valueLabel: (c) => c.uncertaintyChangeLabel,
     quality: (c) => c.reportSideQuality,
@@ -70,10 +72,11 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
   },
   risk_introduction: {
     key: "risk_introduction",
-    displayName: "Risk language introduced",
+    displayName: "Risk language in new passages",
     unit: "rate_per_1000_words",
     qualityDimension: "alignment-change",
-    explanation: "Risk-related language introduced in passages that are new or substantially changed since the prior report.",
+    explanation:
+      "Risk-related word density within passages classified as NEW since the prior report. Not currently published in Discover: methodology under review, because passages that moved can be misclassified as NEW.",
     value: (c) => c.riskIntroductionRate,
     valueLabel: (c) => c.riskIntroductionLabel,
     quality: (c) => c.alignmentChangeQuality,
@@ -86,7 +89,7 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
     unit: "rate_per_1000_words",
     qualityDimension: "report-side",
     explanation:
-      "Change in governance-related term density per 1,000 narrative words, compared with the prior report. Contextual detail only -- not the Discover ranking metric; see this comparison's findings for the governance language share change (M3-G) that drives ranking.",
+      "Change in governance-related term density per 1,000 narrative words, compared with the prior report. Contextual detail only -- not the Discover ranking metric; the Discover ranking uses the governance topic change, which also requires the governance word count to move the same way.",
     value: (c) => c.governanceChange,
     valueLabel: (c) => c.governanceChangeLabel,
     quality: (c) => c.reportSideQuality,
@@ -99,7 +102,7 @@ const SPECS: Record<HeadlineMetricKey, HeadlineMetricSpec> = {
     unit: "rate_per_1000_words",
     qualityDimension: "report-side",
     explanation:
-      "Change in financial-condition term density per 1,000 narrative words, compared with the prior report. Contextual detail only -- not the Discover ranking metric; see this comparison's findings for the financial-condition language share change (M3) that drives ranking.",
+      "Change in financial-condition term density per 1,000 narrative words, compared with the prior report. Contextual detail only -- not the Discover ranking metric; the Discover ranking uses the financial-condition topic change, which also requires the financial-condition word count to move the same way.",
     value: (c) => c.financialConditionChange,
     valueLabel: (c) => c.financialConditionChangeLabel,
     quality: (c) => c.reportSideQuality,

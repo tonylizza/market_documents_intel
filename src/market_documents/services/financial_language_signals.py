@@ -68,6 +68,7 @@ from market_documents.services.financial_language_metrics import (
     aggregate_side,
     classify_collision,
     compute_core_category_change,
+    compute_topic_change,
     cosine_distance,
     custom_category_rate,
     custom_subcategory_totals,
@@ -547,6 +548,7 @@ def _run_signal_build(
                     custom_subcategory_hits=custom_subcategory_hits,
                     collision_flag=collision_flag,
                     split_merge_flag=split_merge_flag,
+                    passage_alignment_id=alignment_row.id,
                 )
             )
 
@@ -673,6 +675,29 @@ def _aggregate_pair_features(
     gov_hits_later = later_side.custom_category_totals.get("governance", 0)
     custom_taxonomy_hits_earlier = sum(earlier_side.custom_category_totals.values())
     custom_taxonomy_hits_later = sum(later_side.custom_category_totals.values())
+
+    # Track 7F.9 -- unified Discover topic-change metric (C_min) and its
+    # supporting alignment-unit diagnostics, same feature_eligible_primary
+    # population and word denominators as every metric above.
+    topic_changes = {
+        category: compute_topic_change(feature_eligible_primary, hits_of, earlier_side.words, later_side.words)
+        for category, hits_of in (
+            ("financial_condition", lambda r: r.custom_category_hits.get("financial_condition", 0)),
+            ("governance", lambda r: r.custom_category_hits.get("governance", 0)),
+            ("uncertainty", lambda r: r.uncertainty_count),
+        )
+    }
+    topic_fields: dict[str, int | float | None] = {
+        "financial_condition_hits_earlier": topic_changes["financial_condition"].hits_earlier,
+        "financial_condition_hits_later": topic_changes["financial_condition"].hits_later,
+    }
+    for category, tc in topic_changes.items():
+        topic_fields[f"{category}_count_change_per_1000"] = tc.count_change_per_1000
+        topic_fields[f"{category}_topic_change"] = tc.topic_change
+        topic_fields[f"{category}_supporting_hits"] = tc.diagnostics.supporting_hits
+        topic_fields[f"{category}_opposing_hits"] = tc.diagnostics.opposing_hits
+        topic_fields[f"{category}_change_consistency_ratio"] = tc.diagnostics.change_consistency_ratio
+        topic_fields[f"{category}_largest_passage_share"] = tc.diagnostics.largest_passage_share
 
     report_side_assessment = assess_report_side_quality(
         ReportSideQualityInputs(
@@ -867,6 +892,9 @@ def _aggregate_pair_features(
         governance_hits_later=gov_hits_later,
         custom_taxonomy_hits_earlier=custom_taxonomy_hits_earlier,
         custom_taxonomy_hits_later=custom_taxonomy_hits_later,
+        feature_eligible_primary_words_earlier=int(earlier_side.words),
+        feature_eligible_primary_words_later=int(later_side.words),
+        **topic_fields,
         risk_rate_earlier=custom_category_rate(earlier_side, "risk"),
         risk_rate_later=custom_category_rate(later_side, "risk"),
         financial_condition_rate_earlier=custom_category_rate(earlier_side, "financial_condition"),

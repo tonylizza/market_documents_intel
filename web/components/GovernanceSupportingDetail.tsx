@@ -8,7 +8,7 @@ import styles from "./GovernanceSupportingDetail.module.css";
 export interface GovernanceSupportingDetailProps {
   /** M1-G -- governance-related term density change per 1,000 narrative
    * words. Descriptive context only; never the Discover ranking metric
-   * (that's M3-G, `governanceShareChange`, shown via the finding itself). */
+   * (since Track 7F.9 that's the governance topic change). */
   languageDensityChange: number | null;
   /** M6-G -- topic-mix change, unsigned. */
   topicMixChange: number | null;
@@ -39,8 +39,8 @@ export interface GovernanceSupportingDetailProps {
  * "share-relative" (the `|M1-G| < 1.0` heuristic previously used for that
  * was an undocumented threshold 7F.6 flagged and 7F.7a never validated for
  * this purpose; removed in 7F.7a.1a). Purely supporting detail for a
- * governance finding -- never the Discover ranking metric itself (that's
- * M3-G, shown via the finding itself).
+ * governance finding -- never the Discover ranking metric itself (since
+ * Track 7F.9 that's the governance topic change; M3-G is supporting only).
  */
 export function GovernanceSupportingDetail({
   languageDensityChange,

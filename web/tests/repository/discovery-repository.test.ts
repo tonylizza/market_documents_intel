@@ -54,7 +54,7 @@ describe("PostgresDiscoveryRepository against the seeded test database", () => {
 
   it("getDiscoveryItems resolves a finding headline via the finding-copy mapping, not the raw key", async () => {
     const items = await repository.getDiscoveryItems({ type: "largest_uncertainty_increase", scope: "corpus" });
-    expect(items[0].findingHeadline).toBe("Uncertainty language increased");
+    expect(items[0].findingHeadline).toBe("Uncertainty-language increase");
   });
 
   it("getDiscoveryItems orders rows by rank, deterministically, never re-sorted by a rounded display value", async () => {
@@ -73,12 +73,12 @@ describe("PostgresDiscoveryRepository against the seeded test database", () => {
     expect(items).toEqual([]);
   });
 
-  it("Track 7F.4 item 8: getFinancialConditionCompanyStatus returns below_materiality for a quality-eligible company whose largest M3 is below 0.04", async () => {
+  it("Track 7F.4 item 8: getFinancialConditionCompanyStatus returns below_materiality for a quality-eligible company whose largest financial-condition topic change is below 0.25", async () => {
     const status = await repository.getFinancialConditionCompanyStatus("ACT");
     expect(status.status).toBe("below_materiality");
     if (status.status === "below_materiality") {
       expect(Math.abs(status.observedValue)).toBeLessThan(status.threshold);
-      expect(status.threshold).toBe(0.04);
+      expect(status.threshold).toBe(0.25);
     }
   });
 
@@ -87,12 +87,12 @@ describe("PostgresDiscoveryRepository against the seeded test database", () => {
     expect(status).toEqual({ status: "no_comparisons" });
   });
 
-  it("Track 7F.7a.1: getGovernanceCompanyStatus returns below_materiality for a quality-eligible company whose largest M3-G is below 0.05", async () => {
+  it("Track 7F.7a.1: getGovernanceCompanyStatus returns below_materiality for a quality-eligible company whose largest governance topic change is below 0.25", async () => {
     const status = await repository.getGovernanceCompanyStatus("ACT");
     expect(status.status).toBe("below_materiality");
     if (status.status === "below_materiality") {
       expect(Math.abs(status.observedValue)).toBeLessThan(status.threshold);
-      expect(status.threshold).toBe(0.05);
+      expect(status.threshold).toBe(0.25);
     }
   });
 
